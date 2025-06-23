@@ -40,7 +40,7 @@ export class ComponentGenerator {
 
     private async generateWithGemini(prompt: string, workspaceInfo: WorkspaceInfo): Promise<string> {
         try {
-            const model = this.gemini!.getGenerativeModel({ model: 'gemini-pro' });
+            const model = this.gemini!.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const systemPrompt = this.buildSystemPrompt(workspaceInfo);
             const fullPrompt = `${systemPrompt}\n\nGenerate a React component: ${prompt}`;
 
@@ -100,7 +100,7 @@ export class ComponentGenerator {
 
     private async iterateWithGemini(existingCode: string, modification: string, workspaceInfo: WorkspaceInfo): Promise<string> {
         try {
-            const model = this.gemini!.getGenerativeModel({ model: 'gemini-pro' });
+            const model = this.gemini!.getGenerativeModel({ model: 'gemini-1.5-flash' });
             const systemPrompt = this.buildSystemPrompt(workspaceInfo);
             const fullPrompt = `${systemPrompt}\n\nModify this React component based on the request: "${modification}"\n\nExisting code:\n${existingCode}`;
 
