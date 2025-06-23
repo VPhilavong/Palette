@@ -1,18 +1,30 @@
 # UI Copilot - VSCode Extension
 
-AI-powered React component generation that understands your codebase.
+AI-powered React component generation that understands your codebase and generates modern, context-aware React components.
 
-## Setup Instructions
+## 🚀 Quick Setup
 
 ### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### 2. Configure OpenAI API Key
-1. Open VSCode Settings (Cmd/Ctrl + ,)
-2. Search for "ui-copilot"
-3. Set your OpenAI API key in `ui-copilot.openaiApiKey`
+### 2. Configure AI Provider
+Choose between OpenAI or Google Gemini:
+
+**Option A: Google Gemini (Recommended - Free tier available)**
+1. Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Open VSCode Settings (Cmd/Ctrl + ,)
+3. Search for "ui-copilot"
+4. Set `ui-copilot.apiProvider` to "gemini"
+5. Set your Gemini API key in `ui-copilot.geminiApiKey`
+
+**Option B: OpenAI**
+1. Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Open VSCode Settings (Cmd/Ctrl + ,)
+3. Search for "ui-copilot"
+4. Set `ui-copilot.apiProvider` to "openai"
+5. Set your OpenAI API key in `ui-copilot.openaiApiKey`
 
 ### 3. Build the Extension
 ```bash
@@ -20,77 +32,133 @@ npm run compile
 ```
 
 ### 4. Test the Extension
-1. Press F5 to open a new Extension Development Host window
-2. Open a React project
-3. Use Cmd/Ctrl + Shift + U to generate a component
-4. Or open Command Palette and search "Generate UI Component"
+1. Press F5 to open Extension Development Host window
+2. In the new window, open a React/TypeScript project (or create a .tsx file)
+3. Use `Ctrl+Shift+U` to generate a component
+4. Or use Command Palette → "Generate UI Component"
 
-## Features
+## ✨ Features
 
-- **Generate Components**: Describe what you want and get React code
-- **Codebase Aware**: Automatically detects your styling approach (Tailwind, styled-components, etc.)
-- **Iterate on Code**: Select existing component code and modify it with natural language
-- **TypeScript Support**: Generates proper TypeScript when detected
+- **🎯 Smart Component Generation**: Describe what you want and get production-ready React code
+- **🧠 Codebase Aware**: Automatically detects your styling approach (Tailwind, styled-components, CSS modules, etc.)
+- **🔄 Iterate on Code**: Select existing component code and modify it with natural language
+- **⚡ TypeScript Support**: Generates proper TypeScript interfaces and types when detected
+- **🎨 Styling Intelligence**: Adapts to your project's styling patterns
+- **🚀 Dual AI Support**: Works with both OpenAI and Google Gemini
 
-## Usage
+## 📖 Usage
 
 ### Generate New Component
 1. Open a React file where you want to insert the component
-2. Press `Cmd/Ctrl + Shift + U` or use Command Palette
-3. Type your description: "user profile card with avatar and name"
-4. Component code is inserted at cursor position
+2. Press `Ctrl+Shift+P`(Windows) or `Cmd+Shift+P`(Mac/Linux) and or use Command Palette → "Generate UI Component"
+3. Type your description: "modern button component with loading state and variants"
+4. Component code is inserted at cursor position and auto-formatted
 
 ### Modify Existing Component
 1. Select the component code you want to modify
-2. Run "Iterate on Component" command
+2. Run "Iterate on Component" command from Command Palette
 3. Describe changes: "make it responsive" or "add loading state"
 4. Selected code is replaced with modified version
 
-## Development
+### Example Prompts That Work Well
+- "user profile card with avatar, name, and bio"
+- "responsive navigation menu with mobile hamburger"
+- "loading spinner with custom colors"
+- "form input with validation states"
+- "modal dialog with backdrop and close button"
+
+## 🛠️ Development
 
 ### File Structure
 ```
 src/
-├── extension.ts          # Main extension entry point
-├── componentGenerator.ts # OpenAI integration and code generation
-├── codebaseAnalyzer.ts   # Analyzes workspace for context
+├── extension.ts          # Main extension entry point and command registration
+├── componentGenerator.ts # AI integration (OpenAI + Gemini) and code generation
+├── codebaseAnalyzer.ts   # Analyzes workspace for styling/TypeScript context
 └── types.ts             # TypeScript type definitions
 ```
 
-### Key Features Implemented
-- ✅ Basic VSCode extension setup
-- ✅ OpenAI API integration
-- ✅ Codebase analysis (styling detection, TypeScript detection)
-- ✅ Component generation with context
-- ✅ Code iteration/modification
-- ✅ Keyboard shortcuts and commands
+### 🎯 Current Status
 
-### Next Steps for MVP
-1. Test with real React projects
-2. Improve prompt engineering for better code quality
-3. Add error handling and user feedback
-4. Support more styling approaches
-5. Add component library detection
+**✅ Completed Features**
+- VSCode extension setup with proper activation
+- Dual AI provider support (OpenAI + Google Gemini)
+- Intelligent codebase analysis (TypeScript, Tailwind, styled-components detection)
+- Context-aware component generation
+- Code iteration/modification functionality  
+- Keyboard shortcuts (`Ctrl+Shift+U`) and command palette integration
+- Automatic code formatting after generation
+- Robust error handling and user feedback
 
-### Cost Management
-- Using GPT-3.5-turbo to stay within budget
-- Caching workspace analysis results
-- Smart context truncation for large codebases
+**🔄 Working & Tested**
+- Extension loads and activates properly
+- Gemini AI integration generates quality React components
+- Codebase analysis detects project patterns correctly
+- Commands work via keyboard shortcuts and Command Palette
+- Code insertion and formatting works smoothly
 
-## Team Development Tips
+### 📋 Team Development Workflow
 
-1. **Start Simple**: Test basic generation first before adding complexity
-2. **Use Real Projects**: Test on actual React codebases, not toy examples
-3. **Iterate on Prompts**: The system prompt is key to good code generation
-4. **Handle Edge Cases**: What happens with malformed prompts or API errors?
-5. **Document Everything**: Keep notes on what works and what doesn't
+**For New Team Members:**
+1. Clone repo and run setup steps above
+2. Get your Gemini API key (free tier is generous)
+3. Test basic generation with simple prompts first
+4. Try on real React projects to see context awareness
 
-## Testing Checklist
+**Development Best Practices:**
+- Test extension changes by pressing F5 (launches Extension Development Host)
+- Use `npm run compile` after TypeScript changes
+- Test with both TypeScript and JavaScript React projects
+- Try different styling setups (Tailwind, styled-components, plain CSS)
 
-- [ ] Extension loads without errors
-- [ ] Can generate basic React components
-- [ ] Detects Tailwind CSS correctly
-- [ ] Detects TypeScript projects
-- [ ] Iteration feature works on selected code
-- [ ] Handles API errors gracefully
-- [ ] Code formatting works after generation# SAIL_Project
+### 🚀 Next Priorities
+1. **Improve Prompt Engineering**: Better system prompts for higher quality components
+2. **Enhanced Styling Support**: Better detection of component libraries (MUI, Chakra, etc.)
+3. **Smart File Creation**: Option to create new files instead of just inserting
+4. **Context Improvements**: Better understanding of existing component patterns
+5. **Error Recovery**: Better handling of malformed AI responses
+
+### 🧪 Testing Checklist
+
+**Basic Functionality**
+- [x] Extension loads without errors
+- [x] Can generate basic React components  
+- [x] Gemini AI integration works
+- [x] Commands appear in Command Palette
+- [x] Keyboard shortcuts work (`Ctrl+Shift+P`)
+
+**Codebase Intelligence**
+- [x] Detects TypeScript projects correctly
+- [x] Detects Tailwind CSS in dependencies
+- [x] Detects styled-components setup
+- [x] Generates appropriate code based on context
+
+**Advanced Features**
+- [x] Iteration feature works on selected code
+- [x] Code formatting works after generation
+- [x] Handles API errors gracefully
+- [x] Works without workspace folder (fallback mode)
+
+**Cross-Platform**
+- [ ] Test on Windows
+- [ ] Test on macOS  
+- [ ] Test on Linux
+
+### 🤝 Contributing
+
+1. **Branch Naming**: `feature/description` or `fix/description`
+2. **Testing**: Test your changes with F5 before submitting
+3. **Documentation**: Update README if adding new features
+4. **Code Style**: Follow existing TypeScript patterns
+
+### 💡 Tips for Success
+
+1. **Start Simple**: Test basic generation before complex prompts
+2. **Use Real Projects**: Test on actual React codebases for best results
+3. **Iterate on Prompts**: The system prompt in `componentGenerator.ts` is key
+4. **Monitor Costs**: Gemini has generous free tier, but track usage
+5. **Share Examples**: Document interesting prompts that work well
+
+---
+
+**Ready to generate some awesome React components? 🚀**
