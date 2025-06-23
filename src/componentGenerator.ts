@@ -146,90 +146,194 @@ export class ComponentGenerator {
     }
 
     private buildSystemPrompt(workspaceInfo: WorkspaceInfo): string {
-        let prompt = `You are an expert React developer. Generate clean, modern React components based on user requirements.
+        let prompt = `You are an expert React developer specializing in modern, production-ready components. Generate clean, accessible, and performant React components.
 
-IMPORTANT RULES:
-- Only return the React component code, no explanations or markdown
-- Use functional components with hooks
-- Follow modern React best practices
-- Make components reusable with proper props`;
+CORE REQUIREMENTS:
+- Return ONLY the React component code, no explanations or markdown blocks
+- Use functional components with React hooks
+- Follow React best practices and modern patterns
+- Make components reusable with well-defined props
+- Include proper accessibility attributes (ARIA labels, roles, etc.)
+- Use semantic HTML elements
+- Handle loading and error states when appropriate
+- Include proper TypeScript types and interfaces
 
-        // Add styling information
+CODING STANDARDS:
+- Use descriptive prop names and component names
+- Include default props when sensible
+- Add proper event handlers with TypeScript types
+- Use React.forwardRef for components that need ref access
+- Implement proper keyboard navigation for interactive elements
+- Use React.memo for performance optimization when needed`;
+
+        // Add styling information with specific guidelines
         if (workspaceInfo.styling.hasTailwind) {
-            prompt += '\n- Use Tailwind CSS classes for styling';
+            prompt += '\n\nSTYLING:\n- Use Tailwind CSS classes exclusively\n- Use responsive design classes (sm:, md:, lg:)\n- Leverage Tailwind color palette and spacing scale\n- Use hover:, focus:, and active: states\n- Include dark mode support with dark: prefix when relevant';
         } else if (workspaceInfo.styling.hasStyledComponents) {
-            prompt += '\n- Use styled-components for styling';
+            prompt += '\n\nSTYLING:\n- Use styled-components for all styling\n- Create properly typed styled components\n- Use theme variables if available\n- Include hover and focus states\n- Make responsive with media queries';
+        } else if (workspaceInfo.styling.hasCSSModules) {
+            prompt += '\n\nSTYLING:\n- Use CSS modules with descriptive class names\n- Import styles object and use styles.className\n- Follow BEM naming convention in CSS';
         } else {
-            prompt += '\n- Use CSS modules or inline styles for styling';
+            prompt += '\n\nSTYLING:\n- Use inline styles or CSS-in-JS\n- Create clean, semantic class names if using CSS\n- Ensure mobile-responsive design';
         }
 
-        // Add TypeScript info
+        // Enhanced TypeScript support
         if (workspaceInfo.hasTypeScript) {
-            prompt += '\n- Use TypeScript with proper type definitions';
-            prompt += '\n- Define Props interface for the component';
+            prompt += '\n\nTYPESCRIPT:\n- Define comprehensive Props interface with JSDoc comments\n- Use proper React types (React.FC, React.ReactNode, etc.)\n- Type all event handlers correctly\n- Export both the component and its Props interface\n- Use generic types when appropriate';
+        } else {
+            prompt += '\n\nJAVASCRIPT:\n- Use PropTypes for prop validation\n- Include defaultProps where appropriate\n- Use JSDoc comments for documentation';
         }
 
         // Add existing components context
         if (workspaceInfo.existingComponents.length > 0) {
-            prompt += '\n\nExisting components in this codebase you can reference:';
+            prompt += '\n\nEXISTING CODEBASE CONTEXT:';
             workspaceInfo.existingComponents.slice(0, 5).forEach(comp => {
                 prompt += `\n- ${comp.name}: ${comp.description}`;
             });
+            prompt += '\nEnsure your component follows similar patterns and naming conventions.';
         }
 
-        prompt += '\n\nGenerate production-ready code only.';
+        prompt += '\n\nQUALITY CHECKLIST:\n- Component is accessible (WCAG compliant)\n- Responsive design included\n- Proper error boundaries and loading states\n- Clean, readable code structure\n- Follows React performance best practices\n- Ready for production use\n\nGenerate the complete component code now:';
 
         return prompt;
     }
 
     private cleanupGeneratedCode(code: string): string {
         // Remove markdown code blocks if present
-        let cleaned = code.replace(/```[a-z]*\n?/g, '').trim();
+        let cleaned = code.replace(/```[a-z]*\n?/g, '').replace(/```\n?/g, '').trim();
         
-        // Remove any explanatory text before the code
+        // Remove common AI explanatory prefixes
+        cleaned = cleaned.replace(/^(Here's|Here is|This is|I'll create|Let me create).*?:\s*\n*/i, '');
+        
+        // Split into lines for processing
         const lines = cleaned.split('\n');
         let codeStartIndex = 0;
+        let codeEndIndex = lines.length;
         
+        // Find the start of actual code
         for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim().startsWith('import') || 
-                lines[i].trim().startsWith('const') || 
-                lines[i].trim().startsWith('function') ||
-                lines[i].trim().startsWith('export')) {
+            const line = lines[i].trim();
+            if (line.startsWith('import') || 
+                line.startsWith('const') || 
+                line.startsWith('function') ||
+                line.startsWith('export') ||
+                line.startsWith('interface') ||
+                line.startsWith('type ') ||
+                line.startsWith('//') && line.includes('import')) {
                 codeStartIndex = i;
                 break;
             }
         }
         
-        return lines.slice(codeStartIndex).join('\n');
+        // Find the end of code (remove trailing explanations)
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line && !line.startsWith('//') && 
+                !line.toLowerCase().includes('this component') &&
+                !line.toLowerCase().includes('usage:') &&
+                !line.toLowerCase().includes('example:')) {
+                codeEndIndex = i + 1;
+                break;
+            }
+        }
+        
+        let result = lines.slice(codeStartIndex, codeEndIndex).join('\n');
+        
+        // Ensure proper formatting
+        result = result.trim();
+        
+        // Add final newline if not present
+        if (result && !result.endsWith('\n')) {
+            result += '\n';
+        }
+        
+        return result;
     }
 
     private generateMockComponent(prompt: string, workspaceInfo: WorkspaceInfo): string {
         const componentName = this.extractComponentName(prompt);
         const useTS = workspaceInfo.hasTypeScript;
+        const hasTailwind = workspaceInfo.styling.hasTailwind;
         
         if (useTS) {
+            const tailwindClasses = hasTailwind ? 
+                'className="p-4 border border-gray-200 rounded-lg bg-white shadow-sm"' : 
+                'style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}';
+                
             return `interface ${componentName}Props {
-  // Add your props here
+  /**
+   * Additional CSS classes to apply to the component
+   */
+  className?: string;
+  /**
+   * Content to display inside the component
+   */
+  children?: React.ReactNode;
 }
 
-const ${componentName}: React.FC<${componentName}Props> = () => {
+/**
+ * ${componentName} component generated from: "${prompt}"
+ * TODO: Implement the actual functionality based on requirements
+ */
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = "",
+  children,
+  ...props 
+}) => {
   return (
-    <div>
-      <h2>${componentName}</h2>
-      <p>Generated from prompt: "${prompt}"</p>
-      {/* Add your component content here */}
+    <div 
+      ${tailwindClasses}
+      {...props}
+    >
+      <h2 ${hasTailwind ? 'className="text-lg font-semibold text-gray-900 mb-2"' : 'style={{ fontSize: "1.125rem", fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}'}>
+        ${componentName}
+      </h2>
+      <p ${hasTailwind ? 'className="text-gray-600 text-sm"' : 'style={{ color: "#6b7280", fontSize: "0.875rem" }}'}>
+        Generated from prompt: "${prompt}"
+      </p>
+      {children && (
+        <div ${hasTailwind ? 'className="mt-4"' : 'style={{ marginTop: "1rem" }}'}>
+          {children}
+        </div>
+      )}
+      {/* TODO: Add your component content here */}
     </div>
   );
 };
 
-export default ${componentName};`;
+export default ${componentName};
+export type { ${componentName}Props };`;
         } else {
-            return `const ${componentName} = () => {
+            const tailwindClasses = hasTailwind ? 
+                'className="p-4 border border-gray-200 rounded-lg bg-white shadow-sm"' : 
+                'style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}';
+                
+            return `/**
+ * ${componentName} component generated from: "${prompt}"
+ * TODO: Implement the actual functionality based on requirements
+ */
+const ${componentName} = ({ 
+  className = "",
+  children,
+  ...props 
+}) => {
   return (
-    <div>
-      <h2>${componentName}</h2>
-      <p>Generated from prompt: "${prompt}"</p>
-      {/* Add your component content here */}
+    <div 
+      ${tailwindClasses}
+      {...props}
+    >
+      <h2 ${hasTailwind ? 'className="text-lg font-semibold text-gray-900 mb-2"' : 'style={{ fontSize: "1.125rem", fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}'}>
+        ${componentName}
+      </h2>
+      <p ${hasTailwind ? 'className="text-gray-600 text-sm"' : 'style={{ color: "#6b7280", fontSize: "0.875rem" }}'}>
+        Generated from prompt: "${prompt}"
+      </p>
+      {children && (
+        <div ${hasTailwind ? 'className="mt-4"' : 'style={{ marginTop: "1rem" }}'}>
+          {children}
+        </div>
+      )}
+      {/* TODO: Add your component content here */}
     </div>
   );
 };
