@@ -51,6 +51,67 @@
             "gemini-pro"
           ],
           "description": "AI model to use for generation"
+        },
+        "ui-copilot.claudeApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Claude API key for codebase-aware features",
+          "markdownDescription": "Enter your Claude API key. Get one at [Anthropic Console](https://console.anthropic.com/)"
+        },
+        "ui-copilot.claudeModel": {
+          "type": "string",
+          "default": "claude-3-sonnet-20240229",
+          "enum": [
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307"
+          ],
+          "description": "Claude model to use for codebase analysis"
+        },
+        "ui-copilot.indexing.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic workspace indexing for codebase awareness"
+        },
+        "ui-copilot.indexing.maxFileSize": {
+          "type": "number",
+          "default": 102400,
+          "description": "Maximum file size to index (in bytes)"
+        },
+        "ui-copilot.indexing.excludePatterns": {
+          "type": "array",
+          "default": ["node_modules", ".git", "dist", "build", ".next"],
+          "description": "Patterns to exclude from indexing"
+        },
+        "ui-copilot.context.maxTokens": {
+          "type": "number",
+          "default": 12000,
+          "description": "Maximum tokens to use for context"
+        },
+        "ui-copilot.context.maxFiles": {
+          "type": "number",
+          "default": 20,
+          "description": "Maximum number of files to include in context"
+        },
+        "ui-copilot.features.autoCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered code completion"
+        },
+        "ui-copilot.features.codeExplanation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI code explanation features"
+        },
+        "ui-copilot.features.refactoring": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered refactoring suggestions"
+        },
+        "ui-copilot.features.debugging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI debugging assistance"
         }
       }
     },
@@ -64,6 +125,66 @@
         "command": "ui-copilot.iterateComponent",
         "title": "Iterate on Component",
         "category": "UI Copilot"
+      },
+      {
+        "command": "ui-copilot.explainCode",
+        "title": "Explain Code",
+        "category": "UI Copilot",
+        "icon": "$(question)"
+      },
+      {
+        "command": "ui-copilot.refactorCode",
+        "title": "Refactor Code",
+        "category": "UI Copilot",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "ui-copilot.completeCode",
+        "title": "Complete Code",
+        "category": "UI Copilot",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "ui-copilot.debugCode",
+        "title": "Debug Code",
+        "category": "UI Copilot",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "ui-copilot.searchCodebase",
+        "title": "Search Codebase",
+        "category": "UI Copilot",
+        "icon": "$(search)"
+      },
+      {
+        "command": "ui-copilot.findSimilar",
+        "title": "Find Similar Files",
+        "category": "UI Copilot",
+        "icon": "$(files)"
+      },
+      {
+        "command": "ui-copilot.analyzeProject",
+        "title": "Analyze Project",
+        "category": "UI Copilot",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "ui-copilot.reindexWorkspace",
+        "title": "Reindex Workspace",
+        "category": "UI Copilot",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ui-copilot.showIndexStatus",
+        "title": "Show Index Status",
+        "category": "UI Copilot",
+        "icon": "$(info)"
+      },
+      {
+        "command": "ui-copilot.configureExtension",
+        "title": "Configure Extension",
+        "category": "UI Copilot",
+        "icon": "$(settings)"
       }
     ],
     "keybindings": [
@@ -72,6 +193,30 @@
         "key": "ctrl+shift+u",
         "mac": "cmd+shift+u",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "ui-copilot.explainCode",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "ui-copilot.refactorCode",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "ui-copilot.completeCode",
+        "key": "ctrl+shift+space",
+        "mac": "cmd+shift+space",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "ui-copilot.searchCodebase",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "true"
       }
     ],
     "menus": {
@@ -79,7 +224,56 @@
         {
           "command": "ui-copilot.generateComponent",
           "when": "resourceExtname =~ /\\.(jsx?|tsx?)$/",
-          "group": "ui-copilot"
+          "group": "ui-copilot@1"
+        },
+        {
+          "command": "ui-copilot.explainCode",
+          "when": "editorHasSelection && resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
+          "group": "ui-copilot@2"
+        },
+        {
+          "command": "ui-copilot.refactorCode",
+          "when": "editorHasSelection && resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
+          "group": "ui-copilot@3"
+        },
+        {
+          "command": "ui-copilot.debugCode",
+          "when": "resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
+          "group": "ui-copilot@4"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ui-copilot.explainCode",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "ui-copilot.refactorCode",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "ui-copilot.completeCode",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "ui-copilot.debugCode",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "ui-copilot.searchCodebase",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "ui-copilot.findSimilar",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "ui-copilot.analyzeProject",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "ui-copilot.reindexWorkspace",
+          "when": "workspaceFolderCount > 0"
         }
       ]
     }

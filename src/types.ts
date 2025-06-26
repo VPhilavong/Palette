@@ -476,3 +476,293 @@ export interface IntelligentContext {
     contextSummary: string;
     confidenceScore: number;
 }
+
+// Codebase Indexing Types
+export interface CodebaseIndex {
+    files: Map<string, FileMetadata>;
+    symbols: Map<string, SymbolLocation[]>;
+    dependencies: DependencyGraph;
+    embeddings: Map<string, EmbeddingVector>;
+    lastUpdated: Date;
+    totalFiles: number;
+    indexedFiles: number;
+}
+
+export interface FileMetadata {
+    path: string;
+    absolutePath: string;
+    size: number;
+    modified: Date;
+    extension: string;
+    language: string;
+    lineCount: number;
+    symbols: SymbolLocation[];
+    imports: string[];
+    exports: string[];
+    chunks: SemanticChunk[];
+}
+
+export interface SymbolLocation {
+    name: string;
+    type: 'function' | 'class' | 'interface' | 'variable' | 'type';
+    line: number;
+    column: number;
+    definition: string;
+    filePath?: string; // Added when indexed globally
+}
+
+export interface SemanticChunk {
+    content: string;
+    startLine: number;
+    endLine: number;
+    type: 'function' | 'class' | 'interface' | 'general';
+    tokens: number;
+}
+
+export interface EmbeddingVector {
+    vector: number[];
+    metadata: {
+        filePath: string;
+        chunkId: string;
+        type: string;
+        lastUpdated: Date;
+    };
+}
+
+export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'error';
+
+// Context Management Types
+export interface ContextRequest {
+    currentFile?: string;
+    cursorPosition?: { line: number; character: number };
+    query?: string;
+    selectedCode?: string;
+    symbols?: string[];
+    includeTests?: boolean;
+    maxTokens?: number;
+    responseType?: AIRequestType;
+    language?: string;
+}
+
+export interface CodebaseContext {
+    request: ContextRequest;
+    currentFile: FileMetadata | null;
+    relatedFiles: FileMetadata[];
+    chunks: ContextChunk[];
+    dependencies: string[];
+    symbols: SymbolLocation[];
+    metadata: ContextMetadata;
+}
+
+export interface ContextChunk {
+    content: string;
+    filePath: string;
+    startLine: number;
+    endLine: number;
+    type: 'function' | 'class' | 'interface' | 'general';
+    tokens: number;
+    relevanceScore: number;
+    context: string;
+}
+
+export interface ContextMetadata {
+    totalTokens: number;
+    strategy: ContextSelectionStrategy;
+    buildTime: number;
+    relevanceScore: number;
+    filesIncluded: number;
+    chunksIncluded: number;
+}
+
+export interface RelevanceScore {
+    file: FileMetadata;
+    score: number;
+    reasons: string[];
+    strategy: string;
+}
+
+export type ContextSelectionStrategy = 'relevance_based' | 'dependency_based' | 'chunk_based' | 'hybrid';
+
+export interface ContextWindow {
+    request: ContextRequest;
+    totalTokens: number;
+    availableTokens: number;
+    efficiency: number;
+    files: FileMetadata[];
+    chunks: ContextChunk[];
+    metadata: ContextMetadata;
+}
+
+// Claude API Integration Types
+export interface ClaudeConfig {
+    apiKey: string;
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+}
+
+export interface AIRequest {
+    type: AIRequestType;
+    query: string;
+    selectedCode?: string;
+    cursorPosition?: { line: number; character: number };
+    language?: string;
+    context?: string;
+}
+
+export interface AIResponse {
+    content: string;
+    type: AIRequestType;
+    confidence: number;
+    suggestions: string[];
+    metadata: AIResponseMetadata;
+}
+
+export interface AIResponseMetadata {
+    model: string;
+    tokensUsed: number;
+    processingTime: number;
+    contextSize: number;
+    contextFiles: number;
+    contextQuality: number;
+}
+
+export type AIRequestType = 'completion' | 'explanation' | 'refactor' | 'generation' | 'debug';
+
+// Enhanced VS Code Integration Types
+export interface CodebaseCommand {
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+    keybinding?: string;
+    when?: string;
+    requiresContext: boolean;
+}
+
+export interface CodeAction {
+    title: string;
+    kind: 'quickfix' | 'refactor' | 'source' | 'explanation';
+    edit?: any; // VS Code WorkspaceEdit
+    command?: string;
+    diagnostics?: any[];
+}
+
+export interface DiagnosticInfo {
+    range: any; // VS Code Range
+    message: string;
+    severity: 'error' | 'warning' | 'info' | 'hint';
+    source: string;
+    code?: string;
+    relatedInformation?: any[];
+}
+
+// Performance and Caching Types
+export interface CacheEntry<T> {
+    data: T;
+    timestamp: Date;
+    ttl: number;
+    hits: number;
+    size: number;
+}
+
+export interface PerformanceMetrics {
+    indexingTime: number;
+    contextBuildTime: number;
+    apiResponseTime: number;
+    cacheHitRate: number;
+    memoryUsage: number;
+    filesProcessed: number;
+}
+
+export interface CacheStats {
+    size: number;
+    hitRate: number;
+    entries: number;
+    totalSize: number;
+    oldestEntry: Date;
+    newestEntry: Date;
+}
+
+// Search and Similarity Types
+export interface SearchOptions {
+    caseSensitive?: boolean;
+    regex?: boolean;
+    includeComments?: boolean;
+    fileTypes?: string[];
+    maxResults?: number;
+    scope?: 'workspace' | 'current-file' | 'related-files';
+}
+
+export interface SearchResult {
+    file: FileMetadata;
+    matches: SearchMatch[];
+    score: number;
+    rank: number;
+}
+
+export interface SearchMatch {
+    line: number;
+    column: number;
+    text: string;
+    context: string;
+    type: 'exact' | 'fuzzy' | 'semantic';
+}
+
+export interface SimilarityResult {
+    sourceFile: string;
+    targetFile: string;
+    similarity: number;
+    reasons: SimilarityReason[];
+    sharedSymbols: string[];
+    sharedPatterns: string[];
+}
+
+export interface SimilarityReason {
+    type: 'structural' | 'semantic' | 'syntactic' | 'imports' | 'exports';
+    score: number;
+    description: string;
+}
+
+// Extension Configuration Types
+export interface ExtensionConfig {
+    claude: ClaudeConfig;
+    indexing: IndexingConfig;
+    context: ContextConfig;
+    performance: PerformanceConfig;
+    features: FeatureConfig;
+}
+
+export interface IndexingConfig {
+    enabled: boolean;
+    maxFileSize: number;
+    excludePatterns: string[];
+    includePatterns: string[];
+    watchForChanges: boolean;
+    debounceTime: number;
+}
+
+export interface ContextConfig {
+    maxTokens: number;
+    maxFiles: number;
+    maxChunks: number;
+    relevanceThreshold: number;
+    includeRelatedFiles: boolean;
+    includeDependencies: boolean;
+}
+
+export interface PerformanceConfig {
+    cacheEnabled: boolean;
+    cacheTTL: number;
+    maxCacheSize: number;
+    concurrentLimit: number;
+    timeoutMs: number;
+}
+
+export interface FeatureConfig {
+    autoCompletion: boolean;
+    codeExplanation: boolean;
+    refactoring: boolean;
+    debugging: boolean;
+    codeGeneration: boolean;
+}
