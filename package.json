@@ -64,6 +64,12 @@
         "command": "ui-copilot.iterateComponent",
         "title": "Iterate on Component",
         "category": "UI Copilot"
+      },
+      {
+        "command": "ui-copilot.openPanel",
+        "title": "Open UI Copilot Panel",
+        "category": "UI Copilot",
+        "icon": "$(symbol-color)"
       }
     ],
     "keybindings": [
@@ -72,6 +78,11 @@
         "key": "ctrl+shift+u",
         "mac": "cmd+shift+u",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "ui-copilot.openPanel",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+p"
       }
     ],
     "menus": {
@@ -80,6 +91,13 @@
           "command": "ui-copilot.generateComponent",
           "when": "resourceExtname =~ /\\.(jsx?|tsx?)$/",
           "group": "ui-copilot"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "ui-copilot.openPanel",
+          "when": "resourceExtname =~ /\\.(jsx?|tsx?)$/",
+          "group": "navigation"
         }
       ]
     }

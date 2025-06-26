@@ -27,6 +27,7 @@ exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const componentGenerator_1 = require("./componentGenerator");
 const codebaseAnalyzer_1 = require("./codebaseAnalyzer");
+const UICopilotPanel_1 = require("./webview/UICopilotPanel");
 let componentGenerator;
 let codebaseAnalyzer;
 function activate(context) {
@@ -42,7 +43,11 @@ function activate(context) {
     const iterateCommand = vscode.commands.registerCommand('ui-copilot.iterateComponent', async () => {
         await handleIterateComponent();
     });
-    context.subscriptions.push(generateCommand, iterateCommand);
+    // Register the open panel command
+    const openPanelCommand = vscode.commands.registerCommand('ui-copilot.openPanel', () => {
+        UICopilotPanel_1.UICopilotPanel.createOrShow(context.extensionUri, componentGenerator, codebaseAnalyzer);
+    });
+    context.subscriptions.push(generateCommand, iterateCommand, openPanelCommand);
 }
 exports.activate = activate;
 async function handleGenerateComponent() {

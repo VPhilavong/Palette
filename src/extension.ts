@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComponentGenerator } from './componentGenerator';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
+import { UICopilotPanel } from './webview/UICopilotPanel';
 
 let componentGenerator: ComponentGenerator;
 let codebaseAnalyzer: CodebaseAnalyzer;
@@ -22,7 +23,12 @@ export function activate(context: vscode.ExtensionContext) {
         await handleIterateComponent();
     });
 
-    context.subscriptions.push(generateCommand, iterateCommand);
+    // Register the open panel command
+    const openPanelCommand = vscode.commands.registerCommand('ui-copilot.openPanel', () => {
+        UICopilotPanel.createOrShow(context.extensionUri, componentGenerator, codebaseAnalyzer);
+    });
+
+    context.subscriptions.push(generateCommand, iterateCommand, openPanelCommand);
 }
 
 async function handleGenerateComponent() {
