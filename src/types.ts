@@ -15,7 +15,7 @@ export interface StylingInfo {
     hasCSSModules: boolean;
     hasEmotion: boolean;
     // Enhanced styling analysis
-    primaryApproach?: 'tailwind' | 'styled-components' | 'css-modules' | 'emotion' | 'inline';
+    primaryApproach?: 'tailwind' | 'styled-components' | 'css-modules' | 'emotion' | 'inline' | 'chakra-ui' | 'shadcn-ui' | 'material-ui' | 'antd' | 'mantine' | 'nextui' | 'ui-library';
     customTheme?: boolean;
     responsivePatterns?: string[];
     // Framework and UI library detection

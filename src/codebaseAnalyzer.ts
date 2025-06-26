@@ -1197,6 +1197,19 @@ export class CodebaseAnalyzer {
 
     // Helper methods for enhanced styling analysis
     private determinePrimaryApproach(styling: StylingInfo): StylingInfo['primaryApproach'] {
+        // PRIORITY FIX: Check for UI framework first
+        if (styling.uiLibrary && styling.uiLibrary !== 'Custom/None') {
+            if (styling.uiLibrary.includes('Chakra')) return 'chakra-ui';
+            if (styling.uiLibrary.includes('shadcn')) return 'shadcn-ui';
+            if (styling.uiLibrary.includes('Material')) return 'material-ui';
+            if (styling.uiLibrary.includes('Ant Design')) return 'antd';
+            if (styling.uiLibrary.includes('Mantine')) return 'mantine';
+            if (styling.uiLibrary.includes('NextUI')) return 'nextui';
+            // For other UI libraries, return a generic approach
+            return 'ui-library';
+        }
+        
+        // Fallback to CSS approaches
         if (styling.hasTailwind) return 'tailwind';
         if (styling.hasStyledComponents) return 'styled-components';
         if (styling.hasCSSModules) return 'css-modules';

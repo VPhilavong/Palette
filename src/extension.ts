@@ -763,7 +763,7 @@ async function handleAnalyzeProject() {
                 '## Project Overview',
                 `- **Language**: ${workspaceInfo.hasTypeScript ? 'TypeScript' : 'JavaScript'}`,
                 `- **React Components**: ${totalReactComponents} (${tsxFiles} .tsx, ${jsxFiles} .jsx)`,
-                `- **Total Components**: ${workspaceInfo.existingComponents.length}`,
+                `- **Total Components**: ${workspaceInfo.existingComponents.length} (${totalReactComponents} React components, ${workspaceInfo.existingComponents.length - totalReactComponents} other components)`,
                 `- **Architecture**: Component-based React application`,
                 '',
                 '## Architecture & Patterns',
@@ -780,11 +780,11 @@ async function handleAnalyzeProject() {
                 '',
                 '## UI & Styling',
                 `- **UI Framework**: ${workspaceInfo.styling.uiLibrary || 'Custom/None'}`,
-                `- **Primary Approach**: ${workspaceInfo.styling.primaryApproach || 'CSS/Inline'}`,
+                `- **Primary Approach**: ${formatPrimaryApproach(workspaceInfo.styling.primaryApproach, workspaceInfo.styling.uiLibrary)}`,
                 `- **Tailwind CSS**: ${workspaceInfo.styling.hasTailwind ? 'Yes' : 'No'}`,
                 `- **CSS Modules**: ${workspaceInfo.styling.hasCSSModules ? 'Yes' : 'No'}`,
                 `- **Styled Components**: ${workspaceInfo.styling.hasStyledComponents ? 'Yes' : 'No'}`,
-                `- **Chakra UI**: ${workspaceInfo.styling.uiLibrary?.includes('Chakra') ? 'Yes' : 'No'}`,
+                `- **Chakra UI**: ${workspaceInfo.styling.uiLibrary?.includes('Chakra') ? (workspaceInfo.styling.uiLibrary.includes('v3') ? 'Yes (v3)' : 'Yes') : 'No'}`,
                 '',
                 '## Development Tools',
                 `- **Testing Framework**: ${categorizeTesting(workspaceInfo.patterns?.testingPatterns || [])}`,
@@ -792,7 +792,7 @@ async function handleAnalyzeProject() {
                 '',
                 '## State Management Details',
                 `- **Patterns Detected**: ${statePatterns.join(', ') || 'Local state only'}`,
-                `- **Hook Usage**: ${statePatterns.includes('local-state') ? 'useState, ' : ''}${statePatterns.includes('lifecycle-effects') ? 'useEffect, ' : ''}${statePatterns.includes('context-api') ? 'useContext' : ''}`.replace(/,\s*$/, ''),
+                `- **Hook Usage**: ${formatHookUsage(statePatterns, workspaceInfo.existingComponents)}`,
                 '',
                 '## Code Quality Insights',
                 `- **Naming Convention**: ${workspaceInfo.patterns?.namingConventions.components || 'PascalCase'} (Components)`,
@@ -818,6 +818,7 @@ async function handleAnalyzeProject() {
 function categorizeTesting(testingPatterns: string[]): string {
     if (testingPatterns.length === 0) return 'None detected';
     
+    // PRIORITY FIX: Prioritize Playwright as the primary E2E framework
     const e2eFrameworks = testingPatterns.filter(p => 
         p.includes('playwright') || p.includes('cypress') || p.includes('e2e')
     );
@@ -826,10 +827,18 @@ function categorizeTesting(testingPatterns: string[]): string {
         p.includes('jest') || p.includes('vitest') || p.includes('testing-library') || p.includes('react-testing')
     );
     
+    // Check for Playwright specifically
+    const hasPlaywright = testingPatterns.some(p => p.includes('playwright'));
+    if (hasPlaywright && unitFrameworks.length === 0) {
+        return 'Playwright (E2E)';
+    }
+    
     if (e2eFrameworks.length > 0 && unitFrameworks.length > 0) {
-        return `${e2eFrameworks.join(', ')} (E2E) + ${unitFrameworks.join(', ')} (Unit)`;
+        const primary = hasPlaywright ? 'Playwright' : e2eFrameworks[0];
+        return `${primary} (E2E) + ${unitFrameworks[0]} (Unit)`;
     } else if (e2eFrameworks.length > 0) {
-        return `${e2eFrameworks.join(', ')} (E2E Testing)`;
+        const primary = hasPlaywright ? 'Playwright' : e2eFrameworks[0];
+        return `${primary} (E2E Testing)`;
     } else if (unitFrameworks.length > 0) {
         return `${unitFrameworks.join(', ')} (Unit Testing)`;
     }
@@ -931,6 +940,77 @@ async function handleIterateComponent() {
         vscode.window.showErrorMessage(`Error modifying component: ${error}`);
         console.error('Component iteration error:', error);
     }
+}
+
+/**
+ * Helper to format primary styling approach in a user-friendly way
+ */
+function formatPrimaryApproach(primaryApproach?: string, uiLibrary?: string): string {
+    if (!primaryApproach) return 'CSS/Inline';
+    
+    switch (primaryApproach) {
+        case 'chakra-ui':
+            return 'Chakra UI Components';
+        case 'shadcn-ui':
+            return 'shadcn/ui Components';
+        case 'material-ui':
+            return 'Material-UI Components';
+        case 'antd':
+            return 'Ant Design Components';
+        case 'mantine':
+            return 'Mantine Components';
+        case 'nextui':
+            return 'NextUI Components';
+        case 'ui-library':
+            return `${uiLibrary} Components`;
+        case 'tailwind':
+            return 'Tailwind CSS';
+        case 'styled-components':
+            return 'Styled Components';
+        case 'css-modules':
+            return 'CSS Modules';
+        case 'emotion':
+            return 'Emotion (CSS-in-JS)';
+        case 'inline':
+            return 'CSS/Inline';
+        default:
+            return primaryApproach || 'CSS/Inline';
+    }
+}
+
+/**
+ * Helper to format hook usage in a comprehensive way
+ */
+function formatHookUsage(statePatterns: string[], components: import('./types').ComponentInfo[]): string {
+    const hooksList: string[] = [];
+    
+    // Basic React hooks from patterns
+    if (statePatterns.includes('local-state')) hooksList.push('useState');
+    if (statePatterns.includes('lifecycle-effects')) hooksList.push('useEffect');
+    if (statePatterns.includes('context-api')) hooksList.push('useContext');
+    if (statePatterns.includes('reducer-pattern')) hooksList.push('useReducer');
+    if (statePatterns.includes('callback-optimization')) hooksList.push('useCallback');
+    if (statePatterns.includes('memo-optimization')) hooksList.push('useMemo');
+    
+    // Advanced hooks from actual component analysis
+    const allHooks = components.flatMap(c => c.ast?.hooks || []);
+    const hookTypes = new Set(allHooks.map(h => h.name));
+    
+    // Add additional hooks found in the components
+    const additionalHooks = Array.from(hookTypes).filter(hook => 
+        !hooksList.includes(hook) && (
+            hook.startsWith('use') || 
+            ['useRef', 'useLayoutEffect', 'useImperativeHandle', 'useDebugValue'].includes(hook)
+        )
+    );
+    
+    hooksList.push(...additionalHooks);
+    
+    // External library hooks
+    if (statePatterns.includes('tanstack-query')) hooksList.push('useQuery');
+    if (statePatterns.includes('tanstack-router')) hooksList.push('useRouter');
+    
+    return hooksList.length > 0 ? hooksList.join(', ') : 'Standard React hooks';
 }
 
 export function deactivate() {
