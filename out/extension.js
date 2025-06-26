@@ -664,29 +664,67 @@ async function handleAnalyzeProject() {
             const workspaceInfo = await codebaseAnalyzer.analyzeWorkspace();
             const indexStats = codebaseIndexer.getIndexStatus();
             // Create analysis report
+            // Enhanced analysis with better detection
+            const { aiIntegration, provider } = getCurrentAIProvider();
+            // Enhanced component counting
+            const tsxFiles = workspaceInfo.existingComponents.filter(c => c.path.endsWith('.tsx')).length;
+            const jsxFiles = workspaceInfo.existingComponents.filter(c => c.path.endsWith('.jsx')).length;
+            const totalReactComponents = tsxFiles + jsxFiles;
+            // Better state management detection
+            const statePatterns = workspaceInfo.patterns?.stateManagementPatterns || [];
+            let stateManagementSummary = 'Local state only';
+            if (statePatterns.includes('tanstack-query')) {
+                stateManagementSummary = 'TanStack Query + Local state';
+            }
+            else if (statePatterns.includes('redux')) {
+                stateManagementSummary = 'Redux + Local state';
+            }
+            else if (statePatterns.includes('zustand')) {
+                stateManagementSummary = 'Zustand + Local state';
+            }
+            else if (statePatterns.length > 1) {
+                stateManagementSummary = 'Mixed state management';
+            }
             const report = [
-                '# Project Analysis Report\n',
-                '## Overview',
+                '# Enhanced Project Analysis Report\n',
+                '## Project Overview',
                 `- **Language**: ${workspaceInfo.hasTypeScript ? 'TypeScript' : 'JavaScript'}`,
-                `- **Components**: ${workspaceInfo.existingComponents.length}`,
-                `- **Architecture Patterns**: ${workspaceInfo.architecture?.patterns.join(', ') || 'None detected'}`,
-                `- **State Management**: ${workspaceInfo.architecture?.dataFlow.stateManagement || 'Local'}`,
+                `- **React Components**: ${totalReactComponents} (${tsxFiles} .tsx, ${jsxFiles} .jsx)`,
+                `- **Total Components**: ${workspaceInfo.existingComponents.length}`,
+                `- **Architecture**: Component-based React application`,
+                '',
+                '## Architecture & Patterns',
+                `- **Architecture Patterns**: ${workspaceInfo.architecture?.patterns.join(', ') || 'Component-based React'}`,
+                `- **State Management**: ${stateManagementSummary}`,
+                `- **Routing**: ${statePatterns.includes('tanstack-router') ? 'TanStack Router' : statePatterns.includes('react-router') ? 'React Router' : 'Not detected'}`,
+                `- **Data Fetching**: ${statePatterns.includes('tanstack-query') ? 'TanStack Query (React Query)' : statePatterns.includes('swr') ? 'SWR' : 'Custom/Fetch'}`,
                 '',
                 '## Codebase Statistics',
                 `- **Files Indexed**: ${indexStats.stats.indexedFiles}/${indexStats.stats.totalFiles}`,
                 `- **Symbols Found**: ${indexStats.stats.totalSymbols}`,
                 `- **Dependencies**: ${indexStats.stats.dependencyNodes} files, ${indexStats.stats.dependencyEdges} relationships`,
+                `- **TypeScript Usage**: ${(tsxFiles / Math.max(totalReactComponents, 1) * 100).toFixed(1)}% of React components`,
                 '',
-                '## Styling Approach',
-                `- **Primary**: ${workspaceInfo.styling.primaryApproach || 'Unknown'}`,
-                `- **Tailwind**: ${workspaceInfo.styling.hasTailwind ? 'Yes' : 'No'}`,
+                '## UI & Styling',
+                `- **UI Framework**: ${workspaceInfo.styling.uiLibrary || 'Custom/None'}`,
+                `- **Primary Approach**: ${workspaceInfo.styling.primaryApproach || 'CSS/Inline'}`,
+                `- **Tailwind CSS**: ${workspaceInfo.styling.hasTailwind ? 'Yes' : 'No'}`,
                 `- **CSS Modules**: ${workspaceInfo.styling.hasCSSModules ? 'Yes' : 'No'}`,
                 `- **Styled Components**: ${workspaceInfo.styling.hasStyledComponents ? 'Yes' : 'No'}`,
+                `- **Chakra UI**: ${workspaceInfo.styling.uiLibrary?.includes('Chakra') ? 'Yes' : 'No'}`,
                 '',
-                '## Code Patterns',
-                `- **Naming**: ${workspaceInfo.patterns?.namingConventions.components || 'Mixed'}`,
-                `- **Testing**: ${workspaceInfo.patterns?.testingPatterns.join(', ') || 'None detected'}`,
-                `- **State Management**: ${workspaceInfo.patterns?.stateManagementPatterns.join(', ') || 'None detected'}`,
+                '## Development Tools',
+                `- **Testing Framework**: ${categorizeTesting(workspaceInfo.patterns?.testingPatterns || [])}`,
+                `- **TypeScript**: ${workspaceInfo.hasTypeScript ? 'Yes' : 'No'}`,
+                '',
+                '## State Management Details',
+                `- **Patterns Detected**: ${statePatterns.join(', ') || 'Local state only'}`,
+                `- **Hook Usage**: ${statePatterns.includes('local-state') ? 'useState, ' : ''}${statePatterns.includes('lifecycle-effects') ? 'useEffect, ' : ''}${statePatterns.includes('context-api') ? 'useContext' : ''}`.replace(/,\s*$/, ''),
+                '',
+                '## Code Quality Insights',
+                `- **Naming Convention**: ${workspaceInfo.patterns?.namingConventions.components || 'PascalCase'} (Components)`,
+                `- **File Organization**: ${workspaceInfo.patterns?.stylePatterns?.organization || 'Component-based'}`,
+                `- **Modern React Patterns**: ${statePatterns.includes('tanstack-query') || statePatterns.includes('tanstack-router') ? 'Yes (TanStack ecosystem)' : 'Partial'}`,
             ].join('\n');
             const doc = await vscode.workspace.openTextDocument({
                 content: report,
@@ -699,6 +737,25 @@ async function handleAnalyzeProject() {
         vscode.window.showErrorMessage(`Error analyzing project: ${error}`);
         console.error('Project analysis error:', error);
     }
+}
+/**
+ * Helper to categorize testing frameworks correctly
+ */
+function categorizeTesting(testingPatterns) {
+    if (testingPatterns.length === 0)
+        return 'None detected';
+    const e2eFrameworks = testingPatterns.filter(p => p.includes('playwright') || p.includes('cypress') || p.includes('e2e'));
+    const unitFrameworks = testingPatterns.filter(p => p.includes('jest') || p.includes('vitest') || p.includes('testing-library') || p.includes('react-testing'));
+    if (e2eFrameworks.length > 0 && unitFrameworks.length > 0) {
+        return `${e2eFrameworks.join(', ')} (E2E) + ${unitFrameworks.join(', ')} (Unit)`;
+    }
+    else if (e2eFrameworks.length > 0) {
+        return `${e2eFrameworks.join(', ')} (E2E Testing)`;
+    }
+    else if (unitFrameworks.length > 0) {
+        return `${unitFrameworks.join(', ')} (Unit Testing)`;
+    }
+    return testingPatterns.join(', ');
 }
 /**
  * Reindex the workspace

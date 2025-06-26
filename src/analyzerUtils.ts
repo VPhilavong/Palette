@@ -18,7 +18,7 @@ import {
 export class AnalyzerUtils {
     
     /**
-     * Find all React component files in the project
+     * Find all React component files in the project with better detection
      */
     static async findComponentFiles(rootPath: string): Promise<string[]> {
         const componentFiles: string[] = [];
@@ -33,18 +33,27 @@ export class AnalyzerUtils {
                     
                     if (entry.isDirectory()) {
                         // Skip node_modules and other non-source directories
-                        if (!['node_modules', '.git', 'dist', 'build', '.next'].includes(entry.name)) {
+                        if (!['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '.vscode'].includes(entry.name)) {
                             await scanDirectory(fullPath);
                         }
                     } else if (entry.isFile()) {
                         const ext = path.extname(entry.name);
                         if (extensions.includes(ext)) {
-                            // Check if it's likely a React component (starts with capital letter)
                             const fileName = path.basename(entry.name, ext);
+                            
+                            // Enhanced component detection criteria
                             const startsWithCapital = /^[A-Z]/.test(fileName);
+                            const isInComponentsDir = fullPath.includes('/components/') || fullPath.includes('\\components\\');
+                            const isPages = fullPath.includes('/pages/') || fullPath.includes('\\pages\\') || fullPath.includes('/routes/') || fullPath.includes('\\routes\\');
+                            const hasReactExtension = ext === '.tsx' || ext === '.jsx';
                             const isLikelyComp = AnalyzerUtils.isLikelyComponent(fullPath);
                             
-                            if (startsWithCapital || isLikelyComp) {
+                            // MORE INCLUSIVE: Include ALL .tsx/.jsx files first (user reported 49 tsx files)
+                            if (hasReactExtension) {
+                                componentFiles.push(fullPath);
+                            }
+                            // Then add other likely components that aren't .tsx/.jsx
+                            else if (startsWithCapital || isInComponentsDir || isPages || isLikelyComp) {
                                 componentFiles.push(fullPath);
                             }
                         }
@@ -56,7 +65,17 @@ export class AnalyzerUtils {
         }
         
         await scanDirectory(rootPath);
-        return componentFiles;
+        
+        // Remove duplicates and log for debugging
+        const uniqueFiles = [...new Set(componentFiles)];
+        console.log(`🔍 Component detection summary:`);
+        console.log(`  - Total files found: ${uniqueFiles.length}`);
+        console.log(`  - .tsx files: ${uniqueFiles.filter(f => f.endsWith('.tsx')).length}`);
+        console.log(`  - .jsx files: ${uniqueFiles.filter(f => f.endsWith('.jsx')).length}`);
+        console.log(`  - .ts files: ${uniqueFiles.filter(f => f.endsWith('.ts')).length}`);
+        console.log(`  - .js files: ${uniqueFiles.filter(f => f.endsWith('.js')).length}`);
+        
+        return uniqueFiles;
     }
     
     /**

@@ -89,11 +89,14 @@ class CodebaseAnalyzer {
         const components = [];
         const componentPaths = await this.findComponentFiles(rootPath);
         console.log(`🔍 Found ${componentPaths.length} component files for analysis`);
-        // Limit component analysis to prevent hanging
-        const maxComponents = 50;
+        // INCREASED LIMIT: Allow more components (user has 49 tsx files) 
+        const maxComponents = 100; // Increased from 50
         const limitedPaths = componentPaths.slice(0, maxComponents);
         if (componentPaths.length > maxComponents) {
             console.log(`⚡ Limiting analysis to first ${maxComponents} components for performance`);
+        }
+        else {
+            console.log(`📋 Analyzing all ${componentPaths.length} components found`);
         }
         // Process components with timeout protection
         const batchSize = 5;
@@ -386,13 +389,41 @@ class CodebaseAnalyzer {
             patterns.push('memo-optimization');
         if (hookTypes.has('useEffect'))
             patterns.push('lifecycle-effects');
+        // Modern state management detection
+        const allDependencies = components.flatMap(c => c.dependencies || []);
+        const depSet = new Set(allDependencies);
+        // TanStack Query (React Query)
+        if (depSet.has('@tanstack/react-query') || depSet.has('react-query')) {
+            patterns.push('tanstack-query');
+        }
+        // TanStack Router
+        if (depSet.has('@tanstack/react-router')) {
+            patterns.push('tanstack-router');
+        }
+        // React Router
+        if (depSet.has('react-router-dom') || depSet.has('react-router')) {
+            patterns.push('react-router');
+        }
         // Check for external state management
-        const hasRedux = components.some(c => c.dependencies?.some(dep => dep.includes('redux')));
-        if (hasRedux)
+        if (depSet.has('redux') || depSet.has('@reduxjs/toolkit')) {
             patterns.push('redux');
-        const hasZustand = components.some(c => c.dependencies?.some(dep => dep.includes('zustand')));
-        if (hasZustand)
+        }
+        if (depSet.has('zustand')) {
             patterns.push('zustand');
+        }
+        if (depSet.has('jotai')) {
+            patterns.push('jotai');
+        }
+        if (depSet.has('recoil')) {
+            patterns.push('recoil');
+        }
+        if (depSet.has('valtio')) {
+            patterns.push('valtio');
+        }
+        // SWR for data fetching
+        if (depSet.has('swr')) {
+            patterns.push('swr');
+        }
         // Analyze advanced patterns from component content
         components.forEach(component => {
             try {
@@ -426,19 +457,34 @@ class CodebaseAnalyzer {
     async analyzeTestingPatterns(rootPath) {
         const patterns = [];
         try {
-            // Check for test files
-            const testExtensions = ['.test.ts', '.test.tsx', '.test.js', '.test.jsx', '.spec.ts', '.spec.tsx'];
+            // Check for test files with broader patterns
+            const testExtensions = [
+                '.test.ts', '.test.tsx', '.test.js', '.test.jsx',
+                '.spec.ts', '.spec.tsx', '.spec.js', '.spec.jsx',
+                '.e2e.ts', '.e2e.js'
+            ];
+            const testDirectories = ['tests', 'test', '__tests__', 'e2e', 'playwright'];
             let hasTests = false;
+            let hasE2ETests = false;
             const checkForTests = (dirPath) => {
                 const entries = fs.readdirSync(dirPath, { withFileTypes: true });
                 for (const entry of entries) {
-                    if (entry.isDirectory() && !['node_modules', '.git'].includes(entry.name)) {
+                    if (entry.isDirectory() && !['node_modules', '.git', 'dist', 'build'].includes(entry.name)) {
+                        // Check for test directories
+                        if (testDirectories.includes(entry.name.toLowerCase())) {
+                            hasTests = true;
+                            if (entry.name.toLowerCase().includes('e2e') || entry.name.toLowerCase().includes('playwright')) {
+                                hasE2ETests = true;
+                            }
+                        }
                         checkForTests(path.join(dirPath, entry.name));
                     }
                     else if (entry.isFile()) {
                         if (testExtensions.some(ext => entry.name.endsWith(ext))) {
                             hasTests = true;
-                            break;
+                            if (entry.name.includes('e2e') || entry.name.includes('playwright')) {
+                                hasE2ETests = true;
+                            }
                         }
                     }
                 }
@@ -446,24 +492,71 @@ class CodebaseAnalyzer {
             checkForTests(rootPath);
             if (hasTests) {
                 patterns.push('unit-testing');
-                // Check package.json for testing libraries
-                const packageJsonPath = path.join(rootPath, 'package.json');
-                if (fs.existsSync(packageJsonPath)) {
-                    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-                    const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-                    if ('@testing-library/react' in allDeps)
-                        patterns.push('react-testing-library');
-                    if ('jest' in allDeps)
-                        patterns.push('jest');
-                    if ('cypress' in allDeps)
-                        patterns.push('e2e-testing');
-                }
             }
+            if (hasE2ETests) {
+                patterns.push('e2e-testing');
+            }
+            // Check package.json for testing libraries
+            const packageJsonPath = path.join(rootPath, 'package.json');
+            if (fs.existsSync(packageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+                // Unit testing frameworks
+                if ('@testing-library/react' in allDeps)
+                    patterns.push('react-testing-library');
+                if ('@testing-library/jest-dom' in allDeps)
+                    patterns.push('jest-dom');
+                if ('jest' in allDeps)
+                    patterns.push('jest');
+                if ('vitest' in allDeps)
+                    patterns.push('vitest');
+                if ('mocha' in allDeps)
+                    patterns.push('mocha');
+                if ('jasmine' in allDeps)
+                    patterns.push('jasmine');
+                // E2E testing frameworks
+                if ('playwright' in allDeps || '@playwright/test' in allDeps) {
+                    patterns.push('playwright');
+                    patterns.push('e2e-testing');
+                }
+                if ('cypress' in allDeps) {
+                    patterns.push('cypress');
+                    patterns.push('e2e-testing');
+                }
+                if ('puppeteer' in allDeps)
+                    patterns.push('puppeteer');
+                if ('selenium-webdriver' in allDeps)
+                    patterns.push('selenium');
+                // Additional testing utilities
+                if ('@storybook/react' in allDeps)
+                    patterns.push('storybook');
+                if ('msw' in allDeps)
+                    patterns.push('mock-service-worker');
+                if ('jsdom' in allDeps)
+                    patterns.push('jsdom');
+                if ('@testing-library/user-event' in allDeps)
+                    patterns.push('user-event-testing');
+            }
+            // Check for specific config files
+            const configFiles = [
+                'playwright.config.ts', 'playwright.config.js',
+                'cypress.config.ts', 'cypress.config.js',
+                'jest.config.js', 'jest.config.ts',
+                'vitest.config.ts', 'vitest.config.js'
+            ];
+            configFiles.forEach(configFile => {
+                if (fs.existsSync(path.join(rootPath, configFile))) {
+                    const framework = configFile.split('.')[0];
+                    if (!patterns.includes(framework)) {
+                        patterns.push(framework);
+                    }
+                }
+            });
         }
         catch (error) {
             console.warn('Error analyzing testing patterns:', error);
         }
-        return patterns;
+        return [...new Set(patterns)]; // Remove duplicates
     }
     analyzeLayering(components) {
         const layers = [];
@@ -838,8 +931,36 @@ class CodebaseAnalyzer {
     }
     async detectTypeScript(rootPath) {
         try {
+            // Check for tsconfig.json
             const tsconfigPath = path.join(rootPath, 'tsconfig.json');
-            return fs.existsSync(tsconfigPath);
+            if (fs.existsSync(tsconfigPath))
+                return true;
+            // Check for TypeScript files
+            const hasTypeScriptFiles = await this.hasTypeScriptFiles(rootPath);
+            if (hasTypeScriptFiles)
+                return true;
+            // Check package.json for TypeScript dependencies
+            const packageJsonPath = path.join(rootPath, 'package.json');
+            if (fs.existsSync(packageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                const allDeps = {
+                    ...packageJson.dependencies,
+                    ...packageJson.devDependencies
+                };
+                if ('typescript' in allDeps || '@types/react' in allDeps) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch {
+            return false;
+        }
+    }
+    async hasTypeScriptFiles(rootPath) {
+        try {
+            const files = await this.findComponentFiles(rootPath);
+            return files.some(file => file.endsWith('.ts') || file.endsWith('.tsx'));
         }
         catch {
             return false;
@@ -926,18 +1047,69 @@ class CodebaseAnalyzer {
         return patterns;
     }
     detectUILibrary(dependencies) {
-        if (dependencies['@radix-ui/react-slot'] || dependencies['@radix-ui/react-button']) {
+        console.log('🔍 Detecting UI library from dependencies:', Object.keys(dependencies).filter(dep => dep.includes('chakra') || dep.includes('ui') || dep.includes('@radix') || dep.includes('@mui')));
+        // PRIORITY FIX: Chakra UI detection (multiple detection methods)
+        if (dependencies['@chakra-ui/react'] ||
+            dependencies['@chakra-ui/next-js'] ||
+            dependencies['@chakra-ui/core'] ||
+            dependencies['@chakra-ui/system']) {
+            const version = dependencies['@chakra-ui/react'];
+            console.log('✅ Chakra UI detected! Version:', version);
+            if (version && (version.startsWith('^3.') || version.startsWith('3.'))) {
+                return 'Chakra UI v3';
+            }
+            return 'Chakra UI';
+        }
+        // shadcn/ui detection (multiple ways to detect)
+        const shadcnIndicators = [
+            '@radix-ui/react-slot',
+            '@radix-ui/react-button',
+            '@radix-ui/react-dialog',
+            'class-variance-authority',
+            'clsx',
+            'tailwind-merge'
+        ];
+        if (shadcnIndicators.some(indicator => dependencies[indicator])) {
+            console.log('✅ shadcn/ui detected');
             return 'shadcn/ui';
         }
-        if (dependencies['@mui/material'])
-            return 'Material-UI';
-        if (dependencies['@chakra-ui/react'])
-            return 'Chakra UI';
-        if (dependencies['antd'])
+        // Material UI (MUI)
+        if (dependencies['@mui/material'] || dependencies['@mui/x-data-grid']) {
+            console.log('✅ Material-UI detected');
+            return 'Material-UI (MUI)';
+        }
+        // Ant Design
+        if (dependencies['antd']) {
+            console.log('✅ Ant Design detected');
             return 'Ant Design';
-        if (dependencies['@mantine/core'])
+        }
+        // Mantine
+        if (dependencies['@mantine/core'] || dependencies['@mantine/hooks']) {
+            console.log('✅ Mantine detected');
             return 'Mantine';
-        return 'none';
+        }
+        // React Bootstrap
+        if (dependencies['react-bootstrap'] || dependencies['bootstrap']) {
+            console.log('✅ React Bootstrap detected');
+            return 'React Bootstrap';
+        }
+        // Semantic UI
+        if (dependencies['semantic-ui-react']) {
+            console.log('✅ Semantic UI React detected');
+            return 'Semantic UI React';
+        }
+        // Headless UI
+        if (dependencies['@headlessui/react']) {
+            console.log('✅ Headless UI detected');
+            return 'Headless UI';
+        }
+        // Next UI
+        if (dependencies['@nextui-org/react']) {
+            console.log('✅ NextUI detected');
+            return 'NextUI';
+        }
+        console.log('⚠️ No UI library detected');
+        return 'Custom/None';
     }
     detectShadcnUI(rootPath) {
         try {

@@ -538,27 +538,95 @@ DEBUGGING APPROACH:
      */
     private detectPrimaryLanguage(files: FileMetadata[]): string {
         const langCounts = new Map<string, number>();
+        const extensionCounts = new Map<string, number>();
+        
         files.forEach(file => {
+            // Count by detected language
             const lang = file.language || 'unknown';
             langCounts.set(lang, (langCounts.get(lang) || 0) + 1);
+            
+            // Count by file extension for accuracy
+            const ext = file.extension || '';
+            extensionCounts.set(ext, (extensionCounts.get(ext) || 0) + 1);
         });
         
+        // Check for TypeScript dominance
+        const tsFiles = (extensionCounts.get('.ts') || 0) + (extensionCounts.get('.tsx') || 0);
+        const jsFiles = (extensionCounts.get('.js') || 0) + (extensionCounts.get('.jsx') || 0);
+        const totalFiles = files.length;
+        
+        // If majority are TypeScript files, return TypeScript
+        if (tsFiles > jsFiles && tsFiles > totalFiles * 0.3) {
+            return 'TypeScript';
+        }
+        
+        // Check by language detection
         const primary = Array.from(langCounts.entries())
             .sort(([,a], [,b]) => b - a)[0];
         
-        return primary ? primary[0] : 'JavaScript';
+        if (primary) {
+            // Prefer TypeScript over JavaScript if detected
+            if (primary[0] === 'typescript' || langCounts.get('typescript')) {
+                return 'TypeScript';
+            }
+            return primary[0] === 'javascript' ? 'JavaScript' : primary[0];
+        }
+        
+        return 'JavaScript';
     }
 
     private detectFrameworks(context: CodebaseContext): string[] {
         const frameworks: string[] = [];
         const deps = context.dependencies;
+        const depSet = new Set(deps);
         
-        if (deps.some(d => d.includes('react'))) frameworks.push('React');
-        if (deps.some(d => d.includes('next'))) frameworks.push('Next.js');
+        // React ecosystem
+        if (depSet.has('react') || deps.some(d => d.includes('react'))) {
+            frameworks.push('React');
+        }
+        
+        // Meta frameworks
+        if (depSet.has('next') || deps.some(d => d.includes('next'))) {
+            frameworks.push('Next.js');
+        }
+        if (depSet.has('gatsby')) frameworks.push('Gatsby');
+        if (depSet.has('remix')) frameworks.push('Remix');
+        
+        // Other frameworks
         if (deps.some(d => d.includes('vue'))) frameworks.push('Vue');
         if (deps.some(d => d.includes('angular'))) frameworks.push('Angular');
+        if (depSet.has('svelte')) frameworks.push('Svelte');
+        
+        // State management & routing
+        if (depSet.has('@tanstack/react-query') || depSet.has('react-query')) {
+            frameworks.push('TanStack Query');
+        }
+        if (depSet.has('@tanstack/react-router')) {
+            frameworks.push('TanStack Router');
+        }
+        if (depSet.has('react-router-dom')) {
+            frameworks.push('React Router');
+        }
+        
+        // Styling frameworks
         if (deps.some(d => d.includes('tailwind'))) frameworks.push('Tailwind CSS');
         if (deps.some(d => d.includes('styled-components'))) frameworks.push('Styled Components');
+        if (depSet.has('@chakra-ui/react')) frameworks.push('Chakra UI');
+        if (depSet.has('@mui/material')) frameworks.push('Material-UI');
+        if (depSet.has('antd')) frameworks.push('Ant Design');
+        
+        // Build tools
+        if (depSet.has('vite')) frameworks.push('Vite');
+        if (depSet.has('webpack')) frameworks.push('Webpack');
+        if (depSet.has('parcel')) frameworks.push('Parcel');
+        
+        // Testing
+        if (depSet.has('@playwright/test') || depSet.has('playwright')) {
+            frameworks.push('Playwright');
+        }
+        if (depSet.has('cypress')) frameworks.push('Cypress');
+        if (depSet.has('jest')) frameworks.push('Jest');
+        if (depSet.has('vitest')) frameworks.push('Vitest');
         
         return frameworks;
     }
