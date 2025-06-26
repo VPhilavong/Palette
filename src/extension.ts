@@ -3,11 +3,14 @@ import { ComponentGenerator } from './componentGenerator';
 import { CodebaseAnalyzer } from './codebaseAnalyzer';
 import { CodebaseIndexer } from './codebaseIndexer';
 import { ContextManager } from './contextManager';
+import { GeminiContextManager } from './geminiContextManager';
 import { ClaudeIntegration } from './claudeIntegration';
+import { GeminiIntegration } from './geminiIntegration';
 import { 
     ContextRequest, 
     AIRequest, 
     ClaudeConfig,
+    GeminiConfig,
     ExtensionConfig 
 } from './types';
 
@@ -15,7 +18,9 @@ let componentGenerator: ComponentGenerator;
 let codebaseAnalyzer: CodebaseAnalyzer;
 let codebaseIndexer: CodebaseIndexer;
 let contextManager: ContextManager;
+let geminiContextManager: GeminiContextManager;
 let claudeIntegration: ClaudeIntegration;
+let geminiIntegration: GeminiIntegration;
 let extensionConfig: ExtensionConfig;
 
 export function activate(context: vscode.ExtensionContext) {
@@ -42,6 +47,8 @@ export function activate(context: vscode.ExtensionContext) {
 function initializeConfiguration() {
     const config = vscode.workspace.getConfiguration('ui-copilot');
     
+    const aiProvider = config.get<string>('aiProvider') || 'gemini';
+    
     const claudeConfig: ClaudeConfig = {
         apiKey: config.get<string>('claudeApiKey') || '',
         model: config.get<string>('claudeModel') || 'claude-3-sonnet-20240229',
@@ -49,8 +56,19 @@ function initializeConfiguration() {
         temperature: config.get<number>('temperature') || 0.3
     };
 
+    const geminiConfig: GeminiConfig = {
+        apiKey: config.get<string>('geminiApiKey') || '',
+        model: config.get<string>('geminiModel') || 'gemini-2.0-flash-exp',
+        maxTokens: config.get<number>('maxTokens') || 100000,
+        temperature: config.get<number>('temperature') || 0.3,
+        topP: config.get<number>('topP') || 0.8,
+        topK: config.get<number>('topK') || 20
+    };
+
     extensionConfig = {
+        aiProvider: aiProvider as 'claude' | 'gemini',
         claude: claudeConfig,
+        gemini: geminiConfig,
         indexing: {
             enabled: config.get<boolean>('indexing.enabled') ?? true,
             maxFileSize: config.get<number>('indexing.maxFileSize') ?? 100 * 1024,
@@ -60,8 +78,12 @@ function initializeConfiguration() {
             debounceTime: config.get<number>('indexing.debounceTime') ?? 500
         },
         context: {
-            maxTokens: config.get<number>('context.maxTokens') ?? 12000,
-            maxFiles: config.get<number>('context.maxFiles') ?? 20,
+            maxTokens: aiProvider === 'gemini' ? 
+                config.get<number>('context.maxTokens') ?? 2000000 : // 2M for Gemini
+                config.get<number>('context.maxTokens') ?? 12000,    // 12K for Claude
+            maxFiles: aiProvider === 'gemini' ? 
+                config.get<number>('context.maxFiles') ?? 200 :      // 200 for Gemini
+                config.get<number>('context.maxFiles') ?? 20,        // 20 for Claude
             maxChunks: config.get<number>('context.maxChunks') ?? 50,
             relevanceThreshold: config.get<number>('context.relevanceThreshold') ?? 0.3,
             includeRelatedFiles: config.get<boolean>('context.includeRelatedFiles') ?? true,
@@ -95,14 +117,20 @@ function initializeServices() {
         
         // Initialize new codebase-aware services
         codebaseIndexer = new CodebaseIndexer();
-        contextManager = new ContextManager(codebaseIndexer, extensionConfig.context.maxTokens, extensionConfig.context.maxFiles);
         
-        // Initialize Claude integration if API key is provided
-        if (extensionConfig.claude.apiKey) {
+        // Initialize context managers for both AI providers
+        contextManager = new ContextManager(codebaseIndexer, 12000, 20); // For Claude
+        geminiContextManager = new GeminiContextManager(codebaseIndexer, 2000000, 200); // For Gemini
+        
+        // Initialize AI integrations based on provider preference
+        if (extensionConfig.aiProvider === 'gemini' && extensionConfig.gemini?.apiKey) {
+            geminiIntegration = new GeminiIntegration(extensionConfig.gemini);
+            console.log('🚀 Gemini 2.0 Flash integration initialized with massive context');
+        } else if (extensionConfig.claude?.apiKey) {
             claudeIntegration = new ClaudeIntegration(extensionConfig.claude);
             console.log('✅ Claude API integration initialized');
         } else {
-            console.log('⚠️ Claude API key not configured - some features will be limited');
+            console.log('⚠️ No AI provider configured - please set your API key in settings');
         }
 
         // Set up event listeners
@@ -178,6 +206,35 @@ function registerCommands(context: vscode.ExtensionContext) {
 }
 
 /**
+ * Get current AI integration and context manager
+ */
+function getCurrentAIProvider(): {
+    aiIntegration: GeminiIntegration | ClaudeIntegration | null;
+    contextManager: GeminiContextManager | ContextManager;
+    provider: 'gemini' | 'claude' | null;
+} {
+    if (geminiIntegration) {
+        return {
+            aiIntegration: geminiIntegration,
+            contextManager: geminiContextManager,
+            provider: 'gemini'
+        };
+    } else if (claudeIntegration) {
+        return {
+            aiIntegration: claudeIntegration,
+            contextManager: contextManager,
+            provider: 'claude'
+        };
+    }
+    
+    return {
+        aiIntegration: null,
+        contextManager: geminiContextManager, // Default to Gemini context manager
+        provider: null
+    };
+}
+
+/**
  * Initialize workspace indexing
  */
 async function initializeWorkspaceIndexing() {
@@ -243,8 +300,35 @@ async function handleGenerateComponent() {
                 return;
             }
 
-            // Use new codebase-aware approach if Claude is available
-            if (claudeIntegration) {
+            // Use new codebase-aware approach with preferred AI provider
+            if (geminiIntegration) {
+                const contextRequest: ContextRequest = {
+                    currentFile: editor.document.fileName,
+                    cursorPosition: editor.selection.active,
+                    query: prompt,
+                    responseType: 'generation',
+                    language: editor.document.languageId
+                };
+
+                const context = await geminiContextManager.buildMassiveContext(contextRequest);
+                const aiRequest: AIRequest = {
+                    type: 'generation',
+                    query: prompt,
+                    language: editor.document.languageId
+                };
+
+                const response = await geminiIntegration.processRequest(aiRequest, context);
+                
+                await editor.edit(editBuilder => {
+                    const position = editor.selection.active;
+                    editBuilder.insert(position, response.content);
+                });
+
+                const utilization = geminiContextManager.getContextUtilization(context);
+                vscode.window.showInformationMessage(
+                    `Component generated with ${context.metadata.filesIncluded} files (${Math.round(utilization.utilizationPercentage)}% context used, ${Math.round(response.confidence * 100)}% confidence)`
+                );
+            } else if (claudeIntegration) {
                 const contextRequest: ContextRequest = {
                     currentFile: editor.document.fileName,
                     cursorPosition: editor.selection.active,

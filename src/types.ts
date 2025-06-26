@@ -572,6 +572,9 @@ export interface ContextMetadata {
     relevanceScore: number;
     filesIncluded: number;
     chunksIncluded: number;
+    multimodal?: boolean;
+    imageCount?: number;
+    estimatedImageTokens?: number;
 }
 
 export interface RelevanceScore {
@@ -599,6 +602,28 @@ export interface ClaudeConfig {
     model?: string;
     maxTokens?: number;
     temperature?: number;
+}
+
+// Gemini API Integration Types
+export interface GeminiConfig {
+    apiKey: string;
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+}
+
+export interface MultimodalRequest extends AIRequest {
+    imagePaths?: string[];
+    attachments?: MultimodalAttachment[];
+}
+
+export interface MultimodalAttachment {
+    type: 'image' | 'document' | 'screenshot';
+    path: string;
+    description?: string;
+    metadata?: Record<string, any>;
 }
 
 export interface AIRequest {
@@ -726,7 +751,9 @@ export interface SimilarityReason {
 
 // Extension Configuration Types
 export interface ExtensionConfig {
-    claude: ClaudeConfig;
+    claude?: ClaudeConfig;
+    gemini?: GeminiConfig;
+    aiProvider: 'claude' | 'gemini';
     indexing: IndexingConfig;
     context: ContextConfig;
     performance: PerformanceConfig;

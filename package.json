@@ -35,11 +35,30 @@
           "description": "Your OpenAI API key for component generation",
           "markdownDescription": "Enter your OpenAI API key. Get one at [OpenAI Platform](https://platform.openai.com/api-keys)"
         },
+        "ui-copilot.aiProvider": {
+          "type": "string",
+          "default": "gemini",
+          "enum": [
+            "gemini",
+            "claude"
+          ],
+          "description": "AI provider to use for codebase-aware features"
+        },
         "ui-copilot.geminiApiKey": {
           "type": "string",
           "default": "",
           "description": "Your Google Gemini API key for component generation",
           "markdownDescription": "Enter your Gemini API key. Get one at [Google AI Studio](https://makersuite.google.com/app/apikey)"
+        },
+        "ui-copilot.geminiModel": {
+          "type": "string",
+          "default": "gemini-2.0-flash-exp",
+          "enum": [
+            "gemini-2.0-flash-exp",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash"
+          ],
+          "description": "Gemini model to use for codebase analysis"
         },
         "ui-copilot.model": {
           "type": "string",
