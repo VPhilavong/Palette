@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Framework, ProjectMetadata } from './types';
+import { Framework, ProjectMetadata } from '../types';
 
 export class FrameworkDetector {
     async detectProjectFrameworks(): Promise<ProjectMetadata> {
@@ -160,16 +160,22 @@ export class FrameworkDetector {
     }
 
     private detectFrameworksFromImports(metadata: ProjectMetadata, importCounts: Record<string, number>, jsxUsage: {count: number, files: number}): void {
-        // React detection
-        if (importCounts['react'] || jsxUsage.files > 0) {
-            const reactFramework: Framework = {
-                name: 'React',
-                detected: true,
-                confidence: importCounts['react'] ? 0.9 : (jsxUsage.files > 2 ? 0.7 : 0.5)
-            };
+        // React detection - be more strict to avoid false positives
+        if (importCounts['react'] || (jsxUsage.files > 0 && !importCounts['vue'])) {
+            // Only detect React if we have actual React imports OR JSX without Vue
+            const hasReactImports = importCounts['react'] > 0;
+            const hasJSXWithoutVue = jsxUsage.files > 0 && !importCounts['vue'] && !importCounts['vitepress'];
             
-            if (!metadata.frameworks.some(f => f.name === 'React')) {
-                metadata.frameworks.push(reactFramework);
+            if (hasReactImports || hasJSXWithoutVue) {
+                const reactFramework: Framework = {
+                    name: 'React',
+                    detected: true,
+                    confidence: hasReactImports ? 0.9 : 0.6
+                };
+                
+                if (!metadata.frameworks.some(f => f.name === 'React')) {
+                    metadata.frameworks.push(reactFramework);
+                }
             }
         }
 
@@ -187,15 +193,29 @@ export class FrameworkDetector {
         }
 
         // Vue detection
-        if (importCounts['vue'] || importCounts['@vue/']) {
+        if (importCounts['vue'] || importCounts['@vue/'] || 
+            Object.keys(importCounts).some(imp => imp.includes('vitepress'))) {
             const vueFramework: Framework = {
                 name: 'Vue',
                 detected: true,
-                confidence: 0.8
+                confidence: importCounts['vue'] ? 0.9 : 0.8
             };
             
             if (!metadata.frameworks.some(f => f.name === 'Vue')) {
                 metadata.frameworks.push(vueFramework);
+            }
+        }
+
+        // VitePress detection
+        if (importCounts['vitepress'] || Object.keys(importCounts).some(imp => imp.includes('vitepress'))) {
+            const vitepressFramework: Framework = {
+                name: 'VitePress',
+                detected: true,
+                confidence: 0.9
+            };
+            
+            if (!metadata.frameworks.some(f => f.name === 'VitePress')) {
+                metadata.frameworks.push(vitepressFramework);
             }
         }
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ComponentInfo, FileMetadata } from './types';
+import { ComponentInfo, FileMetadata } from '../types';
 import { SimpleComponentParser } from './simpleComponentParser';
 
 export class ComponentAnalyzer {
@@ -10,13 +10,16 @@ export class ComponentAnalyzer {
     }
 
     async analyzeComponents(files: FileMetadata[]): Promise<ComponentInfo[]> {
-        // Filter for component files
+        // Filter for component files - include Vue files!
         const componentFiles = files.filter(file => 
             file.isComponent && 
-            ['.js', '.jsx', '.ts', '.tsx'].includes(file.extension)
+            ['.js', '.jsx', '.ts', '.tsx', '.vue'].includes(file.extension)
         );
 
         console.log(`Analyzing ${componentFiles.length} potential component files...`);
+        console.log(`Total files: ${files.length}, Component files: ${componentFiles.length}`);
+        console.log(`Vue files:`, componentFiles.filter(f => f.extension === '.vue').length);
+        console.log(`React files:`, componentFiles.filter(f => ['.jsx', '.tsx'].includes(f.extension)).length);
 
         const components: ComponentInfo[] = [];
         

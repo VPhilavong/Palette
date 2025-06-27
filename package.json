@@ -15,7 +15,7 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/core/extension.js",
   "contributes": {
     "configuration": {
       "title": "UI Copilot",

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { FileMetadata } from './types';
+import { FileMetadata } from '../types';
 
 export class FileIndexer {
     private excludePatterns: string[] = [
@@ -40,11 +40,13 @@ export class FileIndexer {
     private async indexFolder(_folderUri: vscode.Uri): Promise<FileMetadata[]> {
         const files: FileMetadata[] = [];
         
-        // Use VSCode's built-in file search with exclude patterns
-        const includePattern = '**/*.{js,jsx,ts,tsx,json,md}';
+        // Use VSCode's built-in file search with exclude patterns - INCLUDE .vue files!
+        const includePattern = '**/*.{js,jsx,ts,tsx,vue,json,md}';
         const excludePattern = `{${this.excludePatterns.map(p => `**/${p}/**`).join(',')}}`;
 
+        console.log(`Searching with pattern: ${includePattern}`);
         const fileUris = await vscode.workspace.findFiles(includePattern, excludePattern, 10000);
+        console.log(`Found ${fileUris.length} files total`);
 
         for (const fileUri of fileUris) {
             try {
@@ -59,14 +61,19 @@ export class FileIndexer {
                 const fileName = path.basename(fileUri.fsPath);
                 const extension = path.extname(fileName);
 
+                const isComponent = this.isLikelyComponent(fileName, extension);
                 const metadata: FileMetadata = {
                     path: relativePath,
                     name: fileName,
                     extension,
                     size: stat.size,
                     lastModified: new Date(stat.mtime),
-                    isComponent: this.isLikelyComponent(fileName, extension)
+                    isComponent
                 };
+
+                if (extension === '.vue') {
+                    console.log(`Vue file: ${relativePath} - isComponent: ${isComponent}`);
+                }
 
                 files.push(metadata);
             } catch (error) {
@@ -78,17 +85,32 @@ export class FileIndexer {
     }
 
     private isLikelyComponent(fileName: string, extension: string): boolean {
-        if (!['.js', '.jsx', '.ts', '.tsx'].includes(extension)) {
+        if (!['.js', '.jsx', '.ts', '.tsx', '.vue'].includes(extension)) {
             return false;
         }
 
-        // Component naming conventions
+        // Component naming conventions - be more inclusive
         const componentPatterns = [
-            /^[A-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/, // PascalCase
+            /^[A-Z][a-zA-Z0-9]*\.(jsx?|tsx?)$/, // PascalCase files
             /^use[A-Z][a-zA-Z0-9]*\.(js|ts)$/, // Custom hooks
             /\.component\.(jsx?|tsx?)$/, // .component files
             /components?\//i, // Files in components folders
+            /pages?\//i, // Files in pages folders (Next.js)
+            /routes?\//i, // Files in routes folders
+            /\.(jsx|tsx|vue)$/, // All JSX/TSX/Vue files (likely components)
+            /[Cc]omponent/, // Files with "component" in name
+            /[Ll]ayout/, // Layout files
+            /[Hh]eader/, // Header files
+            /[Ff]ooter/, // Footer files
+            /[Nn]avbar|[Nn]av/, // Navigation files
+            /[Mm]enu/, // Menu files
+            /\.vue$/, // All Vue Single File Components
+            /^VP[A-Z]/, // VitePress components (VP prefix)
         ];
+
+        console.log(`Checking if ${fileName} is component:`, componentPatterns.some(pattern => 
+            pattern.test(fileName) || pattern.test(fileName.toLowerCase())
+        ));
 
         return componentPatterns.some(pattern => 
             pattern.test(fileName) || pattern.test(fileName.toLowerCase())

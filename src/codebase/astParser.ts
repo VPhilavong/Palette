@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { parse } from '@babel/parser';
 import traverse, { NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
-import { ComponentInfo, ImportInfo } from './types';
+import { ComponentInfo, ImportInfo } from '../types';
 
 export class ASTParser {
     async parseComponentsFromFiles(files: vscode.Uri[]): Promise<ComponentInfo[]> {

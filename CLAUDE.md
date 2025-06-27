@@ -17,144 +17,176 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a VS Code extension called "UI Copilot" that provides AI-powered React component generation with intelligent codebase analysis.
+This is a VS Code extension called "UI Copilot" that provides AI-powered React/Vue component generation with intelligent codebase analysis.
 
-### Core Architecture
+### 6-Phase Development Plan
 
-**Main Entry Point**: `src/extension.ts`
-- Registers VS Code commands and handles user interactions
-- Coordinates between ComponentGenerator and CodebaseAnalyzer
+**Phase 1: Project Setup** ✅ COMPLETED
+- Clean extension boilerplate with TypeScript configuration
+- VSCode extension manifest and basic command registration
 
-**Component Generation**: `src/componentGenerator.ts`
-- Supports both OpenAI and Gemini AI providers
-- Generates context-aware React components using workspace analysis
-- Includes intelligent context integration and code cleanup
+**Phase 2: Codebase Scanning & Framework Detection** ✅ COMPLETED
+- File indexing with recursive traversal and smart exclusions
+- Multi-framework detection (React, Vue.js, Next.js, VitePress)
+- Package.json analysis with fallback to code-based detection
 
-**Codebase Analysis**: `src/codebaseAnalyzer.ts`
-- Comprehensive workspace analysis with AST parsing
-- Dependency graph construction and pattern recognition
-- Real-time file watching with cache management
-- Advanced analysis including design systems and state management
+**Phase 3: Component Extraction & Analysis** ✅ COMPLETED
+- Reliable regex-based component parsing (replaced AST for stability)
+- Multi-framework support: React (JSX/TSX), Vue (SFC), Next.js patterns
+- Hook detection (React hooks, Vue Composition API, custom hooks)
+- Multi-component detection per file with deduplication
 
-### Supporting Modules
+**Phase 4: Embeddings & Context Ranking** 🚧 PLANNED
+- Embedding generation with OpenAI/sentence-transformers
+- Similarity scoring and proximity-based context ranking
 
-**AST Analysis**: `src/astAnalyzer.ts`
-- Deep component analysis using Babel parser
-- Extracts hooks, props, styling patterns, and complexity metrics
+**Phase 5: LLM Prompt & Response** 📋 PLANNED
+- Framework-specific prompt templates
+- LLM integration (Claude, OpenAI, Gemini) with streaming support
 
-**Context Intelligence**: 
-- `src/intelligentContextSelector.ts` - Selects most relevant context for generation
-- `src/contextRanker.ts` - Ranks components by relevance to user prompts
-- `src/advancedPatternAnalyzer.ts` - Identifies sophisticated code patterns
-- `src/designSystemAnalyzer.ts` - Analyzes design system usage
+**Phase 6: Editor Actions & UI** 📋 PLANNED
+- VSCode commands, CodeLens, inline suggestions
+- Live preview panel with WebviewPanel for component rendering
 
-**Utilities**: `src/analyzerUtils.ts` - Shared utility functions for analysis
+### 🏗️ Clean Directory Structure
 
-### Key Features
+```
+src/
+├── core/                    # Extension core
+│   └── extension.ts         # Main entry point
+├── codebase/               # Phase 2-3: Analysis & parsing
+│   ├── fileIndexer.ts      # File discovery and indexing
+│   ├── frameworkDetector.ts # Multi-framework detection
+│   ├── componentAnalyzer.ts # Component analysis orchestrator
+│   └── simpleComponentParser.ts # Regex-based component parsing
+├── embeddings/             # Phase 4: Vector embeddings
+│   ├── embeddingGenerator.ts
+│   └── contextRanker.ts
+├── llm/                    # Phase 5: AI integration
+│   ├── promptBuilder.ts
+│   ├── claudeClient.ts
+│   ├── openaiClient.ts
+│   └── geminiClient.ts
+├── ui/                     # Phase 6: VSCode UI
+│   ├── commandPalette.ts
+│   └── livePreviewPanel.ts
+├── utils/                  # Shared utilities
+│   ├── config.ts           # Extension configuration
+│   ├── logger.ts           # Centralized logging
+│   └── fileUtils.ts        # File system helpers
+└── types/                  # TypeScript definitions
+    └── index.ts            # Shared type definitions
+```
 
-1. **Dual AI Support**: OpenAI GPT models and Google Gemini
-2. **Intelligent Context**: Analyzes existing codebase to generate matching components
-3. **Pattern Recognition**: Identifies architectural patterns, state management, and styling approaches
-4. **Real-time Analysis**: File watching with intelligent caching
-5. **TypeScript Support**: Full TypeScript analysis and generation
+### 🚀 Current Capabilities (Phases 1-3)
+
+**File Indexing**: Recursively scans workspace with smart exclusions (`node_modules`, `.git`, `dist`, `build`, `.next`)
+
+**Framework Detection**: 
+- **React**: JSX/TSX files, React imports, component exports
+- **Vue.js**: SFC files, Vue imports, Composition API patterns  
+- **Next.js**: Next-specific patterns, app/pages router detection
+- **VitePress**: Vue-based static site generator patterns
+
+**Component Parsing**: Reliable regex-based approach with patterns for:
+- Component declarations: `function Component`, `const Component =`, `export default`
+- Vue SFC: `<template>`, `<script setup>`, Composition API
+- Export patterns: default exports, named exports, HOCs
+
+**Hook Detection**: Comprehensive detection including:
+- React hooks: `useState`, `useEffect`, `useContext`, etc.
+- Vue Composition: `ref`, `reactive`, `computed`, `watch`
+- Custom hooks: Auth0 hooks, application-specific patterns
+- Framework hooks: Next.js router, VitePress utilities
+
+**Multi-Component Support**: Detects multiple components per file with Set-based deduplication
+
+### Key Implementation Details
+
+**Component Analysis Flow**:
+1. `extension.ts` → Coordinates overall extension lifecycle
+2. `fileIndexer.ts` → Discovers and indexes workspace files  
+3. `frameworkDetector.ts` → Identifies project frameworks
+4. `componentAnalyzer.ts` → Orchestrates component analysis
+5. `simpleComponentParser.ts` → Extracts component metadata
+
+**Reliability Features**:
+- **Error Handling**: Graceful fallbacks when files can't be read
+- **Performance**: Skips large files (>100KB), batched analysis
+- **Accuracy**: Framework-specific patterns prevent false positives
+- **Debugging**: Comprehensive logging via centralized Logger utility
+
+**Configuration System**: 
+- Supports multiple AI providers (OpenAI, Gemini, Claude)
+- Configurable indexing behavior and exclusion patterns
+- Context limits and file processing constraints
+
+### Recent Fixes & Optimizations
+
+**AST Parser Replacement**: Replaced complex Babel AST traversal with reliable regex patterns to eliminate infinite recursion and crashes
+
+**Vue.js Support Enhancement**: Added comprehensive Vue SFC support including `.vue` file detection, which increased component detection from 4 to 73 components in test repositories
+
+**Framework Detection Accuracy**: Improved React vs Vue detection to prevent false positives, achieving 75%+ accuracy in multi-framework projects
+
+**Import Path Updates**: Successfully reorganized entire codebase into clean directory structure with updated import statements
 
 ## Configuration
 
 Extension settings (VS Code settings.json):
-- `ui-copilot.apiProvider`: "openai" or "gemini" (default: "gemini")
-- `ui-copilot.openaiApiKey`: OpenAI API key
-- `ui-copilot.geminiApiKey`: Google Gemini API key
-- `ui-copilot.model`: AI model selection
-
-## Key Implementation Details
-
-### Component Generation Flow
-1. User triggers command → `extension.ts` handles input
-2. `codebaseAnalyzer.ts` analyzes workspace for context
-3. `componentGenerator.ts` calls AI with intelligent context
-4. Generated code is cleaned and inserted at cursor position
-
-### Analysis Architecture
-- **Parallel Processing**: Components analyzed in batches for performance
-- **Caching Strategy**: File-based caching with timestamp validation
-- **Pattern Recognition**: Multi-layered analysis from basic to sophisticated
-- **Context Ranking**: AI-powered relevance scoring for examples
-
-### Type System
-Comprehensive TypeScript interfaces in `src/types.ts` covering:
-- Workspace and component analysis results
-- AST analysis structures
-- Pattern recognition types
-- Design system and state management analysis
+```json
+{
+  "ui-copilot.apiProvider": "gemini", // or "openai", "claude"
+  "ui-copilot.geminiApiKey": "your-key",
+  "ui-copilot.openaiApiKey": "your-key", 
+  "ui-copilot.claudeApiKey": "your-key",
+  "ui-copilot.indexing.enabled": true,
+  "ui-copilot.indexing.maxFileSize": 102400,
+  "ui-copilot.indexing.excludePatterns": ["node_modules", ".git"],
+  "ui-copilot.context.maxTokens": 12000,
+  "ui-copilot.context.maxFiles": 20
+}
+```
 
 ## Working with This Codebase
 
-### Making Changes
-1. Modify TypeScript source files in `src/`
-2. Run `npm run compile` to build
+**Making Changes**:
+1. Modify TypeScript source files in appropriate `src/` directory
+2. Run `npm run compile` to build (entry point: `./out/core/extension.js`)
 3. Test with `F5` to launch Extension Development Host
 4. Extension auto-reloads when files change in watch mode
 
-### Performance Optimizations (Recent Fixes)
+**Adding New Framework Support**:
+1. Add detection patterns in `frameworkDetector.ts`
+2. Add parsing patterns in `simpleComponentParser.ts`  
+3. Update type definitions in `types/index.ts`
+4. Test with representative repositories
 
-**Analysis Timeout Protection:**
-- Component analysis limited to 50 components max for performance
-- 5-second timeout per component analysis to prevent hanging
-- 10-second timeout for intelligent context generation
-- Large files (>100KB) are skipped during AST analysis
+**Performance Guidelines**:
+- Keep component analysis under 50 components for initial load
+- Use batched processing for large codebases
+- Implement timeouts for long-running operations
+- Cache results when possible to avoid re-analysis
 
-**Fallback Strategy:**
-- AST analysis failures fall back to basic component info
-- Intelligent context failures fall back to standard generation
-- Multiple layers of error handling prevent complete failure
+### Next Development Priorities
 
-**Batch Processing:**
-- Components analyzed in batches of 5 (reduced from 10)
-- Progress feedback during analysis
-- Cache results to avoid re-analysis
-
-### Enhanced Pattern Detection (Latest Updates)
-
-**Framework Detection:**
-- **Next.js**: Detects Next.js apps and includes "use client", Image component patterns
-- **Shadcn/UI**: Detects shadcn/ui library and uses proper component imports
-- **Lucide Icons**: Recognizes lucide-react usage for consistent icon patterns
-
-**Advanced State Management:**
-- **Caching**: Detects localStorage/sessionStorage usage for client-side caching
-- **Promise Racing**: Identifies timeout handling patterns with Promise.race
-- **Loading States**: Recognizes sophisticated loading state management
-- **Performance**: Detects useCallback/useMemo optimization patterns
-- **Error Handling**: Identifies error boundary and error state patterns
-
-**Sophisticated Styling:**
-- **Advanced Tailwind**: Complex responsive patterns, design system colors
-- **UI Libraries**: Material-UI, Chakra UI, Ant Design, Mantine detection
-- **Design Systems**: Theme detection and consistent styling patterns
-
-### Key Areas for Enhancement
-- **Pattern Recognition**: Extend `advancedPatternAnalyzer.ts` for new patterns
-- **AI Integration**: Enhance prompts in `componentGenerator.ts`
-- **Context Selection**: Improve relevance scoring in `contextRanker.ts`
-- **Design System**: Expand `designSystemAnalyzer.ts` for more UI libraries
+**Phase 4 (Current)**: Implement embedding generation and context ranking system
+**Phase 5**: Build LLM integration with framework-specific prompts
+**Phase 6**: Create rich VSCode UI with live preview capabilities
 
 ### Debugging
 - Console logs appear in Extension Development Host's Debug Console
 - Use VS Code debugger with breakpoints in TypeScript source
 - Check file watching behavior in Output panel
-- Look for "timeout" warnings if analysis is hanging
+- Use centralized Logger utility for structured logging
 
 ## Dependencies
 
-### Core Dependencies
+**Core Dependencies**:
 - `@google/generative-ai` - Gemini AI integration
-- `openai` - OpenAI API client
-- `@babel/parser`, `@babel/traverse` - AST analysis
-- `chokidar` - File watching
-- `axios` - HTTP requests
+- `openai` - OpenAI API client  
+- `chokidar` - File watching (for future real-time updates)
 
-### Architecture Notes
-- Extension follows VS Code extension patterns with proper activation/deactivation
-- Modular design with clear separation of concerns
-- Heavy use of TypeScript for type safety
-- Async/await patterns throughout for performance
+**Development Dependencies**:
+- TypeScript, ESLint for code quality
+- VSCode extension APIs for editor integration

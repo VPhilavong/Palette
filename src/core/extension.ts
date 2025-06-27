@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { FileIndexer } from './fileIndexer';
-import { FrameworkDetector } from './frameworkDetector';
-import { ComponentAnalyzer } from './componentAnalyzer';
-import { WorkspaceIndex } from './types';
+import { FileIndexer } from '../codebase/fileIndexer';
+import { FrameworkDetector } from '../codebase/frameworkDetector';
+import { ComponentAnalyzer } from '../codebase/componentAnalyzer';
+import { WorkspaceIndex } from '../types';
 
 let workspaceIndex: WorkspaceIndex | null = null;
 let fileIndexer: FileIndexer;
