@@ -1,1029 +1,120 @@
 import * as vscode from 'vscode';
-import { ComponentGenerator } from './componentGenerator';
-import { CodebaseAnalyzer } from './codebaseAnalyzer';
-import { CodebaseIndexer } from './codebaseIndexer';
-import { ContextManager } from './contextManager';
-import { GeminiContextManager } from './geminiContextManager';
-import { ClaudeIntegration } from './claudeIntegration';
-import { GeminiIntegration } from './geminiIntegration';
-import { 
-    ContextRequest, 
-    AIRequest, 
-    ClaudeConfig,
-    GeminiConfig,
-    ExtensionConfig 
-} from './types';
+import { FileIndexer } from './fileIndexer';
+import { FrameworkDetector } from './frameworkDetector';
+import { ComponentAnalyzer } from './componentAnalyzer';
+import { WorkspaceIndex } from './types';
 
-let componentGenerator: ComponentGenerator;
-let codebaseAnalyzer: CodebaseAnalyzer;
-let codebaseIndexer: CodebaseIndexer;
-let contextManager: ContextManager;
-let geminiContextManager: GeminiContextManager;
-let claudeIntegration: ClaudeIntegration;
-let geminiIntegration: GeminiIntegration;
-let extensionConfig: ExtensionConfig;
+let workspaceIndex: WorkspaceIndex | null = null;
+let fileIndexer: FileIndexer;
+let frameworkDetector: FrameworkDetector;
+let componentAnalyzer: ComponentAnalyzer;
 
-export function activate(context: vscode.ExtensionContext) {
-    console.log('🚀 UI Copilot with Codebase Awareness is now active!');
+export async function activate(context: vscode.ExtensionContext) {
+    console.log('UI Copilot extension is now active!');
 
-    // Initialize configuration
-    initializeConfiguration();
+    // Initialize core components
+    fileIndexer = new FileIndexer();
+    frameworkDetector = new FrameworkDetector();
+    componentAnalyzer = new ComponentAnalyzer();
 
-    // Initialize core services
-    initializeServices();
+    // Setup file watching
+    const fileWatcher = fileIndexer.setupFileWatcher();
+    context.subscriptions.push(fileWatcher);
 
-    // Register all commands
-    registerCommands(context);
+    // Commands
+    const generateCommand = vscode.commands.registerCommand('ui-copilot.generateComponent', () => {
+        vscode.window.showInformationMessage('UI Copilot: Component generation coming soon!');
+    });
 
-    // Initialize workspace indexing
-    initializeWorkspaceIndexing();
+    const explainCommand = vscode.commands.registerCommand('ui-copilot.explainCode', () => {
+        vscode.window.showInformationMessage('UI Copilot: Code explanation coming soon!');
+    });
 
-    console.log('✅ UI Copilot fully initialized with codebase awareness');
-}
+    const reindexCommand = vscode.commands.registerCommand('ui-copilot.reindexWorkspace', async () => {
+        await initializeWorkspace();
+        vscode.window.showInformationMessage('Workspace reindexed successfully!');
+    });
 
-/**
- * Initialize extension configuration from VS Code settings
- */
-function initializeConfiguration() {
-    const config = vscode.workspace.getConfiguration('ui-copilot');
-    
-    const aiProvider = config.get<string>('aiProvider') || 'gemini';
-    
-    const claudeConfig: ClaudeConfig = {
-        apiKey: config.get<string>('claudeApiKey') || '',
-        model: config.get<string>('claudeModel') || 'claude-3-sonnet-20240229',
-        maxTokens: config.get<number>('maxTokens') || 4000,
-        temperature: config.get<number>('temperature') || 0.3
-    };
+    const showStatusCommand = vscode.commands.registerCommand('ui-copilot.showIndexStatus', () => {
+        if (workspaceIndex) {
+            const fileCount = workspaceIndex.files.length;
+            const componentCount = workspaceIndex.components.length;
+            const frameworks = workspaceIndex.project.frameworks.map(f => f.name).join(', ');
+            const stats = componentAnalyzer.getComponentStats(workspaceIndex.components);
+            
+            const topHooks = Object.entries(stats.hooksUsage)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 3)
+                .map(([hook, count]) => `${hook} (${count})`)
+                .join(', ');
 
-    const geminiConfig: GeminiConfig = {
-        apiKey: config.get<string>('geminiApiKey') || '',
-        model: config.get<string>('geminiModel') || 'gemini-2.0-flash-exp',
-        maxTokens: config.get<number>('maxTokens') || 100000,
-        temperature: config.get<number>('temperature') || 0.3,
-        topP: config.get<number>('topP') || 0.8,
-        topK: config.get<number>('topK') || 20
-    };
-
-    extensionConfig = {
-        aiProvider: aiProvider as 'claude' | 'gemini',
-        claude: claudeConfig,
-        gemini: geminiConfig,
-        indexing: {
-            enabled: config.get<boolean>('indexing.enabled') ?? true,
-            maxFileSize: config.get<number>('indexing.maxFileSize') ?? 100 * 1024,
-            excludePatterns: config.get<string[]>('indexing.excludePatterns') ?? ['node_modules', '.git', 'dist', 'build'],
-            includePatterns: config.get<string[]>('indexing.includePatterns') ?? ['**/*.{ts,tsx,js,jsx}'],
-            watchForChanges: config.get<boolean>('indexing.watchForChanges') ?? true,
-            debounceTime: config.get<number>('indexing.debounceTime') ?? 500
-        },
-        context: {
-            maxTokens: aiProvider === 'gemini' ? 
-                config.get<number>('context.maxTokens') ?? 2000000 : // 2M for Gemini
-                config.get<number>('context.maxTokens') ?? 12000,    // 12K for Claude
-            maxFiles: aiProvider === 'gemini' ? 
-                config.get<number>('context.maxFiles') ?? 200 :      // 200 for Gemini
-                config.get<number>('context.maxFiles') ?? 20,        // 20 for Claude
-            maxChunks: config.get<number>('context.maxChunks') ?? 50,
-            relevanceThreshold: config.get<number>('context.relevanceThreshold') ?? 0.3,
-            includeRelatedFiles: config.get<boolean>('context.includeRelatedFiles') ?? true,
-            includeDependencies: config.get<boolean>('context.includeDependencies') ?? true
-        },
-        performance: {
-            cacheEnabled: config.get<boolean>('performance.cacheEnabled') ?? true,
-            cacheTTL: config.get<number>('performance.cacheTTL') ?? 3600000, // 1 hour
-            maxCacheSize: config.get<number>('performance.maxCacheSize') ?? 100 * 1024 * 1024, // 100MB
-            concurrentLimit: config.get<number>('performance.concurrentLimit') ?? 10,
-            timeoutMs: config.get<number>('performance.timeoutMs') ?? 30000
-        },
-        features: {
-            autoCompletion: config.get<boolean>('features.autoCompletion') ?? true,
-            codeExplanation: config.get<boolean>('features.codeExplanation') ?? true,
-            refactoring: config.get<boolean>('features.refactoring') ?? true,
-            debugging: config.get<boolean>('features.debugging') ?? true,
-            codeGeneration: config.get<boolean>('features.codeGeneration') ?? true
-        }
-    };
-}
-
-/**
- * Initialize all core services
- */
-function initializeServices() {
-    try {
-        // Initialize existing services
-        componentGenerator = new ComponentGenerator();
-        codebaseAnalyzer = new CodebaseAnalyzer();
-        
-        // Initialize new codebase-aware services
-        codebaseIndexer = new CodebaseIndexer();
-        
-        // Initialize context managers for both AI providers
-        contextManager = new ContextManager(codebaseIndexer, 12000, 20); // For Claude
-        geminiContextManager = new GeminiContextManager(codebaseIndexer, 2000000, 200); // For Gemini
-        
-        // Initialize AI integrations based on provider preference
-        if (extensionConfig.aiProvider === 'gemini' && extensionConfig.gemini?.apiKey) {
-            geminiIntegration = new GeminiIntegration(extensionConfig.gemini);
-            console.log('🚀 Gemini 2.0 Flash integration initialized with massive context');
-        } else if (extensionConfig.claude?.apiKey) {
-            claudeIntegration = new ClaudeIntegration(extensionConfig.claude);
-            console.log('✅ Claude API integration initialized');
+            vscode.window.showInformationMessage(
+                `Index: ${fileCount} files, ${componentCount} components. Frameworks: ${frameworks || 'None detected'}. Top hooks: ${topHooks || 'None'}`
+            );
         } else {
-            console.log('⚠️ No AI provider configured - please set your API key in settings');
+            vscode.window.showWarningMessage('Workspace not indexed yet. Run "Reindex Workspace" command.');
         }
+    });
 
-        // Set up event listeners
-        setupEventListeners();
-        
-        console.log('✅ All services initialized successfully');
-    } catch (error) {
-        console.error('❌ Failed to initialize services:', error);
-        vscode.window.showErrorMessage(`Failed to initialize UI Copilot: ${error}`);
+    const showComponentsCommand = vscode.commands.registerCommand('ui-copilot.showComponents', () => {
+        if (workspaceIndex && workspaceIndex.components.length > 0) {
+            const componentList = workspaceIndex.components
+                .slice(0, 10) // Show first 10
+                .map(comp => `${comp.name} (${comp.exports.join(', ')}) - ${comp.hooks?.length || 0} hooks`)
+                .join('\n');
+            
+            vscode.window.showInformationMessage(
+                `Components found:\n${componentList}${workspaceIndex.components.length > 10 ? '\n...(showing first 10)' : ''}`,
+                { modal: true }
+            );
+        } else {
+            vscode.window.showWarningMessage('No components found. Try reindexing the workspace.');
+        }
+    });
+
+    context.subscriptions.push(generateCommand, explainCommand, reindexCommand, showStatusCommand, showComponentsCommand);
+
+    // Initialize workspace on activation
+    await initializeWorkspace();
+}
+
+async function initializeWorkspace(): Promise<void> {
+    if (!vscode.workspace.workspaceFolders) {
+        return;
     }
-}
 
-/**
- * Set up event listeners for real-time updates
- */
-function setupEventListeners() {
-    // Listen for codebase indexer events
-    codebaseIndexer.on('indexingStarted', () => {
-        vscode.window.setStatusBarMessage('$(sync~spin) Indexing codebase...', 2000);
-    });
-
-    codebaseIndexer.on('indexingCompleted', (index) => {
-        const message = `✅ Indexed ${index.indexedFiles} files with ${index.symbols.size} symbols`;
-        vscode.window.setStatusBarMessage(message, 3000);
-        console.log(message);
-    });
-
-    codebaseIndexer.on('fileIndexed', (filePath, processed, total) => {
-        if (processed % 10 === 0) { // Update every 10 files to avoid spam
-            vscode.window.setStatusBarMessage(`$(sync~spin) Indexing: ${processed}/${total} files`, 1000);
-        }
-    });
-
-    codebaseIndexer.on('indexingError', (error) => {
-        console.error('Indexing error:', error);
-        vscode.window.showWarningMessage(`Indexing warning: ${error.message}`);
-    });
-
-    // Listen for configuration changes
-    vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('ui-copilot')) {
-            console.log('🔄 Configuration changed, reinitializing...');
-            initializeConfiguration();
-            // Optionally reinitialize services that depend on config
-        }
-    });
-}
-
-/**
- * Register all VS Code commands
- */
-function registerCommands(context: vscode.ExtensionContext) {
-    const commands = [
-        // Existing commands
-        vscode.commands.registerCommand('ui-copilot.generateComponent', handleGenerateComponent),
-        vscode.commands.registerCommand('ui-copilot.iterateComponent', handleIterateComponent),
+    try {
+        vscode.window.showInformationMessage('Indexing workspace...');
         
-        // New codebase-aware commands
-        vscode.commands.registerCommand('ui-copilot.explainCode', handleExplainCode),
-        vscode.commands.registerCommand('ui-copilot.refactorCode', handleRefactorCode),
-        vscode.commands.registerCommand('ui-copilot.completeCode', handleCompleteCode),
-        vscode.commands.registerCommand('ui-copilot.debugCode', handleDebugCode),
-        vscode.commands.registerCommand('ui-copilot.searchCodebase', handleSearchCodebase),
-        vscode.commands.registerCommand('ui-copilot.findSimilar', handleFindSimilar),
-        vscode.commands.registerCommand('ui-copilot.analyzeProject', handleAnalyzeProject),
-        vscode.commands.registerCommand('ui-copilot.reindexWorkspace', handleReindexWorkspace),
-        vscode.commands.registerCommand('ui-copilot.showIndexStatus', handleShowIndexStatus),
-        vscode.commands.registerCommand('ui-copilot.configureExtension', handleConfigureExtension)
-    ];
+        const [files, projectMetadata] = await Promise.all([
+            fileIndexer.indexWorkspace(),
+            frameworkDetector.detectProjectFrameworks()
+        ]);
 
-    context.subscriptions.push(...commands);
-    console.log(`✅ Registered ${commands.length} commands`);
-}
+        // Analyze components from the indexed files
+        console.log('Analyzing components...');
+        const components = await componentAnalyzer.analyzeComponents(files);
 
-/**
- * Get current AI integration and context manager
- */
-function getCurrentAIProvider(): {
-    aiIntegration: GeminiIntegration | ClaudeIntegration | null;
-    contextManager: GeminiContextManager | ContextManager;
-    provider: 'gemini' | 'claude' | null;
-} {
-    if (geminiIntegration) {
-        return {
-            aiIntegration: geminiIntegration,
-            contextManager: geminiContextManager,
-            provider: 'gemini'
+        workspaceIndex = {
+            files,
+            components,
+            project: projectMetadata,
+            lastUpdated: new Date()
         };
-    } else if (claudeIntegration) {
-        return {
-            aiIntegration: claudeIntegration,
-            contextManager: contextManager,
-            provider: 'claude'
-        };
-    }
-    
-    return {
-        aiIntegration: null,
-        contextManager: geminiContextManager, // Default to Gemini context manager
-        provider: null
-    };
-}
 
-/**
- * Initialize workspace indexing
- */
-async function initializeWorkspaceIndexing() {
-    if (!extensionConfig.indexing.enabled) {
-        console.log('📝 Workspace indexing disabled in configuration');
-        return;
-    }
-
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        console.log('📝 No workspace folder found, skipping indexing');
-        return;
-    }
-
-    try {
-        console.log('🔍 Starting workspace indexing...');
+        const stats = componentAnalyzer.getComponentStats(components);
+        console.log(`Indexed ${files.length} files, ${components.length} components, detected frameworks:`, 
+            projectMetadata.frameworks.map(f => f.name));
+        console.log('Component stats:', stats);
         
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Indexing workspace for AI assistance",
-            cancellable: false
-        }, async (progress) => {
-            await codebaseIndexer.indexWorkspace(workspaceFolder.uri.fsPath, progress);
-        });
-        
-        console.log('✅ Workspace indexing completed');
     } catch (error) {
-        console.error('❌ Workspace indexing failed:', error);
-        vscode.window.showWarningMessage(`Workspace indexing failed: ${error}. Some features may be limited.`);
+        console.error('Failed to initialize workspace:', error);
+        vscode.window.showErrorMessage('Failed to index workspace');
     }
 }
 
-// =====================================================
-// COMMAND HANDLERS
-// =====================================================
+export function deactivate() {}
 
-/**
- * Enhanced component generation with full codebase context
- */
-async function handleGenerateComponent() {
-    if (!extensionConfig.features.codeGeneration) {
-        vscode.window.showInformationMessage('Code generation feature is disabled');
-        return;
-    }
-
-    try {
-        // Get user input for what they want to build
-        const prompt = await vscode.window.showInputBox({
-            placeHolder: 'Describe the component you want to generate (e.g., "user profile card with avatar and bio")',
-            prompt: 'What UI component would you like to generate?'
-        });
-
-        if (!prompt) return;
-
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Generating component with codebase awareness...",
-            cancellable: false
-        }, async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showErrorMessage('Please open a file to insert the component');
-                return;
-            }
-
-            // Use new codebase-aware approach with preferred AI provider
-            if (geminiIntegration) {
-                const contextRequest: ContextRequest = {
-                    currentFile: editor.document.fileName,
-                    cursorPosition: editor.selection.active,
-                    query: prompt,
-                    responseType: 'generation',
-                    language: editor.document.languageId
-                };
-
-                const context = await geminiContextManager.buildMassiveContext(contextRequest);
-                const aiRequest: AIRequest = {
-                    type: 'generation',
-                    query: prompt,
-                    language: editor.document.languageId
-                };
-
-                const response = await geminiIntegration.processRequest(aiRequest, context);
-                
-                await editor.edit(editBuilder => {
-                    const position = editor.selection.active;
-                    editBuilder.insert(position, response.content);
-                });
-
-                const utilization = geminiContextManager.getContextUtilization(context);
-                vscode.window.showInformationMessage(
-                    `Component generated with ${context.metadata.filesIncluded} files (${Math.round(utilization.utilizationPercentage)}% context used, ${Math.round(response.confidence * 100)}% confidence)`
-                );
-            } else if (claudeIntegration) {
-                const contextRequest: ContextRequest = {
-                    currentFile: editor.document.fileName,
-                    cursorPosition: editor.selection.active,
-                    query: prompt,
-                    responseType: 'generation',
-                    language: editor.document.languageId
-                };
-
-                const context = await contextManager.buildContext(contextRequest);
-                const aiRequest: AIRequest = {
-                    type: 'generation',
-                    query: prompt,
-                    language: editor.document.languageId
-                };
-
-                const response = await claudeIntegration.processRequest(aiRequest, context);
-                
-                await editor.edit(editBuilder => {
-                    const position = editor.selection.active;
-                    editBuilder.insert(position, response.content);
-                });
-
-                vscode.window.showInformationMessage(
-                    `Component generated with ${context.metadata.filesIncluded} context files (${Math.round(response.confidence * 100)}% confidence)`
-                );
-            } else {
-                // Fallback to existing approach
-                const workspaceInfo = await codebaseAnalyzer.analyzeWorkspace();
-                const generatedCode = await componentGenerator.generateComponent(prompt, workspaceInfo);
-                
-                await editor.edit(editBuilder => {
-                    const position = editor.selection.active;
-                    editBuilder.insert(position, generatedCode);
-                });
-
-                vscode.window.showInformationMessage('Component generated successfully!');
-            }
-
-            await vscode.commands.executeCommand('editor.action.formatDocument');
-        });
-
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error generating component: ${error}`);
-        console.error('Component generation error:', error);
-    }
-}
-
-/**
- * Explain selected code with full codebase context
- */
-async function handleExplainCode() {
-    if (!extensionConfig.features.codeExplanation) {
-        vscode.window.showInformationMessage('Code explanation feature is disabled');
-        return;
-    }
-
-    if (!claudeIntegration) {
-        vscode.window.showErrorMessage('Claude API not configured. Please set your API key in settings.');
-        return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please open a file and select code to explain');
-        return;
-    }
-
-    const selectedText = editor.document.getText(editor.selection);
-    if (!selectedText) {
-        vscode.window.showErrorMessage('Please select the code you want explained');
-        return;
-    }
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Analyzing code with codebase context...",
-            cancellable: false
-        }, async () => {
-            const contextRequest: ContextRequest = {
-                currentFile: editor.document.fileName,
-                cursorPosition: editor.selection.active,
-                selectedCode: selectedText,
-                responseType: 'explanation',
-                language: editor.document.languageId
-            };
-
-            const context = await contextManager.buildContext(contextRequest);
-            const aiRequest: AIRequest = {
-                type: 'explanation',
-                query: 'Explain this code',
-                selectedCode: selectedText,
-                language: editor.document.languageId
-            };
-
-            const response = await claudeIntegration.processRequest(aiRequest, context);
-            
-            // Show explanation in a new document
-            const doc = await vscode.workspace.openTextDocument({
-                content: response.content,
-                language: 'markdown'
-            });
-            await vscode.window.showTextDocument(doc);
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error explaining code: ${error}`);
-        console.error('Code explanation error:', error);
-    }
-}
-
-/**
- * Refactor selected code with codebase awareness
- */
-async function handleRefactorCode() {
-    if (!extensionConfig.features.refactoring) {
-        vscode.window.showInformationMessage('Refactoring feature is disabled');
-        return;
-    }
-
-    if (!claudeIntegration) {
-        vscode.window.showErrorMessage('Claude API not configured. Please set your API key in settings.');
-        return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please open a file and select code to refactor');
-        return;
-    }
-
-    const selectedText = editor.document.getText(editor.selection);
-    if (!selectedText) {
-        vscode.window.showErrorMessage('Please select the code you want to refactor');
-        return;
-    }
-
-    const refactorGoal = await vscode.window.showInputBox({
-        placeHolder: 'How would you like to refactor this code? (e.g., "improve performance", "make more readable")',
-        prompt: 'Describe your refactoring goal'
-    });
-
-    if (!refactorGoal) return;
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Refactoring code with codebase awareness...",
-            cancellable: false
-        }, async () => {
-            const contextRequest: ContextRequest = {
-                currentFile: editor.document.fileName,
-                cursorPosition: editor.selection.active,
-                selectedCode: selectedText,
-                query: refactorGoal,
-                responseType: 'refactor',
-                language: editor.document.languageId
-            };
-
-            const context = await contextManager.buildContext(contextRequest);
-            const aiRequest: AIRequest = {
-                type: 'refactor',
-                query: refactorGoal,
-                selectedCode: selectedText,
-                language: editor.document.languageId
-            };
-
-            const response = await claudeIntegration.processRequest(aiRequest, context);
-            
-            // Replace selected code with refactored version
-            await editor.edit(editBuilder => {
-                editBuilder.replace(editor.selection, response.content);
-            });
-
-            await vscode.commands.executeCommand('editor.action.formatDocument');
-            vscode.window.showInformationMessage('Code refactored successfully!');
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error refactoring code: ${error}`);
-        console.error('Code refactoring error:', error);
-    }
-}
-
-/**
- * Complete code at cursor with codebase context
- */
-async function handleCompleteCode() {
-    if (!extensionConfig.features.autoCompletion) {
-        vscode.window.showInformationMessage('Auto-completion feature is disabled');
-        return;
-    }
-
-    if (!claudeIntegration) {
-        vscode.window.showErrorMessage('Claude API not configured. Please set your API key in settings.');
-        return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please open a file to complete code');
-        return;
-    }
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Completing code with codebase context...",
-            cancellable: false
-        }, async () => {
-            const contextRequest: ContextRequest = {
-                currentFile: editor.document.fileName,
-                cursorPosition: editor.selection.active,
-                responseType: 'completion',
-                language: editor.document.languageId
-            };
-
-            const context = await contextManager.buildContext(contextRequest);
-            const aiRequest: AIRequest = {
-                type: 'completion',
-                query: 'Complete this code',
-                language: editor.document.languageId,
-                cursorPosition: editor.selection.active
-            };
-
-            const response = await claudeIntegration.processRequest(aiRequest, context);
-            
-            // Insert completion at cursor
-            await editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, response.content);
-            });
-
-            vscode.window.showInformationMessage('Code completed successfully!');
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error completing code: ${error}`);
-        console.error('Code completion error:', error);
-    }
-}
-
-/**
- * Debug code with AI assistance
- */
-async function handleDebugCode() {
-    if (!extensionConfig.features.debugging) {
-        vscode.window.showInformationMessage('Debugging feature is disabled');
-        return;
-    }
-
-    if (!claudeIntegration) {
-        vscode.window.showErrorMessage('Claude API not configured. Please set your API key in settings.');
-        return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please open a file to debug');
-        return;
-    }
-
-    const selectedText = editor.document.getText(editor.selection);
-    const debugQuery = await vscode.window.showInputBox({
-        placeHolder: 'Describe the issue you\'re experiencing (e.g., "function returns undefined", "infinite loop")',
-        prompt: 'What debugging help do you need?'
-    });
-
-    if (!debugQuery) return;
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Analyzing code for debugging...",
-            cancellable: false
-        }, async () => {
-            const contextRequest: ContextRequest = {
-                currentFile: editor.document.fileName,
-                cursorPosition: editor.selection.active,
-                selectedCode: selectedText,
-                query: debugQuery,
-                responseType: 'debug',
-                language: editor.document.languageId
-            };
-
-            const context = await contextManager.buildContext(contextRequest);
-            const aiRequest: AIRequest = {
-                type: 'debug',
-                query: debugQuery,
-                selectedCode: selectedText,
-                language: editor.document.languageId
-            };
-
-            const response = await claudeIntegration.processRequest(aiRequest, context);
-            
-            // Show debugging help in a new document
-            const doc = await vscode.workspace.openTextDocument({
-                content: response.content,
-                language: 'markdown'
-            });
-            await vscode.window.showTextDocument(doc);
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error debugging code: ${error}`);
-        console.error('Code debugging error:', error);
-    }
-}
-
-/**
- * Search codebase for patterns, symbols, or text
- */
-async function handleSearchCodebase() {
-    const query = await vscode.window.showInputBox({
-        placeHolder: 'Search for functions, classes, patterns, or text...',
-        prompt: 'What would you like to search for in the codebase?'
-    });
-
-    if (!query) return;
-
-    try {
-        const results = codebaseIndexer.searchFiles(query);
-        
-        if (results.length === 0) {
-            vscode.window.showInformationMessage('No results found');
-            return;
-        }
-
-        // Show results in quick pick
-        const items = results.slice(0, 20).map(file => ({
-            label: file.path,
-            description: `${file.symbols.length} symbols, ${file.lineCount} lines`,
-            detail: file.chunks.length > 0 ? file.chunks[0].content.substring(0, 100) + '...' : '',
-            file
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Found ${results.length} files matching "${query}"`,
-            matchOnDescription: true,
-            matchOnDetail: true
-        });
-
-        if (selected) {
-            const doc = await vscode.workspace.openTextDocument(selected.file.absolutePath);
-            await vscode.window.showTextDocument(doc);
-        }
-    } catch (error) {
-        vscode.window.showErrorMessage(`Search error: ${error}`);
-        console.error('Codebase search error:', error);
-    }
-}
-
-/**
- * Find files similar to current file
- */
-async function handleFindSimilar() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please open a file to find similar files');
-        return;
-    }
-
-    try {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            vscode.window.showErrorMessage('No workspace folder found');
-            return;
-        }
-
-        const relativePath = vscode.workspace.asRelativePath(editor.document.fileName);
-        const relatedFiles = codebaseIndexer.getRelatedFiles(relativePath, 15);
-        
-        if (relatedFiles.length === 0) {
-            vscode.window.showInformationMessage('No similar files found');
-            return;
-        }
-
-        const items = relatedFiles.map(file => ({
-            label: file.path,
-            description: `${file.symbols.length} symbols, ${file.imports.length} imports`,
-            detail: `Language: ${file.language}, Size: ${file.lineCount} lines`,
-            file
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Found ${relatedFiles.length} similar files`,
-            matchOnDescription: true
-        });
-
-        if (selected) {
-            const doc = await vscode.workspace.openTextDocument(selected.file.absolutePath);
-            await vscode.window.showTextDocument(doc);
-        }
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error finding similar files: ${error}`);
-        console.error('Find similar error:', error);
-    }
-}
-
-/**
- * Show comprehensive project analysis
- */
-async function handleAnalyzeProject() {
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Analyzing project architecture...",
-            cancellable: false
-        }, async () => {
-            const workspaceInfo = await codebaseAnalyzer.analyzeWorkspace();
-            const indexStats = codebaseIndexer.getIndexStatus();
-            
-            // Create analysis report
-            // Enhanced analysis with better detection
-            const { aiIntegration, provider } = getCurrentAIProvider();
-            
-            // Enhanced component counting
-            const tsxFiles = workspaceInfo.existingComponents.filter(c => c.path.endsWith('.tsx')).length;
-            const jsxFiles = workspaceInfo.existingComponents.filter(c => c.path.endsWith('.jsx')).length;
-            const totalReactComponents = tsxFiles + jsxFiles;
-            
-            // Better state management detection
-            const statePatterns = workspaceInfo.patterns?.stateManagementPatterns || [];
-            let stateManagementSummary = 'Local state only';
-            if (statePatterns.includes('tanstack-query')) {
-                stateManagementSummary = 'TanStack Query + Local state';
-            } else if (statePatterns.includes('redux')) {
-                stateManagementSummary = 'Redux + Local state';
-            } else if (statePatterns.includes('zustand')) {
-                stateManagementSummary = 'Zustand + Local state';
-            } else if (statePatterns.length > 1) {
-                stateManagementSummary = 'Mixed state management';
-            }
-            
-            const report = [
-                '# Enhanced Project Analysis Report\n',
-                '## Project Overview',
-                `- **Language**: ${workspaceInfo.hasTypeScript ? 'TypeScript' : 'JavaScript'}`,
-                `- **React Components**: ${totalReactComponents} (${tsxFiles} .tsx, ${jsxFiles} .jsx)`,
-                `- **Total Components**: ${workspaceInfo.existingComponents.length} (${totalReactComponents} React components, ${workspaceInfo.existingComponents.length - totalReactComponents} other components)`,
-                `- **Architecture**: Component-based React application`,
-                '',
-                '## Architecture & Patterns',
-                `- **Architecture Patterns**: ${workspaceInfo.architecture?.patterns.join(', ') || 'Component-based React'}`,
-                `- **State Management**: ${stateManagementSummary}`,
-                `- **Routing**: ${statePatterns.includes('tanstack-router') ? 'TanStack Router' : statePatterns.includes('react-router') ? 'React Router' : 'Not detected'}`,
-                `- **Data Fetching**: ${statePatterns.includes('tanstack-query') ? 'TanStack Query (React Query)' : statePatterns.includes('swr') ? 'SWR' : 'Custom/Fetch'}`,
-                '',
-                '## Codebase Statistics',
-                `- **Files Indexed**: ${indexStats.stats.indexedFiles}/${indexStats.stats.totalFiles}`,
-                `- **Symbols Found**: ${indexStats.stats.totalSymbols}`,
-                `- **Dependencies**: ${indexStats.stats.dependencyNodes} files, ${indexStats.stats.dependencyEdges} relationships`,
-                `- **TypeScript Usage**: ${(tsxFiles / Math.max(totalReactComponents, 1) * 100).toFixed(1)}% of React components`,
-                '',
-                '## UI & Styling',
-                `- **UI Framework**: ${workspaceInfo.styling.uiLibrary || 'Custom/None'}`,
-                `- **Primary Approach**: ${formatPrimaryApproach(workspaceInfo.styling.primaryApproach, workspaceInfo.styling.uiLibrary)}`,
-                `- **Tailwind CSS**: ${workspaceInfo.styling.hasTailwind ? 'Yes' : 'No'}`,
-                `- **CSS Modules**: ${workspaceInfo.styling.hasCSSModules ? 'Yes' : 'No'}`,
-                `- **Styled Components**: ${workspaceInfo.styling.hasStyledComponents ? 'Yes' : 'No'}`,
-                `- **Chakra UI**: ${workspaceInfo.styling.uiLibrary?.includes('Chakra') ? (workspaceInfo.styling.uiLibrary.includes('v3') ? 'Yes (v3)' : 'Yes') : 'No'}`,
-                '',
-                '## Development Tools',
-                `- **Testing Framework**: ${categorizeTesting(workspaceInfo.patterns?.testingPatterns || [])}`,
-                `- **TypeScript**: ${workspaceInfo.hasTypeScript ? 'Yes' : 'No'}`,
-                '',
-                '## State Management Details',
-                `- **Patterns Detected**: ${statePatterns.join(', ') || 'Local state only'}`,
-                `- **Hook Usage**: ${formatHookUsage(statePatterns, workspaceInfo.existingComponents)}`,
-                '',
-                '## Code Quality Insights',
-                `- **Naming Convention**: ${workspaceInfo.patterns?.namingConventions.components || 'PascalCase'} (Components)`,
-                `- **File Organization**: ${workspaceInfo.patterns?.stylePatterns?.organization || 'Component-based'}`,
-                `- **Modern React Patterns**: ${statePatterns.includes('tanstack-query') || statePatterns.includes('tanstack-router') ? 'Yes (TanStack ecosystem)' : 'Partial'}`,
-            ].join('\n');
-
-            const doc = await vscode.workspace.openTextDocument({
-                content: report,
-                language: 'markdown'
-            });
-            await vscode.window.showTextDocument(doc);
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error analyzing project: ${error}`);
-        console.error('Project analysis error:', error);
-    }
-}
-
-/**
- * Helper to categorize testing frameworks correctly
- */
-function categorizeTesting(testingPatterns: string[]): string {
-    if (testingPatterns.length === 0) return 'None detected';
-    
-    // PRIORITY FIX: Prioritize Playwright as the primary E2E framework
-    const e2eFrameworks = testingPatterns.filter(p => 
-        p.includes('playwright') || p.includes('cypress') || p.includes('e2e')
-    );
-    
-    const unitFrameworks = testingPatterns.filter(p => 
-        p.includes('jest') || p.includes('vitest') || p.includes('testing-library') || p.includes('react-testing')
-    );
-    
-    // Check for Playwright specifically
-    const hasPlaywright = testingPatterns.some(p => p.includes('playwright'));
-    if (hasPlaywright && unitFrameworks.length === 0) {
-        return 'Playwright (E2E)';
-    }
-    
-    if (e2eFrameworks.length > 0 && unitFrameworks.length > 0) {
-        const primary = hasPlaywright ? 'Playwright' : e2eFrameworks[0];
-        return `${primary} (E2E) + ${unitFrameworks[0]} (Unit)`;
-    } else if (e2eFrameworks.length > 0) {
-        const primary = hasPlaywright ? 'Playwright' : e2eFrameworks[0];
-        return `${primary} (E2E Testing)`;
-    } else if (unitFrameworks.length > 0) {
-        return `${unitFrameworks.join(', ')} (Unit Testing)`;
-    }
-    
-    return testingPatterns.join(', ');
-}
-
-/**
- * Reindex the workspace
- */
-async function handleReindexWorkspace() {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        vscode.window.showErrorMessage('No workspace folder found');
-        return;
-    }
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Reindexing workspace...",
-            cancellable: false
-        }, async (progress) => {
-            await codebaseIndexer.indexWorkspace(workspaceFolder.uri.fsPath, progress);
-        });
-        
-        vscode.window.showInformationMessage('Workspace reindexing completed!');
-    } catch (error) {
-        vscode.window.showErrorMessage(`Reindexing failed: ${error}`);
-        console.error('Reindexing error:', error);
-    }
-}
-
-/**
- * Show indexing status and statistics
- */
-async function handleShowIndexStatus() {
-    const status = codebaseIndexer.getIndexStatus();
-    const stats = status.stats;
-    
-    const message = [
-        `Status: ${status.status}`,
-        `Files: ${stats.indexedFiles}/${stats.totalFiles}`,
-        `Symbols: ${stats.totalSymbols}`,
-        `Dependencies: ${stats.dependencyNodes} nodes, ${stats.dependencyEdges} edges`,
-        `Last Updated: ${stats.lastUpdated?.toLocaleString() || 'Never'}`
-    ].join('\n');
-
-    vscode.window.showInformationMessage(message, { modal: true });
-}
-
-/**
- * Open extension configuration
- */
-async function handleConfigureExtension() {
-    await vscode.commands.executeCommand('workbench.action.openSettings', 'ui-copilot');
-}
-
-async function handleIterateComponent() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('Please select some code to iterate on');
-        return;
-    }
-
-    const selectedText = editor.document.getText(editor.selection);
-    if (!selectedText) {
-        vscode.window.showErrorMessage('Please select the component code you want to modify');
-        return;
-    }
-
-    const modification = await vscode.window.showInputBox({
-        placeHolder: 'How would you like to modify this component? (e.g., "make it responsive", "add loading state")',
-        prompt: 'Describe the changes you want to make'
-    });
-
-    if (!modification) {
-        return;
-    }
-
-    try {
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Modifying component...",
-            cancellable: false
-        }, async (progress) => {
-            const workspaceInfo = await codebaseAnalyzer.analyzeWorkspace();
-            const modifiedCode = await componentGenerator.iterateComponent(selectedText, modification, workspaceInfo);
-            
-            await editor.edit(editBuilder => {
-                editBuilder.replace(editor.selection, modifiedCode);
-            });
-
-            await vscode.commands.executeCommand('editor.action.formatDocument');
-        });
-
-        vscode.window.showInformationMessage('Component updated successfully!');
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error modifying component: ${error}`);
-        console.error('Component iteration error:', error);
-    }
-}
-
-/**
- * Helper to format primary styling approach in a user-friendly way
- */
-function formatPrimaryApproach(primaryApproach?: string, uiLibrary?: string): string {
-    if (!primaryApproach) return 'CSS/Inline';
-    
-    switch (primaryApproach) {
-        case 'chakra-ui':
-            return 'Chakra UI Components';
-        case 'shadcn-ui':
-            return 'shadcn/ui Components';
-        case 'material-ui':
-            return 'Material-UI Components';
-        case 'antd':
-            return 'Ant Design Components';
-        case 'mantine':
-            return 'Mantine Components';
-        case 'nextui':
-            return 'NextUI Components';
-        case 'ui-library':
-            return `${uiLibrary} Components`;
-        case 'tailwind':
-            return 'Tailwind CSS';
-        case 'styled-components':
-            return 'Styled Components';
-        case 'css-modules':
-            return 'CSS Modules';
-        case 'emotion':
-            return 'Emotion (CSS-in-JS)';
-        case 'inline':
-            return 'CSS/Inline';
-        default:
-            return primaryApproach || 'CSS/Inline';
-    }
-}
-
-/**
- * Helper to format hook usage in a comprehensive way
- */
-function formatHookUsage(statePatterns: string[], components: import('./types').ComponentInfo[]): string {
-    const hooksList: string[] = [];
-    
-    // Basic React hooks from patterns
-    if (statePatterns.includes('local-state')) hooksList.push('useState');
-    if (statePatterns.includes('lifecycle-effects')) hooksList.push('useEffect');
-    if (statePatterns.includes('context-api')) hooksList.push('useContext');
-    if (statePatterns.includes('reducer-pattern')) hooksList.push('useReducer');
-    if (statePatterns.includes('callback-optimization')) hooksList.push('useCallback');
-    if (statePatterns.includes('memo-optimization')) hooksList.push('useMemo');
-    
-    // Advanced hooks from actual component analysis
-    const allHooks = components.flatMap(c => c.ast?.hooks || []);
-    const hookTypes = new Set(allHooks.map(h => h.name));
-    
-    // Add additional hooks found in the components
-    const additionalHooks = Array.from(hookTypes).filter(hook => 
-        !hooksList.includes(hook) && (
-            hook.startsWith('use') || 
-            ['useRef', 'useLayoutEffect', 'useImperativeHandle', 'useDebugValue'].includes(hook)
-        )
-    );
-    
-    hooksList.push(...additionalHooks);
-    
-    // External library hooks
-    if (statePatterns.includes('tanstack-query')) hooksList.push('useQuery');
-    if (statePatterns.includes('tanstack-router')) hooksList.push('useRouter');
-    
-    return hooksList.length > 0 ? hooksList.join(', ') : 'Standard React hooks';
-}
-
-export function deactivate() {
-    console.log('🛑 Deactivating UI Copilot...');
-    
-    // Cleanup services
-    if (codebaseIndexer) {
-        codebaseIndexer.dispose();
-    }
-    
-    if (codebaseAnalyzer) {
-        codebaseAnalyzer.dispose();
-    }
-    
-    console.log('✅ UI Copilot deactivated successfully');
+export function getWorkspaceIndex(): WorkspaceIndex | null {
+    return workspaceIndex;
 }

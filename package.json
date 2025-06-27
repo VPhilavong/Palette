@@ -99,7 +99,13 @@
         },
         "ui-copilot.indexing.excludePatterns": {
           "type": "array",
-          "default": ["node_modules", ".git", "dist", "build", ".next"],
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "build",
+            ".next"
+          ],
           "description": "Patterns to exclude from indexing"
         },
         "ui-copilot.context.maxTokens": {
@@ -204,6 +210,12 @@
         "title": "Configure Extension",
         "category": "UI Copilot",
         "icon": "$(settings)"
+      },
+      {
+        "command": "ui-copilot.showComponents",
+        "title": "Show Components",
+        "category": "UI Copilot",
+        "icon": "$(list-tree)"
       }
     ],
     "keybindings": [
@@ -303,17 +315,18 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
+    "@types/babel__traverse": "^7.20.7",
     "@types/node": "16.x",
     "@types/vscode": "^1.74.0",
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.7.1",
-    "axios": "^1.6.0",
-    "openai": "^4.0.0",
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
-    "chokidar": "^3.5.3"
+    "@google/generative-ai": "^0.7.1",
+    "axios": "^1.6.0",
+    "chokidar": "^3.6.0",
+    "openai": "^4.0.0"
   }
 }

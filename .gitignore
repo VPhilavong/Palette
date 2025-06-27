@@ -212,3 +212,7 @@ secrets.json
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+test_repos/
+CLAUDE.md 
+.claude
