@@ -4,37 +4,49 @@ import * as vscode from 'vscode';
  * Centralized logging utility
  */
 export class Logger {
-    private static outputChannel: vscode.OutputChannel;
+    private static instance: Logger;
+    private outputChannel: vscode.OutputChannel;
+
+    private constructor() {
+        this.outputChannel = vscode.window.createOutputChannel('UI Copilot');
+    }
+
+    static getInstance(): Logger {
+        if (!Logger.instance) {
+            Logger.instance = new Logger();
+        }
+        return Logger.instance;
+    }
 
     static initialize(): void {
-        Logger.outputChannel = vscode.window.createOutputChannel('UI Copilot');
+        Logger.getInstance();
     }
 
-    static info(message: string, ...args: any[]): void {
+    info(message: string, ...args: any[]): void {
         const formattedMessage = Logger.formatMessage('INFO', message, args);
         console.log(formattedMessage);
-        Logger.outputChannel?.appendLine(formattedMessage);
+        this.outputChannel?.appendLine(formattedMessage);
     }
 
-    static warn(message: string, ...args: any[]): void {
+    warn(message: string, ...args: any[]): void {
         const formattedMessage = Logger.formatMessage('WARN', message, args);
         console.warn(formattedMessage);
-        Logger.outputChannel?.appendLine(formattedMessage);
+        this.outputChannel?.appendLine(formattedMessage);
     }
 
-    static error(message: string, error?: Error, ...args: any[]): void {
+    error(message: string, error?: Error, ...args: any[]): void {
         const formattedMessage = Logger.formatMessage('ERROR', message, args);
         console.error(formattedMessage, error);
-        Logger.outputChannel?.appendLine(formattedMessage);
+        this.outputChannel?.appendLine(formattedMessage);
         if (error) {
-            Logger.outputChannel?.appendLine(error.stack || error.message);
+            this.outputChannel?.appendLine(error.stack || error.message);
         }
     }
 
-    static debug(message: string, ...args: any[]): void {
+    debug(message: string, ...args: any[]): void {
         const formattedMessage = Logger.formatMessage('DEBUG', message, args);
         console.debug(formattedMessage);
-        Logger.outputChannel?.appendLine(formattedMessage);
+        this.outputChannel?.appendLine(formattedMessage);
     }
 
     private static formatMessage(level: string, message: string, args: any[]): string {
@@ -43,11 +55,11 @@ export class Logger {
         return `[${timestamp}] ${level}: ${message}${argsStr}`;
     }
 
-    static show(): void {
-        Logger.outputChannel?.show();
+    show(): void {
+        this.outputChannel?.show();
     }
 
-    static dispose(): void {
-        Logger.outputChannel?.dispose();
+    dispose(): void {
+        this.outputChannel?.dispose();
     }
 }

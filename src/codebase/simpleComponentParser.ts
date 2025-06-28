@@ -57,7 +57,9 @@ export class SimpleComponentParser {
                 exports: [],
                 imports: [],
                 props: [],
-                hooks: []
+                hooks: [],
+                jsxElements: [],
+                comments: []
             };
 
             // Parse using regex patterns (much more reliable than AST for our needs)
@@ -65,6 +67,8 @@ export class SimpleComponentParser {
             this.extractExports(code, componentInfo);
             this.extractHooks(code, componentInfo);
             this.extractProps(code, componentInfo);
+            this.extractJsxElements(code, componentInfo);
+            this.extractComments(code, componentInfo);
 
             // Only return if we found exports or hooks (indicating it's likely a component file)
             const hasExports = componentInfo.exports.length > 0;
@@ -322,8 +326,74 @@ export class SimpleComponentParser {
         componentInfo.props = [...new Set(componentInfo.props!)];
     }
 
+    private extractJsxElements(code: string, componentInfo: ComponentInfo): void {
+        const elements = new Set<string>();
+
+        // Extract JSX element names
+        const jsxElementRegex = /<([A-Z][A-Za-z0-9]*|[a-z][a-z0-9\-]*)/g;
+        let match;
+        while ((match = jsxElementRegex.exec(code)) !== null) {
+            elements.add(match[1]);
+        }
+
+        // Extract common UI patterns
+        const uiPatterns = [
+            'form', 'table', 'list', 'grid', 'card', 'modal', 'dialog', 'button',
+            'input', 'select', 'textarea', 'checkbox', 'radio', 'nav', 'menu',
+            'header', 'footer', 'sidebar', 'main', 'section', 'article', 'aside',
+            'Container', 'Layout', 'Row', 'Col', 'Grid', 'Card', 'Modal', 'Button'
+        ];
+
+        uiPatterns.forEach(pattern => {
+            if (code.includes(`<${pattern}`) || code.includes(`<${pattern.charAt(0).toUpperCase() + pattern.slice(1)}`)) {
+                elements.add(pattern.toLowerCase());
+            }
+        });
+
+        componentInfo.jsxElements = Array.from(elements);
+    }
+
+    private extractComments(code: string, componentInfo: ComponentInfo): void {
+        const comments = new Set<string>();
+
+        // Extract single-line comments
+        const singleLineCommentRegex = /\/\/\s*(.+)/g;
+        let match;
+        while ((match = singleLineCommentRegex.exec(code)) !== null) {
+            const comment = match[1].trim();
+            if (comment.length > 5 && !comment.startsWith('@') && !comment.startsWith('eslint')) {
+                comments.add(comment);
+            }
+        }
+
+        // Extract multi-line comments
+        const multiLineCommentRegex = /\/\*\*([\s\S]*?)\*\//g;
+        while ((match = multiLineCommentRegex.exec(code)) !== null) {
+            const comment = match[1]
+                .replace(/^\s*\*\s?/gm, '') // Remove leading asterisks
+                .trim();
+            if (comment.length > 10) {
+                comments.add(comment);
+            }
+        }
+
+        // Extract JSDoc comments
+        const jsDocRegex = /\/\*\*\s*([\s\S]*?)\s*\*\//g;
+        while ((match = jsDocRegex.exec(code)) !== null) {
+            const comment = match[1]
+                .replace(/^\s*\*\s?/gm, '')
+                .replace(/@\w+\s*/g, '') // Remove JSDoc tags
+                .trim();
+            if (comment.length > 10) {
+                comments.add(comment);
+            }
+        }
+
+        componentInfo.comments = Array.from(comments).slice(0, 5); // Limit to first 5 comments
+    }
+
     private getFileBaseName(uri: vscode.Uri): string {
         const fileName = uri.fsPath.split('/').pop() || '';
-        return fileName.replace(/\.(js|jsx|ts|tsx)$/, '');
+        return fileName.replace(/\.(js|jsx|ts|tsx|vue)$/, '');
     }
 }

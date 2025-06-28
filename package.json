@@ -216,6 +216,12 @@
         "title": "Show Components",
         "category": "UI Copilot",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "ui-copilot.generateEmbeddings",
+        "title": "Generate Embeddings",
+        "category": "UI Copilot",
+        "icon": "$(symbol-namespace)"
       }
     ],
     "keybindings": [
@@ -248,6 +254,18 @@
         "key": "ctrl+shift+f",
         "mac": "cmd+shift+f",
         "when": "true"
+      },
+      {
+        "command": "ui-copilot.generateEmbeddings",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "ui-copilot.findSimilar",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "editorIsOpen"
       }
     ],
     "menus": {
@@ -305,6 +323,10 @@
         {
           "command": "ui-copilot.reindexWorkspace",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "ui-copilot.generateEmbeddings",
+          "when": "workspaceFolderCount > 0"
         }
       ]
     }
@@ -312,7 +334,10 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "node test-standalone.js",
+    "clean": "rm -rf out",
+    "build": "npm run clean && npm run compile"
   },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.7",
