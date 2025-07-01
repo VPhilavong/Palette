@@ -64,12 +64,8 @@ export class UICopilotPanel {
                     case 'generateComponent':
                         await this._handleGenerateComponent(message.prompt);
                         return;
-                    case 'iterateComponent':
-                        await this._handleIterateComponent(message.selectedCode, message.modification);
-                        return;
-                    case 'analyzeWorkspace':
-                        await this._handleAnalyzeWorkspace();
-                        return;
+                    
+
                 }
             },
             null,
@@ -110,44 +106,9 @@ export class UICopilotPanel {
         }
     }
 
-    private async _handleIterateComponent(selectedCode: string, modification: string) {
-        try {
-            this._panel.webview.postMessage({
-                command: 'showProgress',
-                message: 'Modifying component...'
-            });
+    
 
-            const workspaceInfo = await this._codebaseAnalyzer.analyzeWorkspace();
-            const modifiedCode = await this._componentGenerator.iterateComponent(selectedCode, modification, workspaceInfo);
-            
-            this._panel.webview.postMessage({
-                command: 'componentIterated',
-                code: modifiedCode
-            });
-
-        } catch (error) {
-            this._panel.webview.postMessage({
-                command: 'showError',
-                message: `Error modifying component: ${error}`
-            });
-        }
-    }
-
-    private async _handleAnalyzeWorkspace() {
-        try {
-            const workspaceInfo = await this._codebaseAnalyzer.analyzeWorkspace();
-            this._panel.webview.postMessage({
-                command: 'workspaceAnalyzed',
-                data: workspaceInfo
-            });
-        } catch (error) {
-            this._panel.webview.postMessage({
-                command: 'showError',
-                message: `Error analyzing workspace: ${error}`
-            });
-        }
-    }
-
+    
     public dispose() {
         UICopilotPanel.currentPanel = undefined;
 
@@ -192,7 +153,7 @@ export class UICopilotPanel {
                 <div class="container">
                     <header>
                         <h1>🎨 UI Copilot</h1>
-                        <p>Generate and iterate on UI components with AI assistance</p>
+                        <p>Generate UI components with AI assistance</p>
                     </header>
 
                     <main>
@@ -208,29 +169,9 @@ export class UICopilotPanel {
                             </div>
                         </section>
 
-                        <section class="iterate-section">
-                            <h2>Iterate Component</h2>
-                            <div class="input-group">
-                                <textarea 
-                                    id="selectedCode" 
-                                    placeholder="Paste the component code you want to modify here..."
-                                    rows="5"
-                                ></textarea>
-                                <textarea 
-                                    id="modification" 
-                                    placeholder="Describe how you want to modify the component (e.g., 'make it responsive', 'add loading state')"
-                                    rows="2"
-                                ></textarea>
-                                <button id="iterateBtn" class="primary-btn">Modify Component</button>
-                            </div>
-                        </section>
+                        
 
-                        <section class="workspace-section">
-                            <h2>Workspace Analysis</h2>
-                            <button id="analyzeBtn" class="secondary-btn">Analyze Current Workspace</button>
-                            <div id="workspaceInfo" class="workspace-info"></div>
-                        </section>
-
+                        
                         <section class="output-section">
                             <h2>Generated Code</h2>
                             <div class="code-output">

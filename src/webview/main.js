@@ -1,4 +1,4 @@
-// @ts-check
+
 
 // Get access to the VS Code API from within the webview context
 const vscode = acquireVsCodeApi();
@@ -6,11 +6,8 @@ const vscode = acquireVsCodeApi();
 // DOM elements
 const componentPrompt = document.getElementById('componentPrompt');
 const generateBtn = document.getElementById('generateBtn');
-const selectedCode = document.getElementById('selectedCode');
-const modification = document.getElementById('modification');
-const iterateBtn = document.getElementById('iterateBtn');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const workspaceInfo = document.getElementById('workspaceInfo');
+
+
 const codeOutput = document.getElementById('codeOutput');
 const copyBtn = document.getElementById('copyBtn');
 const insertBtn = document.getElementById('insertBtn');
@@ -34,32 +31,7 @@ generateBtn.addEventListener('click', () => {
     });
 });
 
-iterateBtn.addEventListener('click', () => {
-    const code = selectedCode.value.trim();
-    const mod = modification.value.trim();
-    
-    if (!code) {
-        showError('Please paste the component code you want to modify');
-        return;
-    }
-    
-    if (!mod) {
-        showError('Please describe how you want to modify the component');
-        return;
-    }
-    
-    vscode.postMessage({
-        command: 'iterateComponent',
-        selectedCode: code,
-        modification: mod
-    });
-});
 
-analyzeBtn.addEventListener('click', () => {
-    vscode.postMessage({
-        command: 'analyzeWorkspace'
-    });
-});
 
 copyBtn.addEventListener('click', () => {
     if (lastGeneratedCode) {
@@ -95,15 +67,8 @@ window.addEventListener('message', event => {
             showSuccess('Component generated successfully!');
             break;
             
-        case 'componentIterated':
-            hideProgress();
-            displayGeneratedCode(message.code);
-            showSuccess('Component modified successfully!');
-            break;
-            
-        case 'workspaceAnalyzed':
-            displayWorkspaceInfo(message.data);
-            break;
+
+     
             
         case 'showError':
             hideProgress();
@@ -118,8 +83,8 @@ function showProgress(message) {
     
     // Disable buttons during processing
     generateBtn.disabled = true;
-    iterateBtn.disabled = true;
-    analyzeBtn.disabled = true;
+  
+  
 }
 
 function hideProgress() {
@@ -177,9 +142,7 @@ function displayGeneratedCode(code) {
     });
 }
 
-function displayWorkspaceInfo(info) {
-    workspaceInfo.textContent = JSON.stringify(info, null, 2);
-}
+
 
 // Auto-resize textareas
 function autoResize(textarea) {
@@ -189,8 +152,8 @@ function autoResize(textarea) {
 
 // Add auto-resize to textareas
 componentPrompt.addEventListener('input', () => autoResize(componentPrompt));
-selectedCode.addEventListener('input', () => autoResize(selectedCode));
-modification.addEventListener('input', () => autoResize(modification));
+
+
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -199,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Set initial state
     codeOutput.textContent = 'Generated code will appear here...';
-    workspaceInfo.textContent = 'Click "Analyze Current Workspace" to see workspace information';
 });
 
 // Keyboard shortcuts
@@ -209,9 +171,7 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (document.activeElement === componentPrompt) {
             generateBtn.click();
-        } else if (document.activeElement === modification) {
-            iterateBtn.click();
-        }
+        } 
     }
     
     // Escape to clear error messages
