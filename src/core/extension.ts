@@ -5,12 +5,15 @@ import { ComponentAnalyzer } from '../codebase/componentAnalyzer';
 import { EmbeddingGenerator } from '../embeddings/embeddingGenerator';
 import { ContextRanker } from '../embeddings/contextRanker';
 import { WorkspaceIndex, ComponentInfo } from '../types';
+import { PromptModal } from '../ui/promptModal';
+import { ComponentGenerator } from '../llm/componentGenerator';
 
 let workspaceIndex: WorkspaceIndex | null = null;
 let fileIndexer: FileIndexer;
 let frameworkDetector: FrameworkDetector;
 let componentAnalyzer: ComponentAnalyzer;
 let embeddingGenerator: EmbeddingGenerator;
+let componentGenerator: ComponentGenerator;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('UI Copilot extension is now active!');
@@ -20,98 +23,41 @@ export async function activate(context: vscode.ExtensionContext) {
     frameworkDetector = new FrameworkDetector();
     componentAnalyzer = new ComponentAnalyzer();
     embeddingGenerator = new EmbeddingGenerator();
+    componentGenerator = new ComponentGenerator();
 
     // Setup file watching
     const fileWatcher = fileIndexer.setupFileWatcher();
     context.subscriptions.push(fileWatcher);
 
-    // Commands
-    const generateCommand = vscode.commands.registerCommand('ui-copilot.generateComponent', () => {
-        vscode.window.showInformationMessage('UI Copilot: Component generation coming soon!');
+    // Primary command - Generate UI Component with prompt
+    const generateComponentQuickCommand = vscode.commands.registerCommand('ui-copilot.generateComponentQuick', async () => {
+        const promptModal = PromptModal.getInstance();
+        const userPrompt = await promptModal.showPromptInput();
+        
+        if (userPrompt) {
+            await componentGenerator.generateComponent(userPrompt, workspaceIndex);
+        }
     });
 
-    const explainCommand = vscode.commands.registerCommand('ui-copilot.explainCode', () => {
-        vscode.window.showInformationMessage('UI Copilot: Code explanation coming soon!');
-    });
-
-    const reindexCommand = vscode.commands.registerCommand('ui-copilot.reindexWorkspace', async () => {
+    // Analysis commands
+    const analyzeProjectCommand = vscode.commands.registerCommand('ui-copilot.analyzeProject', async () => {
         await initializeWorkspace();
-        vscode.window.showInformationMessage('Workspace reindexed successfully!');
-    });
-
-    const showStatusCommand = vscode.commands.registerCommand('ui-copilot.showIndexStatus', () => {
-        if (workspaceIndex) {
-            const fileCount = workspaceIndex.files.length;
-            const componentCount = workspaceIndex.components.length;
-            const frameworks = workspaceIndex.project.frameworks.map(f => f.name).join(', ');
-            const stats = componentAnalyzer.getComponentStats(workspaceIndex.components);
-            
-            const topHooks = Object.entries(stats.hooksUsage)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 3)
-                .map(([hook, count]) => `${hook} (${count})`)
-                .join(', ');
-
-            vscode.window.showInformationMessage(
-                `Index: ${fileCount} files, ${componentCount} components. Frameworks: ${frameworks || 'None detected'}. Top hooks: ${topHooks || 'None'}`
-            );
-        } else {
-            vscode.window.showWarningMessage('Workspace not indexed yet. Run "Reindex Workspace" command.');
-        }
-    });
-
-    const showComponentsCommand = vscode.commands.registerCommand('ui-copilot.showComponents', () => {
-        if (workspaceIndex && workspaceIndex.components.length > 0) {
-            const componentList = workspaceIndex.components
-                .slice(0, 10) // Show first 10
-                .map(comp => `${comp.name} (${comp.exports.join(', ')}) - ${comp.hooks?.length || 0} hooks${comp.embedding ? ' [embedded]' : ''}`)
-                .join('\n');
-            
-            vscode.window.showInformationMessage(
-                `Components found:\n${componentList}${workspaceIndex.components.length > 10 ? '\n...(showing first 10)' : ''}`,
-                { modal: true }
-            );
-        } else {
-            vscode.window.showWarningMessage('No components found. Try reindexing the workspace.');
-        }
+        vscode.window.showInformationMessage('Project analysis completed!');
     });
 
     const generateEmbeddingsCommand = vscode.commands.registerCommand('ui-copilot.generateEmbeddings', async () => {
         if (!workspaceIndex || workspaceIndex.components.length === 0) {
-            vscode.window.showWarningMessage('No components found. Please reindex the workspace first.');
+            vscode.window.showWarningMessage('No components found. Please analyze project first.');
             return;
         }
 
         await generateComponentEmbeddings();
     });
 
-    const findSimilarCommand = vscode.commands.registerCommand('ui-copilot.findSimilar', async () => {
-        if (!workspaceIndex || workspaceIndex.components.length === 0) {
-            vscode.window.showWarningMessage('No components found. Please reindex the workspace first.');
-            return;
-        }
-
-        await findSimilarComponents();
-    });
-
-    const searchCodebaseCommand = vscode.commands.registerCommand('ui-copilot.searchCodebase', async () => {
-        if (!workspaceIndex || workspaceIndex.components.length === 0) {
-            vscode.window.showWarningMessage('No components found. Please reindex the workspace first.');
-            return;
-        }
-
-        await searchSimilarComponents();
-    });
-
     context.subscriptions.push(
-        generateCommand, 
-        explainCommand, 
-        reindexCommand, 
-        showStatusCommand, 
-        showComponentsCommand,
-        generateEmbeddingsCommand,
-        findSimilarCommand,
-        searchCodebaseCommand
+        generateComponentQuickCommand,
+        analyzeProjectCommand,
+        generateEmbeddingsCommand
     );
 
     // Initialize workspace on activation

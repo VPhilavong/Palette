@@ -11,13 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing the Extension
 1. Press `F5` in VS Code to launch Extension Development Host
-2. In the new window, test the extension commands:
+2. In the new window, test the main command:
    - `Ctrl+Shift+U` (Mac: `Cmd+Shift+U`) - Generate UI Component
-   - Command Palette → "Generate UI Component" or "Iterate on Component"
+   - Describe what you want: "A pricing page with 3 plans", "Login form with validation", etc.
+   - The extension will generate and create the component file automatically
 
 ## Architecture Overview
 
-This is a VS Code extension called "UI Copilot" that provides AI-powered React/Vue component generation with intelligent codebase analysis.
+This is a VS Code extension called "UI Copilot" that provides Vercel v0-style prompt-driven UI component generation. Think of it as an embedded v0 experience inside your editor - describe what you want to build, and get production-ready components scaffolded instantly.
 
 ### 6-Phase Development Plan
 
@@ -40,13 +41,15 @@ This is a VS Code extension called "UI Copilot" that provides AI-powered React/V
 - Embedding generation with OpenAI/sentence-transformers
 - Similarity scoring and proximity-based context ranking
 
-**Phase 5: LLM Prompt & Response** 📋 PLANNED
-- Framework-specific prompt templates
-- LLM integration (Claude, OpenAI, Gemini) with streaming support
+**Phase 5: LLM Prompt & Response** ✅ COMPLETED
+- Framework-specific prompt templates with intelligent context
+- LLM integration (Claude, OpenAI, Gemini) with component generation
+- Natural language prompt modal for Vercel v0-style interaction
 
-**Phase 6: Editor Actions & UI** 📋 PLANNED
-- VSCode commands, CodeLens, inline suggestions
-- Live preview panel with WebviewPanel for component rendering
+**Phase 6: Editor Actions & UI** 🚧 IN PROGRESS
+- Single entry point via Ctrl+Shift+U for component generation
+- Auto-file creation with smart directory detection
+- Live preview panel with WebviewPanel for component rendering (planned)
 
 ### 🏗️ Clean Directory Structure
 
@@ -78,28 +81,27 @@ src/
     └── index.ts            # Shared type definitions
 ```
 
-### 🚀 Current Capabilities (Phases 1-3)
+### 🚀 Core Features (Vercel v0-Style Experience)
 
-**File Indexing**: Recursively scans workspace with smart exclusions (`node_modules`, `.git`, `dist`, `build`, `.next`)
+**🎨 Prompt-Driven Generation**: 
+- Single entry point via `Ctrl+Shift+U` 
+- Natural language prompts: "Make a pricing page with 3 plans", "Create a dashboard with charts"
+- Instant component scaffolding with auto-file creation
 
-**Framework Detection**: 
-- **React**: JSX/TSX files, React imports, component exports
-- **Vue.js**: SFC files, Vue imports, Composition API patterns  
-- **Next.js**: Next-specific patterns, app/pages router detection
-- **VitePress**: Vue-based static site generator patterns
+**🧠 Framework-Aware Intelligence**:
+- Detects React, Vue.js, Next.js, VitePress automatically
+- Uses existing component patterns from your codebase as context
+- Generates components matching your project's styling (Tailwind, styled-components, etc.)
 
-**Component Parsing**: Reliable regex-based approach with patterns for:
-- Component declarations: `function Component`, `const Component =`, `export default`
-- Vue SFC: `<template>`, `<script setup>`, Composition API
-- Export patterns: default exports, named exports, HOCs
+**📁 Smart File Management**:
+- Auto-detects target directories (`src/components`, `components`, etc.)
+- Handles file conflicts with options to overwrite or create variations
+- Generates proper TypeScript/JavaScript based on project structure
 
-**Hook Detection**: Comprehensive detection including:
-- React hooks: `useState`, `useEffect`, `useContext`, etc.
-- Vue Composition: `ref`, `reactive`, `computed`, `watch`
-- Custom hooks: Auth0 hooks, application-specific patterns
-- Framework hooks: Next.js router, VitePress utilities
-
-**Multi-Component Support**: Detects multiple components per file with Set-based deduplication
+**🔍 Codebase Analysis** (Background Intelligence):
+- File indexing with smart exclusions (`node_modules`, `.git`, `dist`, `build`, `.next`)
+- Component parsing and hook detection for context ranking
+- Framework-specific pattern recognition for better generation quality
 
 ### Key Implementation Details
 
@@ -170,9 +172,10 @@ Extension settings (VS Code settings.json):
 
 ### Next Development Priorities
 
-**Phase 4 (Current)**: Implement embedding generation and context ranking system
-**Phase 5**: Build LLM integration with framework-specific prompts
-**Phase 6**: Create rich VSCode UI with live preview capabilities
+**Enhanced Context Intelligence**: Improve component context ranking with embeddings for better generation quality
+**Live Preview Panel**: Add WebviewPanel for real-time component preview during generation
+**Component Iteration**: Add "iterate on component" commands for refining generated components
+**Multi-File Components**: Support generating component sets (component + styles + tests)
 
 ### Debugging
 - Console logs appear in Extension Development Host's Debug Console

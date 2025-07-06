@@ -142,80 +142,16 @@
     },
     "commands": [
       {
-        "command": "ui-copilot.generateComponent",
+        "command": "ui-copilot.generateComponentQuick",
         "title": "Generate UI Component",
-        "category": "UI Copilot"
-      },
-      {
-        "command": "ui-copilot.iterateComponent",
-        "title": "Iterate on Component",
-        "category": "UI Copilot"
-      },
-      {
-        "command": "ui-copilot.explainCode",
-        "title": "Explain Code",
         "category": "UI Copilot",
-        "icon": "$(question)"
-      },
-      {
-        "command": "ui-copilot.refactorCode",
-        "title": "Refactor Code",
-        "category": "UI Copilot",
-        "icon": "$(wrench)"
-      },
-      {
-        "command": "ui-copilot.completeCode",
-        "title": "Complete Code",
-        "category": "UI Copilot",
-        "icon": "$(zap)"
-      },
-      {
-        "command": "ui-copilot.debugCode",
-        "title": "Debug Code",
-        "category": "UI Copilot",
-        "icon": "$(bug)"
-      },
-      {
-        "command": "ui-copilot.searchCodebase",
-        "title": "Search Codebase",
-        "category": "UI Copilot",
-        "icon": "$(search)"
-      },
-      {
-        "command": "ui-copilot.findSimilar",
-        "title": "Find Similar Files",
-        "category": "UI Copilot",
-        "icon": "$(files)"
+        "icon": "$(add)"
       },
       {
         "command": "ui-copilot.analyzeProject",
         "title": "Analyze Project",
         "category": "UI Copilot",
         "icon": "$(graph)"
-      },
-      {
-        "command": "ui-copilot.reindexWorkspace",
-        "title": "Reindex Workspace",
-        "category": "UI Copilot",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "ui-copilot.showIndexStatus",
-        "title": "Show Index Status",
-        "category": "UI Copilot",
-        "icon": "$(info)"
-      },
-      {
-        "command": "ui-copilot.configureExtension",
-        "title": "Configure Extension",
-        "category": "UI Copilot",
-        "icon": "$(settings)"
-      },
-      {
-        "command": "ui-copilot.showComponents",
-        "title": "Show Components",
-        "category": "UI Copilot",
-        "icon": "$(list-tree)"
       },
       {
         "command": "ui-copilot.generateEmbeddings",
@@ -226,102 +162,29 @@
     ],
     "keybindings": [
       {
-        "command": "ui-copilot.generateComponent",
+        "command": "ui-copilot.generateComponentQuick",
         "key": "ctrl+shift+u",
         "mac": "cmd+shift+u",
         "when": "editorTextFocus"
-      },
-      {
-        "command": "ui-copilot.explainCode",
-        "key": "ctrl+shift+e",
-        "mac": "cmd+shift+e",
-        "when": "editorHasSelection"
-      },
-      {
-        "command": "ui-copilot.refactorCode",
-        "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r",
-        "when": "editorHasSelection"
-      },
-      {
-        "command": "ui-copilot.completeCode",
-        "key": "ctrl+shift+space",
-        "mac": "cmd+shift+space",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "ui-copilot.searchCodebase",
-        "key": "ctrl+shift+f",
-        "mac": "cmd+shift+f",
-        "when": "true"
       },
       {
         "command": "ui-copilot.generateEmbeddings",
         "key": "ctrl+shift+g",
         "mac": "cmd+shift+g",
         "when": "workspaceFolderCount > 0"
-      },
-      {
-        "command": "ui-copilot.findSimilar",
-        "key": "ctrl+shift+s",
-        "mac": "cmd+shift+s",
-        "when": "editorIsOpen"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "ui-copilot.generateComponent",
-          "when": "resourceExtname =~ /\\.(jsx?|tsx?)$/",
+          "command": "ui-copilot.generateComponentQuick",
+          "when": "resourceExtname =~ /\\.(jsx?|tsx?|vue)$/",
           "group": "ui-copilot@1"
-        },
-        {
-          "command": "ui-copilot.explainCode",
-          "when": "editorHasSelection && resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
-          "group": "ui-copilot@2"
-        },
-        {
-          "command": "ui-copilot.refactorCode",
-          "when": "editorHasSelection && resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
-          "group": "ui-copilot@3"
-        },
-        {
-          "command": "ui-copilot.debugCode",
-          "when": "resourceExtname =~ /\\.(jsx?|tsx?|py|java|cs|cpp|c)$/",
-          "group": "ui-copilot@4"
         }
       ],
       "commandPalette": [
         {
-          "command": "ui-copilot.explainCode",
-          "when": "editorIsOpen"
-        },
-        {
-          "command": "ui-copilot.refactorCode",
-          "when": "editorIsOpen"
-        },
-        {
-          "command": "ui-copilot.completeCode",
-          "when": "editorIsOpen"
-        },
-        {
-          "command": "ui-copilot.debugCode",
-          "when": "editorIsOpen"
-        },
-        {
-          "command": "ui-copilot.searchCodebase",
-          "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "ui-copilot.findSimilar",
-          "when": "editorIsOpen"
-        },
-        {
           "command": "ui-copilot.analyzeProject",
-          "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "ui-copilot.reindexWorkspace",
           "when": "workspaceFolderCount > 0"
         },
         {
