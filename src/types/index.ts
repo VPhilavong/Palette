@@ -30,6 +30,11 @@ export interface ComponentInfo {
     imports: ImportInfo[];
     props?: string[];
     hooks?: string[];
+    jsxElements?: string[];
+    comments?: string[];
+    summary?: string;
+    embeddingInput?: string;
+    embedding?: number[];
 }
 
 export interface ImportInfo {
@@ -43,4 +48,25 @@ export interface WorkspaceIndex {
     components: ComponentInfo[];
     project: ProjectMetadata;
     lastUpdated: Date;
+}
+
+export interface EmbeddingConfig {
+    model: string;
+    dimensions: number;
+    maxTokens: number;
+    batchSize: number;
+}
+
+export interface SimilarityResult {
+    component: ComponentInfo;
+    similarity: number;
+    rank: number;
+}
+
+export interface EmbeddingCache {
+    [componentPath: string]: {
+        embedding: number[];
+        lastModified: number;
+        embeddingInput: string;
+    };
 }
