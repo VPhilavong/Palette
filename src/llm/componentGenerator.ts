@@ -5,16 +5,19 @@ import { WorkspaceIndex, ComponentInfo, Framework } from '../types';
 import { PromptBuilder } from './promptBuilder';
 import { ModelClient, ModelClientFactory } from './modelClient';
 import { CodebaseAnalyzer, CodebasePatterns } from '../codebase/codebaseAnalyzer';
+import { CodeValidator } from './codeValidator';
 
 export class ComponentGenerator {
     private promptBuilder: PromptBuilder;
     private modelClient: ModelClient;
     private codebaseAnalyzer: CodebaseAnalyzer;
+    private codeValidator: CodeValidator;
 
     constructor() {
         this.promptBuilder = new PromptBuilder();
         this.modelClient = ModelClientFactory.createClient();
         this.codebaseAnalyzer = new CodebaseAnalyzer();
+        this.codeValidator = new CodeValidator();
     }
 
     async generateComponent(
@@ -66,8 +69,30 @@ export class ComponentGenerator {
                 return;
             }
 
+            vscode.window.showInformationMessage('🔍 Validating and fixing generated code...');
+
+            // Validate and fix the generated code
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
+                generatedCode, 
+                workspaceIndex
+            );
+
+            // Show validation summary
+            const validationSummary = this.codeValidator.getValidationSummary(validationResult);
+            if (validationResult.warnings.length > 0 || validationResult.errors.length > 0) {
+                vscode.window.showInformationMessage(validationSummary);
+            }
+
+            if (!validationResult.isValid) {
+                vscode.window.showErrorMessage('Generated code has errors that could not be fixed automatically');
+                return;
+            }
+
+            // Use the fixed code
+            const finalCode = validationResult.fixedCode || generatedCode;
+
             // Parse and create component file(s) based on patterns
-            await this.createIntelligentComponent(generatedCode, targetDir, patterns, userPrompt);
+            await this.createIntelligentComponent(finalCode, targetDir, patterns, userPrompt);
 
         } catch (error) {
             console.error('Component generation failed:', error);

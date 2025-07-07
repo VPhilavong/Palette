@@ -24,6 +24,7 @@ export class PromptBuilder {
         prompt += `Technical Requirements:\n`;
         prompt += `- Framework: ${frameworks}\n`;
         prompt += `- Language: ${hasTypeScript ? 'TypeScript' : 'JavaScript'}\n`;
+        prompt += `- Available dependencies: ${Object.keys(projectMetadata.dependencies).slice(0, 10).join(', ')}\n`;
         
         if (uiLibraries) {
             prompt += `- UI Libraries: ${uiLibraries}\n`;
@@ -36,6 +37,9 @@ export class PromptBuilder {
         prompt += `- Include accessibility attributes (ARIA)\n`;
         prompt += `- Use semantic HTML elements\n`;
         prompt += `- Add hover and focus states for interactive elements\n`;
+        prompt += `- DO NOT use external packages unless they are in the available dependencies list\n`;
+        prompt += `- If icons are needed and no icon package is available, use text placeholders like [Icon]\n`;
+        prompt += `- Create self-contained components with inline types if @/ imports don't exist\n`;
         
         if (uiLibraries.includes('Tailwind')) {
             prompt += `- Style with Tailwind CSS classes\n`;
