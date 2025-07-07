@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ComponentGenerator } from '../componentGenerator';
-import { CodebaseAnalyzer } from '../codebaseAnalyzer';
+import { ComponentGenerator } from '../llm/componentGenerator';
+import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
 
 export class UICopilotPanel {
     public static currentPanel: UICopilotPanel | undefined;
