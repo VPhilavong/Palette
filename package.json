@@ -168,6 +168,11 @@
         "when": "editorTextFocus"
       },
       {
+        "command": "ui-copilot.openPanel",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+p"
+      },
+      {
         "command": "ui-copilot.generateEmbeddings",
         "key": "ctrl+shift+g",
         "mac": "cmd+shift+g",

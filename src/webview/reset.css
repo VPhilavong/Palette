@@ -1,0 +1,39 @@
+/* VS Code webview reset */
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-family: var(--vscode-font-family);
+    font-weight: var(--vscode-font-weight);
+    font-size: var(--vscode-font-size);
+    line-height: 1.5;
+}
+
+body {
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+}
+
+button, input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+pre {
+    font-family: var(--vscode-editor-font-family);
+}
+
+textarea, input {
+    outline: none;
+}
