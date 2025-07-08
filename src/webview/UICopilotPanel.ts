@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ComponentGenerator } from '../llm/componentGenerator';
 import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
+import { indexWorkspace } from '../codebase/fileIndexer';
+
 import { FileIndexer } from '../codebase/fileIndexer';
 import { FrameworkDetector } from '../codebase/frameworkDetector';
 import { ComponentAnalyzer } from '../codebase/componentAnalyzer';
@@ -15,7 +17,9 @@ export class UICopilotPanel {
     private readonly _componentGenerator: ComponentGenerator;
     private readonly _codebaseAnalyzer: CodebaseAnalyzer;
 
+
     public static readonly viewType = 'ui-copilot-panel';
+    
 
     public static createOrShow(extensionUri: vscode.Uri, componentGenerator: ComponentGenerator, codebaseAnalyzer: CodebaseAnalyzer) {
         const column = vscode.window.activeTextEditor

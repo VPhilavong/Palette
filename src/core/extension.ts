@@ -7,6 +7,9 @@ import { ContextRanker } from '../embeddings/contextRanker';
 import { WorkspaceIndex, ComponentInfo } from '../types';
 import { PromptModal } from '../ui/promptModal';
 import { ComponentGenerator } from '../llm/componentGenerator';
+import { UICopilotPanel } from '../webview/UICopilotPanel'; // update path if needed
+import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
+
 
 let workspaceIndex: WorkspaceIndex | null = null;
 let fileIndexer: FileIndexer;
@@ -14,6 +17,7 @@ let frameworkDetector: FrameworkDetector;
 let componentAnalyzer: ComponentAnalyzer;
 let embeddingGenerator: EmbeddingGenerator;
 let componentGenerator: ComponentGenerator;
+let codebaseAnalyzer: CodebaseAnalyzer;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('UI Copilot extension is now active!');
@@ -28,6 +32,18 @@ export async function activate(context: vscode.ExtensionContext) {
     // Setup file watching
     const fileWatcher = fileIndexer.setupFileWatcher();
     context.subscriptions.push(fileWatcher);
+ 
+    codebaseAnalyzer = new CodebaseAnalyzer();
+
+    
+
+    const openPanelCommand = vscode.commands.registerCommand('ui-copilot.openPanel', () => {
+        UICopilotPanel.createOrShow(context.extensionUri, componentGenerator, codebaseAnalyzer);
+    });
+    
+    
+    context.subscriptions.push(openPanelCommand);
+    
 
     // Primary command - Generate UI Component with prompt
     const generateComponentQuickCommand = vscode.commands.registerCommand('ui-copilot.generateComponentQuick', async () => {

@@ -9,12 +9,13 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onLanguage:javascript",
-    "onLanguage:typescript",
-    "onLanguage:javascriptreact",
-    "onLanguage:typescriptreact"
-  ],
+ "activationEvents": [
+  "onCommand:ui-copilot.openPanel",
+  "onLanguage:javascript",
+  "onLanguage:typescript",
+  "onLanguage:javascriptreact",
+  "onLanguage:typescriptreact"
+],
   "main": "./out/core/extension.js",
   "contributes": {
     "configuration": {

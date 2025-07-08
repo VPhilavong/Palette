@@ -1,4 +1,5 @@
 export interface FileMetadata {
+    
     path: string;
     name: string;
     extension: string;
@@ -15,6 +16,7 @@ export interface Framework {
 }
 
 export interface ProjectMetadata {
+    rootPath: string;
     frameworks: Framework[];
     dependencies: Record<string, string>;
     devDependencies: Record<string, string>;

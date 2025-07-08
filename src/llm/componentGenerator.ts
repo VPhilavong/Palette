@@ -77,9 +77,9 @@ export class ComponentGenerator {
     }
 
     async generateComponent(
-        userPrompt: string, 
+        userPrompt: string,
         workspaceIndex?: WorkspaceIndex | null
-    ): Promise<void> {
+      ): Promise<string | undefined> {
         try {
             if (!workspaceIndex) {
                 vscode.window.showWarningMessage('Please analyze project first for better context-aware generation');
@@ -89,7 +89,7 @@ export class ComponentGenerator {
             vscode.window.showInformationMessage('🧠 Analyzing codebase patterns...');
 
             // Analyze codebase patterns for intelligent generation
-            const patterns = await this.codebaseAnalyzer.analyzeCodebasePatterns(workspaceIndex);
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
             
             // Find similar components for context
             const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
@@ -149,6 +149,9 @@ export class ComponentGenerator {
 
             // Parse and create component file(s) based on patterns
             await this.createIntelligentComponent(finalCode, targetDir, patterns, userPrompt);
+            return finalCode;
+
+            
 
         } catch (error) {
             console.error('Component generation failed:', error);
