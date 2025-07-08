@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ComponentGenerator } from '../llm/componentGenerator';
 import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
+import { indexWorkspace } from '../codebase/fileIndexer';
+
 
 export class UICopilotPanel {
     public static currentPanel: UICopilotPanel | undefined;
@@ -11,7 +13,9 @@ export class UICopilotPanel {
     private readonly _componentGenerator: ComponentGenerator;
     private readonly _codebaseAnalyzer: CodebaseAnalyzer;
 
+
     public static readonly viewType = 'ui-copilot-panel';
+    
 
     public static createOrShow(extensionUri: vscode.Uri, componentGenerator: ComponentGenerator, codebaseAnalyzer: CodebaseAnalyzer) {
         const column = vscode.window.activeTextEditor
@@ -80,8 +84,29 @@ export class UICopilotPanel {
                 message: 'Generating component...'
             });
 
-            const workspaceInfo = await this._codebaseAnalyzer.analyzeWorkspace();
-            const generatedCode = await this._componentGenerator.generateComponent(prompt, workspaceInfo);
+            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+            if (!workspacePath) {
+            this._panel.webview.postMessage({
+                command: 'showError',
+                message: 'No workspace folder found.'
+            });
+            return;
+            }
+
+            const workspaceIndex = await indexWorkspace(workspacePath);
+
+
+            const generatedCode = await this._componentGenerator.generateComponent(prompt, workspaceIndex);
+
+            if (!generatedCode) {
+                this._panel.webview.postMessage({
+                    command: 'showError',
+                    message: 'Component generation failed or returned nothing.'
+                });
+                return;
+            }
+
             
             this._panel.webview.postMessage({
                 command: 'componentGenerated',

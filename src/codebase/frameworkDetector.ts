@@ -9,7 +9,8 @@ export class FrameworkDetector {
             devDependencies: {},
             hasTypeScript: false,
             uiLibraries: [],
-            stateManagement: []
+            stateManagement: [],
+            rootPath: ''
         };
 
         // Step 1: Analyze package.json

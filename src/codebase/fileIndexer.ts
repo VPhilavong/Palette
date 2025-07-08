@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { FileMetadata } from '../types';
+import { WorkspaceIndex } from '../types';
 
 export class FileIndexer {
     private excludePatterns: string[] = [
@@ -126,4 +127,45 @@ export class FileIndexer {
 
         return watcher;
     }
+
+    
+
+    
+}
+export async function indexWorkspace(projectPath: string): Promise<WorkspaceIndex> {
+    const fileIndexer = new FileIndexer();
+    const files = await fileIndexer.indexWorkspace();
+
+    const components = files
+        .filter(f => f.isComponent)
+        .map(f => ({
+            path: f.path,
+            name: f.name,
+            extension: f.extension,
+            size: f.size,
+            lastModified: f.lastModified,
+            isComponent: f.isComponent,
+            exports: [], // You can extract this later
+            imports: [], // You can extract this later
+            hooks: [],   // Optional: add if you're extracting hooks
+            jsxElements: [], // Optional: extract JSX/HTML elements used
+            props: []    // Optional: list of prop names used
+        }));
+
+    const workspaceIndex: WorkspaceIndex = {
+        files,
+        components,
+        project: {
+            rootPath: projectPath,
+            dependencies: {}, // TODO: extract from package.json
+            devDependencies: {}, // TODO: extract from package.json
+            frameworks: [], // TODO: use your backendDetector here
+            hasTypeScript: files.some(f => f.extension === '.ts' || f.extension === '.tsx'),
+            uiLibraries: [], // TODO: extract from imports
+            stateManagement: [] // TODO: extract (e.g., Redux, Zustand)
+        },
+        lastUpdated: new Date() // Initialize with the current date
+    };
+
+    return workspaceIndex;
 }

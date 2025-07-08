@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { WorkspaceIndex, ComponentInfo } from '../types';
+import { indexWorkspace } from './fileIndexer';
 
 export interface CodebasePatterns {
     stylingApproach: 'css-modules' | 'tailwind' | 'styled-components' | 'regular-css' | 'scss';
@@ -12,9 +13,18 @@ export interface CodebasePatterns {
     existingComponents: ComponentInfo[];
 }
 
+
 export class CodebaseAnalyzer {
+
+    async analyzeWorkspaceFromPath(projectRoot: string): Promise<CodebasePatterns> {
+        const workspaceIndex = await indexWorkspace(projectRoot);
+        return this.analyzeWorkspace(workspaceIndex);
+    }
+
+
     
-    async analyzeCodebasePatterns(workspaceIndex: WorkspaceIndex): Promise<CodebasePatterns> {
+    
+    async analyzeWorkspace(workspaceIndex: WorkspaceIndex): Promise<CodebasePatterns> {
         const patterns: CodebasePatterns = {
             stylingApproach: 'regular-css',
             componentStructure: 'single-file',
@@ -23,6 +33,7 @@ export class CodebaseAnalyzer {
             stylePaths: [],
             existingComponents: workspaceIndex.components
         };
+        
 
         // Analyze styling approach
         patterns.stylingApproach = this.detectStylingApproach(workspaceIndex);
