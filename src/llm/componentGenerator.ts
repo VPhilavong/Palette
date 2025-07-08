@@ -20,6 +20,62 @@ export class ComponentGenerator {
         this.codeValidator = new CodeValidator();
     }
 
+    async generateComponentCode(
+        userPrompt: string, 
+        workspaceIndex?: WorkspaceIndex | null
+    ): Promise<string | null> {
+        try {
+            if (!workspaceIndex) {
+                vscode.window.showWarningMessage('Please analyze project first for better context-aware generation');
+                return null;
+            }
+
+            // Analyze codebase patterns for intelligent generation
+            const patterns = await this.codebaseAnalyzer.analyzeCodebasePatterns(workspaceIndex);
+            
+            // Find similar components for context
+            const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            
+            // Build intelligent context-aware prompt
+            const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
+            const systemPrompt = this.buildSystemPrompt(workspaceIndex, patterns);
+            
+            const fullPrompt = this.promptBuilder.buildComponentGenerationPrompt(
+                userPrompt,
+                similarComponents,
+                workspaceIndex.project,
+                patterns,
+                contextInfo
+            );
+
+            // Generate component code with context
+            const generatedCode = await this.modelClient.generateCompletion(
+                `${systemPrompt}\n\n${fullPrompt}`
+            );
+
+            if (!generatedCode) {
+                return null;
+            }
+
+            // Validate and fix the generated code
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
+                generatedCode, 
+                workspaceIndex
+            );
+
+            if (!validationResult.isValid) {
+                return null;
+            }
+
+            // Return the fixed code
+            return validationResult.fixedCode || generatedCode;
+
+        } catch (error) {
+            console.error('Component generation failed:', error);
+            return null;
+        }
+    }
+
     async generateComponent(
         userPrompt: string, 
         workspaceIndex?: WorkspaceIndex | null
