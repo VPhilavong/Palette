@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ComponentGenerator } from '../llm/componentGenerator';
 import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
+import { FileIndexer } from '../codebase/fileIndexer';
+import { FrameworkDetector } from '../codebase/frameworkDetector';
+import { ComponentAnalyzer } from '../codebase/componentAnalyzer';
+import { WorkspaceIndex } from '../types';
 
 export class UICopilotPanel {
     public static currentPanel: UICopilotPanel | undefined;
@@ -80,22 +84,44 @@ export class UICopilotPanel {
                 message: 'Generating component...'
             });
 
-            const workspaceInfo = await this._codebaseAnalyzer.analyzeWorkspace();
-            const generatedCode = await this._componentGenerator.generateComponent(prompt, workspaceInfo);
+            // Create workspace index for code generation
+            const fileIndexer = new FileIndexer();
+            const frameworkDetector = new FrameworkDetector();
+            const componentAnalyzer = new ComponentAnalyzer();
             
-            this._panel.webview.postMessage({
-                command: 'componentGenerated',
-                code: generatedCode
-            });
+            const files = await fileIndexer.indexWorkspace();
+            const project = await frameworkDetector.detectProjectFrameworks();
+            const components = await componentAnalyzer.analyzeComponents(files);
+            
+            const workspaceIndex: WorkspaceIndex = {
+                files,
+                components,
+                project,
+                lastUpdated: new Date()
+            };
 
-            // Also insert into active editor if available
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                await editor.edit(editBuilder => {
-                    const position = editor.selection.active;
-                    editBuilder.insert(position, generatedCode);
+            const generatedCode = await this._componentGenerator.generateComponentCode(prompt, workspaceIndex);
+            
+            if (generatedCode) {
+                this._panel.webview.postMessage({
+                    command: 'componentGenerated',
+                    code: generatedCode
                 });
-                await vscode.commands.executeCommand('editor.action.formatDocument');
+
+                // Also insert into active editor if available
+                const editor = vscode.window.activeTextEditor;
+                if (editor) {
+                    await editor.edit(editBuilder => {
+                        const position = editor.selection.active;
+                        editBuilder.insert(position, generatedCode);
+                    });
+                    await vscode.commands.executeCommand('editor.action.formatDocument');
+                }
+            } else {
+                this._panel.webview.postMessage({
+                    command: 'showError',
+                    message: 'Failed to generate component code'
+                });
             }
 
         } catch (error) {

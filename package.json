@@ -148,6 +148,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "ui-copilot.generateWithAgent",
+        "title": "Generate with AI Agent (Multi-file)",
+        "category": "UI Copilot",
+        "icon": "$(robot)"
+      },
+      {
         "command": "ui-copilot.analyzeProject",
         "title": "Analyze Project",
         "category": "UI Copilot",
@@ -161,17 +167,6 @@
       }
     ],
     "keybindings": [
-      {
-        "command": "ui-copilot.generateComponentQuick",
-        "key": "ctrl+shift+u",
-        "mac": "cmd+shift+u",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "ui-copilot.openPanel",
-        "key": "ctrl+shift+p",
-        "mac": "cmd+shift+p"
-      },
       {
         "command": "ui-copilot.generateEmbeddings",
         "key": "ctrl+shift+g",
@@ -188,6 +183,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "ui-copilot.generateWithAgent",
+          "when": "workspaceFolderCount > 0"
+        },
         {
           "command": "ui-copilot.analyzeProject",
           "when": "workspaceFolderCount > 0"
