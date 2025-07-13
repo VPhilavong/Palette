@@ -75,8 +75,8 @@ window.addEventListener('message', event => {
             
         case 'componentGenerated':
             hideProgress();
-            displayGeneratedCode(message.code);
-            showSuccess('Component generated successfully!');
+            displayGeneratedSuccess(message.message, message.result);
+            showSuccess(message.message);
             break;
             
 
@@ -104,8 +104,6 @@ function hideProgress() {
     
     // Re-enable buttons
     generateBtn.disabled = false;
-    iterateBtn.disabled = false;
-    analyzeBtn.disabled = false;
 }
 
 function showError(message) {
@@ -146,6 +144,41 @@ function showSuccess(message) {
 function displayGeneratedCode(code) {
     lastGeneratedCode = code;
     codeOutput.textContent = code;
+    
+    // Scroll to the output section
+    document.querySelector('.output-section').scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'nearest'
+    });
+}
+
+function displayGeneratedSuccess(message, result) {
+    // Display success message instead of raw code since files are already created
+    const successMessage = `✅ ${message}\n\n`;
+    let displayText = successMessage;
+    
+    if (result && result.filePath) {
+        displayText += `📁 File created: ${result.filePath}\n`;
+    }
+    
+    if (result && result.code) {
+        displayText += `\n📝 Generated code:\n\n${result.code}`;
+        lastGeneratedCode = result.code; // Store for copy functionality
+    } else {
+        displayText += `\n✨ Component has been generated and saved to your project!`;
+        lastGeneratedCode = ''; // No code to copy since it's already saved
+    }
+    
+    codeOutput.textContent = displayText;
+    
+    // Update button states based on whether we have code to work with
+    if (result && result.code) {
+        copyBtn.style.display = 'inline-block';
+        insertBtn.style.display = 'none'; // No need to insert since it's already saved
+    } else {
+        copyBtn.style.display = 'none';
+        insertBtn.style.display = 'none';
+    }
     
     // Scroll to the output section
     document.querySelector('.output-section').scrollIntoView({ 

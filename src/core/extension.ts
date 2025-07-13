@@ -69,18 +69,15 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Ask to Build command
+    // Ask to Build command - opens UI Copilot Panel
     const askToBuildCommand = vscode.commands.registerCommand('ui-copilot.askToBuild', async () => {
-        const promptModal = PromptModal.getInstance();
-        const userPrompt = await promptModal.showPromptInput();
-        
-        if (userPrompt) {
-            // Ensure workspace is analyzed first
-            if (!workspaceIndex) {
-                await initializeWorkspace();
-            }
-            await componentGenerator.generateComponent(userPrompt, workspaceIndex);
+        // Ensure workspace is analyzed first
+        if (!workspaceIndex) {
+            await initializeWorkspace();
         }
+        
+        // Open the UI Copilot Panel for interactive conversation
+        UICopilotPanel.createOrShow(context.extensionUri, componentGenerator, codebaseAnalyzer);
     });
 
     context.subscriptions.push(

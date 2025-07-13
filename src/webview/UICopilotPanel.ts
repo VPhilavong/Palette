@@ -99,10 +99,10 @@ export class UICopilotPanel {
         try {
             this._panel.webview.postMessage({
                 command: 'showProgress',
-                message: 'Generating component...'
+                message: 'Analyzing workspace and generating component...'
             });
 
-            // Create workspace index for code generation
+            // Create workspace index for code generation (same as in extension.ts)
             const fileIndexer = new FileIndexer();
             const frameworkDetector = new FrameworkDetector();
             const componentAnalyzer = new ComponentAnalyzer();
@@ -118,35 +118,33 @@ export class UICopilotPanel {
                 lastUpdated: new Date()
             };
 
-            const generatedCode = await this._componentGenerator.generateComponentCode(prompt, workspaceIndex);
+            // Use the full generateComponent method (not just generateComponentCode)
+            // This creates files in the correct location and handles all the "Ask to Build" functionality
+            const result = await this._componentGenerator.generateComponent(prompt, workspaceIndex);
             
-            if (generatedCode) {
+            if (result) {
                 this._panel.webview.postMessage({
                     command: 'componentGenerated',
-                    code: generatedCode
+                    message: 'Component successfully generated and saved to your project!',
+                    result: result
                 });
-
-                // Also insert into active editor if available
-                const editor = vscode.window.activeTextEditor;
-                if (editor) {
-                    await editor.edit(editBuilder => {
-                        const position = editor.selection.active;
-                        editBuilder.insert(position, generatedCode);
-                    });
-                    await vscode.commands.executeCommand('editor.action.formatDocument');
-                }
+                
+                // Show success notification
+                vscode.window.showInformationMessage('Component generated successfully!');
             } else {
                 this._panel.webview.postMessage({
                     command: 'showError',
-                    message: 'Failed to generate component code'
+                    message: 'Failed to generate component. Please check your prompt and try again.'
                 });
             }
 
         } catch (error) {
+            console.error('Component generation error:', error);
             this._panel.webview.postMessage({
                 command: 'showError',
                 message: `Error generating component: ${error}`
             });
+            vscode.window.showErrorMessage(`Failed to generate component: ${error}`);
         }
     }
 

@@ -94,6 +94,12 @@
         "title": "Ask to Build",
         "category": "UI Copilot",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ui-copilot.openPanel",
+        "title": "Open UI Copilot Panel",
+        "category": "UI Copilot",
+        "icon": "$(layout-panel)"
       }
     ]
   },

@@ -45,14 +45,16 @@ export class PromptBuilder {
         
         prompt += `\nComponent Requirements:\n`;
         prompt += `- Use modern functional components and hooks\n`;
-        prompt += `- Include proper prop types/interfaces with clear, descriptive names\n`;
+        prompt += `- Define props with TypeScript \`interface\` or \`type\`; **do NOT use \`prop-types\`**\n`;
         prompt += `- Add responsive design with appropriate breakpoints\n`;
         prompt += `- Include accessibility attributes (ARIA) and semantic HTML\n`;
         prompt += `- Use semantic HTML elements (section, article, nav, main, etc.)\n`;
         prompt += `- Add hover and focus states for interactive elements\n`;
         prompt += `- DO NOT use external packages unless they are in the available dependencies list\n`;
         prompt += `- If icons are needed and no icon package is available, use text placeholders like [Icon]\n`;
-        prompt += `- Create self-contained components with inline types if @/ imports don't exist\n`;
+        prompt += `- Create self-contained components with inline types if \`@/\` imports don’t exist\n`;
+        prompt += `- **Do NOT** add \`import React from 'react'\`; Vite/ESBuild handles it automatically\n`;
+        prompt += `- **Do NOT** use \`React.FC\` or \`FC\`; instead write a plain function like \`export default function Component(props: Props) { … }\`.\n`;
         
         // Add modern React patterns
         prompt += `\nModern React Patterns:\n`;

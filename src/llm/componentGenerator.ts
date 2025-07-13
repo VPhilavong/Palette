@@ -21,6 +21,21 @@ import { ModelClient, ModelClientFactory } from './modelClient';
 import { CodebaseAnalyzer, CodebasePatterns } from '../codebase/codebaseAnalyzer';
 import { CodeValidator } from './codeValidator';
 
+/**
+ * Removes legacy / disallowed patterns from generated output.
+ * - Strips `import React …`
+ * - Removes `React.` namespace usages (e.g. React.FC)
+ * - Throws if run-time PropTypes appear.
+ */
+function sanitize(code: string): string {
+    code = code.replace(/^import\s+React.*\n?/m, "");
+    code = code.replace(/\bReact\./g, "");
+    if (/prop-types|PropTypes/.test(code)) {
+        throw new Error("Generation aborted: prop-types detected in output");
+    }
+    return code.trimStart();
+}
+
 export class ComponentGenerator {
     private promptBuilder: PromptBuilder;
     private modelClient: ModelClient;
@@ -71,9 +86,12 @@ export class ComponentGenerator {
                 return null;
             }
 
+            // Sanitize the generated code
+            const sanitizedCode = sanitize(generatedCode);
+
             // Validate and fix the generated code
             const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
-                generatedCode, 
+                sanitizedCode, 
                 workspaceIndex
             );
 
@@ -82,7 +100,7 @@ export class ComponentGenerator {
             }
 
             // Return the fixed code
-            return validationResult.fixedCode || generatedCode;
+            return validationResult.fixedCode || sanitizedCode;
 
         } catch (error) {
             console.error('Component generation failed:', error);
@@ -139,11 +157,20 @@ export class ComponentGenerator {
                 return;
             }
 
+            // Sanitize the generated code
+            let sanitizedCode: string;
+            try {
+                sanitizedCode = sanitize(generatedCode);
+            } catch (e: any) {
+                vscode.window.showErrorMessage(e.message);
+                return;
+            }
+
             vscode.window.showInformationMessage('🔍 Validating and fixing generated code...');
 
             // Validate and fix the generated code
             const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
-                generatedCode, 
+                sanitizedCode, 
                 workspaceIndex
             );
 
@@ -158,14 +185,12 @@ export class ComponentGenerator {
                 return;
             }
 
-            // Use the fixed code
-            const finalCode = validationResult.fixedCode || generatedCode;
+            // Use the fixed code and sanitize it again
+            const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
 
             // Parse and create component file(s) based on patterns
             await this.createIntelligentComponent(finalCode, targetDir, patterns, userPrompt);
             return finalCode;
-
-            
 
         } catch (error) {
             console.error('Component generation failed:', error);
@@ -408,10 +433,7 @@ Generate only the CSS code:`;
         // Remove markdown code blocks if present
         cleanCode = cleanCode.replace(/```[\w]*\n/, '').replace(/\n```$/, '');
         
-        // Ensure proper imports
-        if (hasJSX && !cleanCode.includes("import React")) {
-            cleanCode = "import React from 'react';\n\n" + cleanCode;
-        }
+        // ⚠️ Do NOT auto-insert React import anymore – bundler handles it.
 
         // Add export default if missing
         if (!cleanCode.includes('export default') && !cleanCode.includes('export {')) {
