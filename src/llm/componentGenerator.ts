@@ -62,8 +62,8 @@ export class ComponentGenerator {
             // Analyze codebase patterns for intelligent generation
             const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
             
-            // Find similar components for context
-            const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            // Find similar components for context using embeddings
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
             
             // Build intelligent context-aware prompt
             const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
@@ -123,8 +123,8 @@ export class ComponentGenerator {
             // Analyze codebase patterns for intelligent generation
             const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
             
-            // Find similar components for context
-            const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            // Find similar components for context using embeddings
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
             
             // Detect target directory based on patterns
             const targetDir = await this.determineTargetDirectory(patterns);

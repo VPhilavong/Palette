@@ -108,13 +108,24 @@ async function initializeWorkspace(): Promise<void> {
 
         // Generate embeddings for components automatically
         console.log('Generating component summaries and embeddings...');
+        let embeddingsGenerated = 0;
         for (const component of components) {
             embeddingGenerator.generateComponentSummary(component);
             try {
                 component.embedding = await embeddingGenerator.generateComponentEmbedding(component);
+                if (component.embedding && component.embedding.length > 0) {
+                    embeddingsGenerated++;
+                }
             } catch (error) {
                 console.error(`Failed to generate embedding for ${component.name}:`, error);
             }
+        }
+        
+        console.log(`✅ Generated embeddings for ${embeddingsGenerated}/${components.length} components`);
+        if (embeddingsGenerated > 0) {
+            console.log('🎯 Embeddings are ready for context-aware code generation!');
+        } else {
+            console.log('⚠️ No embeddings generated - context search will be limited');
         }
 
         workspaceIndex = {

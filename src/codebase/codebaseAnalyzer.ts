@@ -17,6 +17,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { WorkspaceIndex, ComponentInfo } from '../types';
 import { indexWorkspace } from './fileIndexer';
+import { EmbeddingGenerator } from '../embeddings/embeddingGenerator';
+import { ContextRanker } from '../embeddings/contextRanker';
 
 export interface CodebasePatterns {
     stylingApproach: 'css-modules' | 'tailwind' | 'styled-components' | 'regular-css' | 'scss';
@@ -49,6 +51,77 @@ export interface CodebasePatterns {
 
 
 export class CodebaseAnalyzer {
+    private embeddingGenerator: EmbeddingGenerator;
+
+    constructor() {
+        this.embeddingGenerator = new EmbeddingGenerator();
+    }
+
+    /**
+     * Find similar components using embeddings for context-aware generation
+     */
+    async findSimilarComponents(userPrompt: string, components: ComponentInfo[], maxResults: number = 5): Promise<ComponentInfo[]> {
+        try {
+            // Filter components that have embeddings
+            const componentsWithEmbeddings = components.filter(comp => comp.embedding && comp.embedding.length > 0);
+            
+            if (componentsWithEmbeddings.length === 0) {
+                console.log('No components with embeddings found, returning empty array');
+                return [];
+            }
+
+            // Generate embedding for the user prompt
+            const promptEmbedding = await this.embeddingGenerator.generateTextEmbedding(userPrompt);
+            
+            if (!promptEmbedding || promptEmbedding.length === 0) {
+                console.log('Failed to generate embedding for prompt, returning empty array');
+                return [];
+            }
+
+            // Find similar components using cosine similarity
+            const similarResults = ContextRanker.findSimilarComponents(
+                promptEmbedding,
+                componentsWithEmbeddings,
+                maxResults,
+                0.3 // similarity threshold
+            );
+
+            console.log(`Found ${similarResults.length} similar components for prompt: "${userPrompt}"`);
+            
+            return similarResults.map(result => result.component);
+
+        } catch (error) {
+            console.error('Error finding similar components:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Build context information from similar components for prompt generation
+     */
+    buildContextFromSimilar(similarComponents: ComponentInfo[], patterns: CodebasePatterns): string {
+        if (!similarComponents || similarComponents.length === 0) {
+            return '';
+        }
+
+        let context = '\n\nSimilar components found in your codebase for reference:\n';
+        
+        similarComponents.slice(0, 3).forEach((comp, index) => {
+            context += `\n${index + 1}. ${comp.name} (${comp.path}):\n`;
+            if (comp.summary) {
+                context += `   Summary: ${comp.summary}\n`;
+            }
+            if (comp.props && comp.props.length > 0) {
+                context += `   Props: ${comp.props.slice(0, 5).join(', ')}\n`;
+            }
+            if (comp.hooks && comp.hooks.length > 0) {
+                context += `   Hooks: ${comp.hooks.slice(0, 3).join(', ')}\n`;
+            }
+        });
+
+        context += '\nUse these as inspiration for structure, patterns, and naming conventions.\n';
+        return context;
+    }
 
     async analyzeWorkspaceFromPath(projectRoot: string): Promise<CodebasePatterns> {
         const workspaceIndex = await indexWorkspace(projectRoot);
@@ -227,60 +300,5 @@ export class CodebaseAnalyzer {
             .sort(([_, a], [__, b]) => b - a)
             .slice(0, 10)
             .map(([prop, _]) => prop);
-    }
-
-    findSimilarComponents(request: string, components: ComponentInfo[]): ComponentInfo[] {
-        const keywords = request.toLowerCase().split(' ');
-        const scored = components.map(comp => {
-            let score = 0;
-            
-            // Score based on component name
-            keywords.forEach(keyword => {
-                if (comp.name.toLowerCase().includes(keyword)) score += 3;
-                if (comp.path.toLowerCase().includes(keyword)) score += 2;
-                if (comp.exports.some(exp => exp.toLowerCase().includes(keyword))) score += 2;
-            });
-            
-            // Score based on JSX elements used
-            comp.jsxElements?.forEach(element => {
-                keywords.forEach(keyword => {
-                    if (element.toLowerCase().includes(keyword)) score += 1;
-                });
-            });
-            
-            return { component: comp, score };
-        })
-        .filter(item => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .map(item => item.component);
-        
-        return scored;
-    }
-
-    buildContextFromSimilar(components: ComponentInfo[], patterns: CodebasePatterns): string {
-        if (components.length === 0) return '';
-        
-        let context = '\\n\\nExisting similar components in this codebase:\\n';
-        
-        components.forEach((comp, index) => {
-            context += `${index + 1}. ${comp.name} - uses: ${comp.hooks?.join(', ') || 'no hooks'}\\n`;
-            if (comp.jsxElements && comp.jsxElements.length > 0) {
-                context += `   Elements: ${comp.jsxElements.slice(0, 5).join(', ')}\\n`;
-            }
-        });
-        
-        // Add styling context
-        context += `\\nProject styling approach: ${patterns.stylingApproach}\\n`;
-        if (patterns.stylePaths) {
-            context += `Style files location: ${patterns.stylePaths}\\n`;
-        }
-        
-        // Add common patterns
-        if (patterns.commonProps.length > 0) {
-            context += `Common props in this codebase: ${patterns.commonProps.join(', ')}\\n`;
-        }
-        
-        return context;
     }
 }
