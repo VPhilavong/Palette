@@ -1,4 +1,16 @@
-
+/**
+ * Webview Main Script
+ * 
+ * This file handles the client-side JavaScript for the webview panel:
+ * - Manages DOM interactions and user input
+ * - Handles communication with the VS Code extension
+ * - Processes user prompts and displays AI responses
+ * - Manages UI state and loading indicators
+ * - Formats and displays generated code
+ * - Handles error states and user feedback
+ * 
+ * Frontend logic for the UI Copilot webview interface.
+ */
 
 // Get access to the VS Code API from within the webview context
 const vscode = acquireVsCodeApi();

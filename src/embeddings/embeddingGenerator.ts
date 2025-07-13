@@ -1,3 +1,17 @@
+/**
+ * Embedding Generator
+ * 
+ * This file generates vector embeddings for components and text using OpenAI:
+ * - Creates embeddings for component summaries and descriptions
+ * - Generates text embeddings for search queries
+ * - Implements caching to avoid redundant API calls
+ * - Manages API usage statistics and rate limiting
+ * - Handles embedding errors and retries
+ * - Optimizes embedding input for better semantic understanding
+ * 
+ * Core component for semantic search and contextual code generation.
+ */
+
 import OpenAI from 'openai';
 import * as vscode from 'vscode';
 import { ComponentInfo, EmbeddingConfig, EmbeddingCache } from '../types';

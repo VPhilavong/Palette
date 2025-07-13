@@ -1,7 +1,16 @@
 import * as vscode from 'vscode';
 
 /**
- * Enhanced command palette integrations
+ * Command Palette Integration
+ * 
+ * This file enhances VS Code's command palette with extension-specific commands:
+ * - Registers custom commands for quick access
+ * - Provides command descriptions and shortcuts
+ * - Handles command execution and parameter passing
+ * - Integrates with VS Code's command system
+ * - Offers enhanced command discovery and usage
+ * 
+ * Streamlines user interaction with extension features.
  */
 export class CommandPalette {
     /**

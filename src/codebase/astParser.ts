@@ -1,3 +1,17 @@
+/**
+ * AST Parser
+ * 
+ * This file provides Abstract Syntax Tree parsing for JavaScript/TypeScript files:
+ * - Parses code using Babel parser with TypeScript and JSX support
+ * - Traverses AST to extract component information
+ * - Identifies React components, hooks, and JSX elements
+ * - Extracts import/export statements and dependencies
+ * - Analyzes component props and function signatures
+ * - Handles both functional and class components
+ * 
+ * Core parsing engine for component analysis.
+ */
+
 import * as vscode from 'vscode';
 import { parse } from '@babel/parser';
 import traverse, { NodePath } from '@babel/traverse';

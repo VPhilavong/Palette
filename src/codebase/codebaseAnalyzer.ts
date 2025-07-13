@@ -1,3 +1,17 @@
+/**
+ * Codebase Analyzer
+ * 
+ * This file analyzes the project codebase to understand patterns and structure:
+ * - Detects styling approaches (CSS modules, Tailwind, styled-components)
+ * - Identifies component structure patterns (single-file vs directory-based)
+ * - Extracts import patterns and common props
+ * - Analyzes API patterns and custom hooks
+ * - Detects UI component libraries and theming approaches
+ * - Finds loading/error handling patterns
+ * 
+ * Provides rich context for intelligent code generation.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -11,6 +25,26 @@ export interface CodebasePatterns {
     commonProps: string[];
     stylePaths: string[];
     existingComponents: ComponentInfo[];
+    apiPatterns: {
+        baseUrls: string[];
+        customHooks: string[];
+    };
+    uiComponents: {
+        componentLibrary: 'custom' | 'material-ui' | 'ant-design' | 'chakra-ui' | 'none';
+        commonComponents: Record<string, number>;
+        importPatterns: string[];
+    };
+    themePatterns: {
+        approach: 'css-variables' | 'tailwind' | 'styled-components' | 'none';
+        cssVariables: string[];
+        darkModeSupport: boolean;
+        colorClasses: string[];
+    };
+    loadingErrorPatterns: {
+        loadingComponents: string[];
+        skeletonComponents: string[];
+        errorComponents: string[];
+    };
 }
 
 
@@ -31,7 +65,27 @@ export class CodebaseAnalyzer {
             importPatterns: [],
             commonProps: [],
             stylePaths: [],
-            existingComponents: workspaceIndex.components
+            existingComponents: workspaceIndex.components,
+            apiPatterns: {
+                baseUrls: [],
+                customHooks: []
+            },
+            uiComponents: {
+                componentLibrary: 'none',
+                commonComponents: {},
+                importPatterns: []
+            },
+            themePatterns: {
+                approach: 'none',
+                cssVariables: [],
+                darkModeSupport: false,
+                colorClasses: []
+            },
+            loadingErrorPatterns: {
+                loadingComponents: [],
+                skeletonComponents: [],
+                errorComponents: []
+            }
         };
         
 

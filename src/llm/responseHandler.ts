@@ -1,5 +1,14 @@
 /**
- * Handles and processes LLM responses
+ * Response Handler
+ * 
+ * This file processes and handles responses from the AI model by:
+ * - Parsing AI-generated code and extracting components
+ * - Cleaning and formatting generated code
+ * - Handling streaming responses from the AI model
+ * - Processing markdown code blocks and syntax highlighting
+ * - Managing response errors and retries
+ * 
+ * Bridges the gap between raw AI responses and usable code.
  */
 export class ResponseHandler {
     /**

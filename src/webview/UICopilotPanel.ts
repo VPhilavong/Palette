@@ -1,3 +1,17 @@
+/**
+ * UI Copilot Panel
+ * 
+ * This file manages the main webview panel for the UI Copilot extension:
+ * - Creates and manages the webview panel lifecycle
+ * - Handles communication between webview and extension
+ * - Integrates with component generator and codebase analyzer
+ * - Provides the main chat interface for AI interaction
+ * - Manages panel state and message passing
+ * - Handles user input and displays AI responses
+ * 
+ * Primary user interface for the extension.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ComponentGenerator } from '../llm/componentGenerator';

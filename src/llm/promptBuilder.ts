@@ -1,3 +1,16 @@
+/**
+ * Prompt Builder
+ * 
+ * This file constructs intelligent prompts for the AI model by:
+ * - Building context-aware prompts from similar components
+ * - Analyzing codebase patterns (styling, APIs, themes, etc.)
+ * - Including relevant project metadata and frameworks
+ * - Formatting component information for optimal AI understanding
+ * - Creating structured prompts that lead to better code generation
+ * 
+ * The prompts include examples, patterns, and constraints from the codebase.
+ */
+
 import { ComponentInfo, ProjectMetadata } from '../types';
 import { CodebasePatterns } from '../codebase/codebaseAnalyzer';
 

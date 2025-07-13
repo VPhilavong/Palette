@@ -1,3 +1,17 @@
+/**
+ * VS Code Extension Entry Point
+ * 
+ * This is the main entry point for the UI Copilot extension. It handles:
+ * - Extension activation and initialization
+ * - Command registration (askToBuild, openPanel, etc.)
+ * - Workspace indexing and component analysis
+ * - Automatic embedding generation for contextual understanding
+ * - File watching for workspace changes
+ * 
+ * The extension automatically indexes the workspace on startup and provides
+ * AI-powered code generation through the OpenAI API.
+ */
+
 import * as vscode from 'vscode';
 import { FileIndexer } from '../codebase/fileIndexer';
 import { FrameworkDetector } from '../codebase/frameworkDetector';
@@ -55,25 +69,23 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Analysis commands
-    const analyzeProjectCommand = vscode.commands.registerCommand('ui-copilot.analyzeProject', async () => {
-        await initializeWorkspace();
-        vscode.window.showInformationMessage('Project analysis completed!');
-    });
-
-    const generateEmbeddingsCommand = vscode.commands.registerCommand('ui-copilot.generateEmbeddings', async () => {
-        if (!workspaceIndex || workspaceIndex.components.length === 0) {
-            vscode.window.showWarningMessage('No components found. Please analyze project first.');
-            return;
+    // Ask to Build command
+    const askToBuildCommand = vscode.commands.registerCommand('ui-copilot.askToBuild', async () => {
+        const promptModal = PromptModal.getInstance();
+        const userPrompt = await promptModal.showPromptInput();
+        
+        if (userPrompt) {
+            // Ensure workspace is analyzed first
+            if (!workspaceIndex) {
+                await initializeWorkspace();
+            }
+            await componentGenerator.generateComponent(userPrompt, workspaceIndex);
         }
-
-        await generateComponentEmbeddings();
     });
 
     context.subscriptions.push(
         generateComponentQuickCommand,
-        analyzeProjectCommand,
-        generateEmbeddingsCommand
+        askToBuildCommand
     );
 
     // Initialize workspace on activation
@@ -98,9 +110,14 @@ async function initializeWorkspace(): Promise<void> {
         const components = await componentAnalyzer.analyzeComponents(files);
 
         // Generate embeddings for components automatically
-        console.log('Generating component summaries...');
+        console.log('Generating component summaries and embeddings...');
         for (const component of components) {
             embeddingGenerator.generateComponentSummary(component);
+            try {
+                component.embedding = await embeddingGenerator.generateComponentEmbedding(component);
+            } catch (error) {
+                console.error(`Failed to generate embedding for ${component.name}:`, error);
+            }
         }
 
         workspaceIndex = {

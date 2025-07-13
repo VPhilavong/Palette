@@ -1,5 +1,14 @@
 /**
- * Vector storage and similarity search
+ * Vector Store
+ * 
+ * This file provides in-memory vector storage and similarity search:
+ * - Stores vector embeddings with associated metadata
+ * - Performs fast similarity searches using cosine similarity
+ * - Manages vector indexing and retrieval operations
+ * - Provides efficient nearest neighbor search
+ * - Handles vector normalization and distance calculations
+ * 
+ * Local vector database for component similarity matching.
  */
 export class VectorStore {
     private vectors: Map<string, number[]> = new Map();

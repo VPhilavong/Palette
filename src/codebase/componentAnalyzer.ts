@@ -1,3 +1,16 @@
+/**
+ * Component Analyzer
+ * 
+ * This file analyzes React components in the codebase:
+ * - Parses component files to extract structure and metadata
+ * - Identifies component names, props, hooks, and JSX elements
+ * - Extracts import/export information
+ * - Collects component statistics and usage patterns
+ * - Filters and categorizes components by type and complexity
+ * 
+ * Uses AST parsing to understand component structure for context-aware generation.
+ */
+
 import * as vscode from 'vscode';
 import { ComponentInfo, FileMetadata } from '../types';
 import { SimpleComponentParser } from './simpleComponentParser';

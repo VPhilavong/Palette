@@ -1,3 +1,16 @@
+/**
+ * Code Validator
+ * 
+ * This file validates generated code for correctness by:
+ * - Parsing code with Babel to check for syntax errors
+ * - Validating React component structure and exports
+ * - Checking for proper import/export syntax
+ * - Ensuring generated code follows React best practices
+ * - Providing detailed error messages for debugging
+ * 
+ * Helps ensure generated components are syntactically correct.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';

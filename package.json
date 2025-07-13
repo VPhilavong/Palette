@@ -23,10 +23,9 @@
       "properties": {
         "ui-copilot.apiProvider": {
           "type": "string",
-          "default": "gemini",
+          "default": "openai",
           "enum": [
-            "openai",
-            "gemini"
+            "openai"
           ],
           "description": "AI provider to use for component generation"
         },
@@ -35,58 +34,6 @@
           "default": "",
           "description": "Your OpenAI API key for component generation",
           "markdownDescription": "Enter your OpenAI API key. Get one at [OpenAI Platform](https://platform.openai.com/api-keys)"
-        },
-        "ui-copilot.aiProvider": {
-          "type": "string",
-          "default": "gemini",
-          "enum": [
-            "gemini",
-            "claude"
-          ],
-          "description": "AI provider to use for codebase-aware features"
-        },
-        "ui-copilot.geminiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your Google Gemini API key for component generation",
-          "markdownDescription": "Enter your Gemini API key. Get one at [Google AI Studio](https://makersuite.google.com/app/apikey)"
-        },
-        "ui-copilot.geminiModel": {
-          "type": "string",
-          "default": "gemini-2.0-flash-exp",
-          "enum": [
-            "gemini-2.0-flash-exp",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash"
-          ],
-          "description": "Gemini model to use for codebase analysis"
-        },
-        "ui-copilot.model": {
-          "type": "string",
-          "default": "gpt-3.5-turbo",
-          "enum": [
-            "gpt-3.5-turbo",
-            "gpt-4",
-            "gpt-4-turbo",
-            "gemini-pro"
-          ],
-          "description": "AI model to use for generation"
-        },
-        "ui-copilot.claudeApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your Claude API key for codebase-aware features",
-          "markdownDescription": "Enter your Claude API key. Get one at [Anthropic Console](https://console.anthropic.com/)"
-        },
-        "ui-copilot.claudeModel": {
-          "type": "string",
-          "default": "claude-3-sonnet-20240229",
-          "enum": [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307"
-          ],
-          "description": "Claude model to use for codebase analysis"
         },
         "ui-copilot.indexing.enabled": {
           "type": "boolean",
@@ -143,61 +90,12 @@
     },
     "commands": [
       {
-        "command": "ui-copilot.generateComponentQuick",
-        "title": "Generate UI Component",
+        "command": "ui-copilot.askToBuild",
+        "title": "Ask to Build",
         "category": "UI Copilot",
-        "icon": "$(add)"
-      },
-      {
-        "command": "ui-copilot.generateWithAgent",
-        "title": "Generate with AI Agent (Multi-file)",
-        "category": "UI Copilot",
-        "icon": "$(robot)"
-      },
-      {
-        "command": "ui-copilot.analyzeProject",
-        "title": "Analyze Project",
-        "category": "UI Copilot",
-        "icon": "$(graph)"
-      },
-      {
-        "command": "ui-copilot.generateEmbeddings",
-        "title": "Generate Embeddings",
-        "category": "UI Copilot",
-        "icon": "$(symbol-namespace)"
+        "icon": "$(comment-discussion)"
       }
-    ],
-    "keybindings": [
-      {
-        "command": "ui-copilot.generateEmbeddings",
-        "key": "ctrl+shift+g",
-        "mac": "cmd+shift+g",
-        "when": "workspaceFolderCount > 0"
-      }
-    ],
-    "menus": {
-      "editor/context": [
-        {
-          "command": "ui-copilot.generateComponentQuick",
-          "when": "resourceExtname =~ /\\.(jsx?|tsx?|vue)$/",
-          "group": "ui-copilot@1"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "ui-copilot.generateWithAgent",
-          "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "ui-copilot.analyzeProject",
-          "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "ui-copilot.generateEmbeddings",
-          "when": "workspaceFolderCount > 0"
-        }
-      ]
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -217,7 +115,6 @@
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
-    "@google/generative-ai": "^0.7.1",
     "axios": "^1.6.0",
     "chokidar": "^3.6.0",
     "openai": "^4.0.0"

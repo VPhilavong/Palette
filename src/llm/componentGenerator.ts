@@ -1,3 +1,17 @@
+/**
+ * Component Generator
+ * 
+ * This is the core component generation engine that:
+ * - Analyzes codebase patterns and existing components
+ * - Generates intelligent, context-aware React components
+ * - Determines optimal file placement based on project structure
+ * - Handles multiple styling approaches (CSS modules, Tailwind, etc.)
+ * - Validates generated code for syntax errors
+ * - Creates components with proper imports and exports
+ * 
+ * Uses OpenAI for intelligent code generation with rich context.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -31,7 +45,7 @@ export class ComponentGenerator {
             }
 
             // Analyze codebase patterns for intelligent generation
-            const patterns = await this.codebaseAnalyzer.analyzeCodebasePatterns(workspaceIndex);
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
             
             // Find similar components for context
             const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
@@ -181,7 +195,11 @@ export class ComponentGenerator {
                 const mostCommonDir = Array.from(componentDirs.entries())
                     .sort(([,a], [,b]) => b - a)[0][0];
                 
-                const fullPath = path.join(rootPath, mostCommonDir);
+                // Handle both relative and absolute paths
+                const fullPath = path.isAbsolute(mostCommonDir) 
+                    ? mostCommonDir 
+                    : path.join(rootPath, mostCommonDir);
+                    
                 if (fs.existsSync(fullPath)) {
                     return fullPath;
                 }

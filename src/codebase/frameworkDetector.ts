@@ -1,3 +1,17 @@
+/**
+ * Framework Detector
+ * 
+ * This file detects and analyzes the project's framework and technology stack:
+ * - Identifies React, Vue, Angular, and other frontend frameworks
+ * - Detects UI libraries (Material-UI, Ant Design, Chakra UI, etc.)
+ * - Analyzes package.json for dependencies and versions
+ * - Identifies state management solutions (Redux, Zustand, etc.)
+ * - Detects TypeScript usage and configuration
+ * - Provides confidence scores for framework detection
+ * 
+ * Essential for generating framework-appropriate code.
+ */
+
 import * as vscode from 'vscode';
 import { Framework, ProjectMetadata } from '../types';
 

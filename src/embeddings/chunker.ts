@@ -1,7 +1,16 @@
 import { ComponentInfo } from '../types';
 
 /**
- * Intelligently chunks code and components for embedding
+ * Content Chunker
+ * 
+ * This file handles intelligent chunking of code and components for embeddings:
+ * - Splits large components into meaningful chunks for embedding
+ * - Preserves semantic structure while respecting token limits
+ * - Handles different content types (code, documentation, comments)
+ * - Optimizes chunk size for embedding model performance
+ * - Maintains context boundaries for better semantic understanding
+ * 
+ * Ensures optimal embedding quality for large codebases.
  */
 export class Chunker {
     /**
