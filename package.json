@@ -1,107 +1,249 @@
 {
-  "name": "ui-copilot",
-  "displayName": "UI Copilot",
-  "description": "AI-powered React component generation for your codebase",
-  "version": "0.0.1",
+  "name": "palette-ui-agent",
+  "displayName": "Palette UI/HCI Design Agent",
+  "description": "AI-powered UI/HCI design agent for React + Tailwind development",
+  "version": "0.1.0",
+  "build": "1",
+  "publisher": "Palette",
+  "homepage": "https://github.com/VPhilavong/SAIL_Project",
+  "license": "MIT",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.103.0",
+    "npm": ">=9.0.0",
+    "node": ">=18.0.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Machine Learning"
   ],
- "activationEvents": [
-  "onCommand:ui-copilot.openPanel",
-  "onLanguage:javascript",
-  "onLanguage:typescript",
-  "onLanguage:javascriptreact",
-  "onLanguage:typescriptreact"
-],
-  "main": "./out/core/extension.js",
+  "keywords": [
+    "ai",
+    "ui",
+    "ux",
+    "design",
+    "react",
+    "tailwind",
+    "accessibility",
+    "hci",
+    "usability",
+    "components"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguageModelChat:palette",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact"
+  ],
+  "main": "./out/extension/extension.js",
+  "enabledApiProposals": [
+    "chatParticipantAdditions",
+    "chatEditing",
+    "defaultChatParticipant",
+    "chatParticipantPrivate",
+    "chatProvider",
+    "languageModelSystem",
+    "languageModelCapabilities",
+    "embeddings",
+    "findTextInFiles",
+    "findFiles2",
+    "textSearchProvider",
+    "aiRelatedInformation",
+    "codeActionAI",
+    "mappedEditsProvider",
+    "aiTextSearchProvider",
+    "textSearchProvider2",
+    "documentFiltersExclusive"
+  ],
   "contributes": {
+    "languageModelTools": [
+      {
+        "name": "palette_analyzeComponent",
+        "toolReferenceName": "analyzeComponent",
+        "displayName": "Analyze React Component",
+        "icon": "$(symbol-class)",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Analyze React components for design patterns, accessibility, and usability",
+        "modelDescription": "Analyze React components for design heuristics, accessibility compliance (WCAG 2.1 AA), Tailwind CSS patterns, and UI/UX best practices. Returns detailed analysis with suggestions.",
+        "tags": ["ui", "design", "accessibility", "react"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Path to the React component file to analyze"
+            },
+            "analysisType": {
+              "type": "string",
+              "enum": ["full", "accessibility", "design", "performance"],
+              "description": "Type of analysis to perform"
+            }
+          },
+          "required": ["filePath"]
+        }
+      },
+      {
+        "name": "palette_generateComponent",
+        "toolReferenceName": "generateComponent",
+        "displayName": "Generate React Component",
+        "icon": "$(add)",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Generate React components following design system patterns",
+        "modelDescription": "Generate React components with Tailwind CSS following design system conventions, accessibility standards, and responsive design patterns.",
+        "tags": ["ui", "generate", "react", "tailwind"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "componentName": {
+              "type": "string",
+              "description": "Name of the component to generate"
+            },
+            "description": {
+              "type": "string",
+              "description": "Description of the component functionality and design requirements"
+            },
+            "designSystem": {
+              "type": "string",
+              "enum": ["tailwindui", "shadcn", "custom"],
+              "description": "Design system to follow"
+            }
+          },
+          "required": ["componentName", "description"]
+        }
+      },
+      {
+        "name": "palette_searchDesignPatterns",
+        "toolReferenceName": "searchPatterns",
+        "displayName": "Search Design Patterns",
+        "icon": "$(search)",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Search for UI patterns and design components in the codebase",
+        "modelDescription": "Search the codebase for UI patterns, design components, and reusable elements. Returns relevant patterns that match the query.",
+        "tags": ["ui", "patterns", "search"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search query for design patterns (e.g., 'button variants', 'form layouts', 'navigation patterns')"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "palette.ui",
+        "name": "ui",
+        "description": "UI/UX design expert for React and Tailwind CSS",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "analyze",
+            "description": "Analyze component for design and accessibility issues"
+          },
+          {
+            "name": "generate",
+            "description": "Generate new React component with design system compliance"
+          },
+          {
+            "name": "critique",
+            "description": "Provide design critique using Nielsen's heuristics"
+          },
+          {
+            "name": "patterns",
+            "description": "Suggest UI patterns and best practices"
+          }
+        ]
+      },
+      {
+        "id": "palette.accessibility",
+        "name": "a11y",
+        "description": "Accessibility specialist for WCAG 2.1 AA compliance",
+        "isSticky": false,
+        "commands": [
+          {
+            "name": "audit",
+            "description": "Audit component for accessibility issues"
+          },
+          {
+            "name": "fix",
+            "description": "Fix accessibility issues in components"
+          }
+        ]
+      }
+    ],
     "configuration": {
-      "title": "UI Copilot",
+      "title": "Palette UI Agent",
       "properties": {
-        "ui-copilot.apiProvider": {
-          "type": "string",
-          "default": "openai",
-          "enum": [
-            "openai"
-          ],
-          "description": "AI provider to use for component generation"
-        },
-        "ui-copilot.openaiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your OpenAI API key for component generation",
-          "markdownDescription": "Enter your OpenAI API key. Get one at [OpenAI Platform](https://platform.openai.com/api-keys)"
-        },
-        "ui-copilot.indexing.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic workspace indexing for codebase awareness"
-        },
-        "ui-copilot.indexing.maxFileSize": {
-          "type": "number",
-          "default": 102400,
-          "description": "Maximum file size to index (in bytes)"
-        },
-        "ui-copilot.indexing.excludePatterns": {
+        "palette.design.heuristics": {
           "type": "array",
-          "default": [
-            "node_modules",
-            ".git",
-            "dist",
-            "build",
-            ".next"
-          ],
-          "description": "Patterns to exclude from indexing"
+          "default": ["nielsen", "wcag", "responsive"],
+          "enum": ["nielsen", "wcag", "responsive", "performance"],
+          "description": "Design heuristics to apply during analysis"
         },
-        "ui-copilot.context.maxTokens": {
+        "palette.design.system": {
+          "type": "string",
+          "default": "tailwindui",
+          "enum": ["tailwindui", "shadcn", "custom"],
+          "description": "Design system to follow for component generation"
+        },
+        "palette.accessibility.level": {
+          "type": "string",
+          "default": "AA",
+          "enum": ["A", "AA", "AAA"],
+          "description": "WCAG accessibility compliance level"
+        },
+        "palette.context.maxTokens": {
           "type": "number",
-          "default": 12000,
+          "default": 16000,
           "description": "Maximum tokens to use for context"
         },
-        "ui-copilot.context.maxFiles": {
-          "type": "number",
-          "default": 20,
-          "description": "Maximum number of files to include in context"
-        },
-        "ui-copilot.features.autoCompletion": {
+        "palette.indexing.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable AI-powered code completion"
+          "description": "Enable automatic workspace indexing for design patterns"
         },
-        "ui-copilot.features.codeExplanation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI code explanation features"
-        },
-        "ui-copilot.features.refactoring": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI-powered refactoring suggestions"
-        },
-        "ui-copilot.features.debugging": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI debugging assistance"
+        "palette.indexing.excludePatterns": {
+          "type": "array",
+          "default": ["node_modules", ".git", "dist", "build", ".next", "coverage"],
+          "description": "Patterns to exclude from indexing"
         }
       }
     },
     "commands": [
       {
-        "command": "ui-copilot.askToBuild",
-        "title": "Ask to Build",
-        "category": "UI Copilot",
-        "icon": "$(comment-discussion)"
+        "command": "palette.analyzeComponent",
+        "title": "Analyze Component",
+        "category": "Palette",
+        "icon": "$(symbol-class)"
       },
       {
-        "command": "ui-copilot.openPanel",
-        "title": "Open UI Copilot Panel",
-        "category": "UI Copilot",
-        "icon": "$(layout-panel)"
+        "command": "palette.generateComponent",
+        "title": "Generate Component",
+        "category": "Palette",
+        "icon": "$(add)"
+      },
+      {
+        "command": "palette.critiqueDesign",
+        "title": "Critique Design",
+        "category": "Palette",
+        "icon": "$(comment-discussion)"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "palette.analyzeComponent",
+          "when": "resourceExtname =~ /\\.(tsx?|jsx?)$/",
+          "group": "palette"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -113,16 +255,14 @@
   },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.7",
-    "@types/node": "16.x",
-    "@types/vscode": "^1.74.0",
-    "typescript": "^4.9.4"
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.103.0",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
-    "axios": "^1.6.0",
-    "chokidar": "^3.6.0",
     "openai": "^4.0.0"
   }
 }
