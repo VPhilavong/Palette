@@ -216,3 +216,5 @@ secrets.json
 test_repos/
 CLAUDE.md 
 .claude
+copilot-chat-source
+copilot-chat-source/*
