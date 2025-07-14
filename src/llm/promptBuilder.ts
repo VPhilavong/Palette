@@ -54,7 +54,7 @@ export class PromptBuilder {
         prompt += `- If icons are needed and no icon package is available, use text placeholders like [Icon]\n`;
         prompt += `- Create self-contained components with inline types if \`@/\` imports don’t exist\n`;
         prompt += `- **Do NOT** add \`import React from 'react'\`; Vite/ESBuild handles it automatically\n`;
-        prompt += `- **Do NOT** use \`React.FC\` or \`FC\`; instead write a plain function like \`export default function Component(props: Props) { … }\`.\n`;
+        prompt += `- **CRITICAL: Do NOT use \`React.FC\` or \`FC\`**. Instead, type props on the function directly. For example: \`export default function Component(props: Props) { … }\` or \`const Component = (props: Props) => { … }\`.\n`;
         
         // Add modern React patterns
         prompt += `\nModern React Patterns:\n`;
@@ -170,13 +170,15 @@ export class PromptBuilder {
         const prompts = {
             'React': `You are an expert React developer who creates production-ready, accessible, and user-friendly components. 
 You always include proper TypeScript interfaces, loading/error states, accessibility features, and follow modern React patterns. 
+You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing props directly on the function.
 Your components are interactive, handle edge cases gracefully, and provide excellent user experience.`,
             
             'Vue': `You are an expert Vue.js developer who creates production-ready Vue 3 components using Composition API. 
 You always include proper TypeScript support, loading/error states, accessibility features, and follow modern Vue patterns.`,
             
             'Next.js': `You are an expert Next.js developer who creates SSR-ready, performance-optimized React components. 
-You understand Next.js patterns, proper data fetching with loading states, accessibility, and modern React development practices.`
+You understand Next.js patterns, proper data fetching with loading states, accessibility, and modern React development practices.
+You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing props directly on the function.`
         };
 
         return prompts[framework as keyof typeof prompts] || prompts['React'];

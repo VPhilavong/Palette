@@ -49,6 +49,9 @@ export class ComponentGenerator {
         this.codeValidator = new CodeValidator();
     }
 
+    /**
+     * Generate code **only** (does not write a file).
+     */
     async generateComponentCode(
         userPrompt: string, 
         workspaceIndex?: WorkspaceIndex | null
@@ -108,6 +111,9 @@ export class ComponentGenerator {
         }
     }
 
+    /**
+     * Full generation flow – creates files on disk.
+     */
     async generateComponent(
         userPrompt: string,
         workspaceIndex?: WorkspaceIndex | null
@@ -432,8 +438,6 @@ Generate only the CSS code:`;
         
         // Remove markdown code blocks if present
         cleanCode = cleanCode.replace(/```[\w]*\n/, '').replace(/\n```$/, '');
-        
-        // ⚠️ Do NOT auto-insert React import anymore – bundler handles it.
 
         // Add export default if missing
         if (!cleanCode.includes('export default') && !cleanCode.includes('export {')) {
