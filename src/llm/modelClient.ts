@@ -1,9 +1,21 @@
+/**
+ * OpenAI Model Client
+ * 
+ * This file provides the interface and implementation for communicating
+ * with OpenAI's API. It handles:
+ * - OpenAI API authentication and configuration
+ * - Text completion generation (sync and streaming)
+ * - Error handling and API key validation
+ * - Model client factory for creating OpenAI instances
+ * 
+ * Only OpenAI is supported as the AI provider.
+ */
+
 import * as vscode from 'vscode';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 
 /**
- * Interface for different LLM providers (OpenAI, Claude, Gemini)
+ * Interface for OpenAI LLM provider
  */
 export interface ModelClient {
     generateCompletion(prompt: string, options?: CompletionOptions): Promise<string>;
@@ -76,78 +88,12 @@ export class OpenAIClient implements ModelClient {
     }
 }
 
-/**
- * Gemini client implementation (primary provider)
- */
-export class GeminiClient implements ModelClient {
-    private genAI: GoogleGenerativeAI | null = null;
-
-    constructor() {
-        const config = vscode.workspace.getConfiguration('ui-copilot');
-        const apiKey = config.get<string>('geminiApiKey', '');
-        
-        if (apiKey) {
-            this.genAI = new GoogleGenerativeAI(apiKey);
-        }
-    }
-
-    async generateCompletion(prompt: string, options?: CompletionOptions): Promise<string> {
-        if (!this.genAI) {
-            throw new Error('Gemini API key not configured. Please set ui-copilot.geminiApiKey in settings.');
-        }
-
-        try {
-            const model = this.genAI.getGenerativeModel({ 
-                model: options?.model || 'gemini-2.0-flash-exp' 
-            });
-
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            return response.text() || '';
-        } catch (error) {
-            throw new Error(`Gemini API error: ${error}`);
-        }
-    }
-
-    async* generateStream(prompt: string, options?: CompletionOptions): AsyncGenerator<string> {
-        if (!this.genAI) {
-            throw new Error('Gemini API key not configured. Please set ui-copilot.geminiApiKey in settings.');
-        }
-
-        try {
-            const model = this.genAI.getGenerativeModel({ 
-                model: options?.model || 'gemini-2.0-flash-exp' 
-            });
-
-            const result = await model.generateContentStream(prompt);
-            
-            for await (const chunk of result.stream) {
-                const chunkText = chunk.text();
-                if (chunkText) {
-                    yield chunkText;
-                }
-            }
-        } catch (error) {
-            throw new Error(`Gemini streaming error: ${error}`);
-        }
-    }
-}
 
 /**
- * Factory to create the appropriate client based on configuration
+ * Factory to create the OpenAI client
  */
 export class ModelClientFactory {
     static createClient(): ModelClient {
-        const config = vscode.workspace.getConfiguration('ui-copilot');
-        const provider = config.get<string>('apiProvider', 'gemini');
-
-        switch (provider) {
-            case 'openai':
-                return new OpenAIClient();
-            case 'gemini':
-                return new GeminiClient();
-            default:
-                return new GeminiClient(); // Default to Gemini
-        }
+        return new OpenAIClient();
     }
 }

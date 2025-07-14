@@ -1,7 +1,17 @@
 import { ComponentInfo, SimilarityResult } from '../types';
 
 /**
- * Context ranking system for semantic search and similarity scoring
+ * Context Ranker
+ * 
+ * This file provides semantic search and similarity ranking capabilities:
+ * - Calculates cosine similarity between vector embeddings
+ * - Ranks components by semantic similarity to queries
+ * - Finds similar components for contextual code generation
+ * - Filters results by similarity thresholds
+ * - Provides utility methods for vector operations
+ * - Supports both component-to-component and query-to-component search
+ * 
+ * Essential for finding relevant context for AI code generation.
  */
 export class ContextRanker {
     /**

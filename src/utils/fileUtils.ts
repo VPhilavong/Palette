@@ -2,7 +2,17 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 /**
- * File system utilities
+ * File System Utilities
+ * 
+ * This file provides common file system operations and utilities:
+ * - File reading and writing with error handling
+ * - Path manipulation and validation
+ * - Directory creation and traversal
+ * - File type detection and filtering
+ * - Cross-platform path handling
+ * - File system watchers and change detection
+ * 
+ * Shared utilities for file operations across the extension.
  */
 export class FileUtils {
     /**

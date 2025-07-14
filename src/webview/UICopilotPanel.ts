@@ -1,9 +1,27 @@
+/**
+ * UI Copilot Panel
+ * 
+ * This file manages the main webview panel for the UI Copilot extension:
+ * - Creates and manages the webview panel lifecycle
+ * - Handles communication between webview and extension
+ * - Integrates with component generator and codebase analyzer
+ * - Provides the main chat interface for AI interaction
+ * - Manages panel state and message passing
+ * - Handles user input and displays AI responses
+ * 
+ * Primary user interface for the extension.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ComponentGenerator } from '../llm/componentGenerator';
 import { CodebaseAnalyzer } from '../codebase/codebaseAnalyzer';
 import { indexWorkspace } from '../codebase/fileIndexer';
 
+import { FileIndexer } from '../codebase/fileIndexer';
+import { FrameworkDetector } from '../codebase/frameworkDetector';
+import { ComponentAnalyzer } from '../codebase/componentAnalyzer';
+import { WorkspaceIndex } from '../types';
 
 export class UICopilotPanel {
     public static currentPanel: UICopilotPanel | undefined;
@@ -81,53 +99,52 @@ export class UICopilotPanel {
         try {
             this._panel.webview.postMessage({
                 command: 'showProgress',
-                message: 'Generating component...'
+                message: 'Analyzing workspace and generating component...'
             });
 
-            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            // Create workspace index for code generation (same as in extension.ts)
+            const fileIndexer = new FileIndexer();
+            const frameworkDetector = new FrameworkDetector();
+            const componentAnalyzer = new ComponentAnalyzer();
+            
+            const files = await fileIndexer.indexWorkspace();
+            const project = await frameworkDetector.detectProjectFrameworks();
+            const components = await componentAnalyzer.analyzeComponents(files);
+            
+            const workspaceIndex: WorkspaceIndex = {
+                files,
+                components,
+                project,
+                lastUpdated: new Date()
+            };
 
-            if (!workspacePath) {
-            this._panel.webview.postMessage({
-                command: 'showError',
-                message: 'No workspace folder found.'
-            });
-            return;
-            }
-
-            const workspaceIndex = await indexWorkspace(workspacePath);
-
-
-            const generatedCode = await this._componentGenerator.generateComponent(prompt, workspaceIndex);
-
-            if (!generatedCode) {
+            // Use the full generateComponent method (not just generateComponentCode)
+            // This creates files in the correct location and handles all the "Ask to Build" functionality
+            const result = await this._componentGenerator.generateComponent(prompt, workspaceIndex);
+            
+            if (result) {
+                this._panel.webview.postMessage({
+                    command: 'componentGenerated',
+                    message: 'Component successfully generated and saved to your project!',
+                    result: result
+                });
+                
+                // Show success notification
+                vscode.window.showInformationMessage('Component generated successfully!');
+            } else {
                 this._panel.webview.postMessage({
                     command: 'showError',
-                    message: 'Component generation failed or returned nothing.'
+                    message: 'Failed to generate component. Please check your prompt and try again.'
                 });
-                return;
-            }
-
-            
-            this._panel.webview.postMessage({
-                command: 'componentGenerated',
-                code: generatedCode
-            });
-
-            // Also insert into active editor if available
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                await editor.edit(editBuilder => {
-                    const position = editor.selection.active;
-                    editBuilder.insert(position, generatedCode);
-                });
-                await vscode.commands.executeCommand('editor.action.formatDocument');
             }
 
         } catch (error) {
+            console.error('Component generation error:', error);
             this._panel.webview.postMessage({
                 command: 'showError',
                 message: `Error generating component: ${error}`
             });
+            vscode.window.showErrorMessage(`Failed to generate component: ${error}`);
         }
     }
 

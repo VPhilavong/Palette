@@ -1,7 +1,16 @@
 import * as vscode from 'vscode';
 
 /**
- * Configuration management utility
+ * Configuration Manager
+ * 
+ * This file manages VS Code extension configuration settings:
+ * - Provides type-safe access to extension configuration
+ * - Handles OpenAI API key and model settings
+ * - Manages indexing and context configuration
+ * - Validates configuration values and provides defaults
+ * - Centralizes all configuration access across the extension
+ * 
+ * Single source of truth for extension settings.
  */
 export class Config {
     private static readonly EXTENSION_NAME = 'ui-copilot';
@@ -25,29 +34,22 @@ export class Config {
     /**
      * Get API provider setting
      */
-    static getApiProvider(): 'openai' | 'gemini' | 'claude' {
-        return Config.get('apiProvider', 'gemini');
+    static getApiProvider(): 'openai' {
+        return Config.get('apiProvider', 'openai');
     }
 
     /**
      * Get API key for current provider
      */
     static getApiKey(): string {
-        const provider = Config.getApiProvider();
-        return Config.get(`${provider}ApiKey`, '');
+        return Config.get('openaiApiKey', '');
     }
 
     /**
      * Get model for current provider
      */
     static getModel(): string {
-        const provider = Config.getApiProvider();
-        const defaultModels = {
-            'openai': 'gpt-4',
-            'gemini': 'gemini-2.0-flash-exp',
-            'claude': 'claude-3-sonnet-20240229'
-        };
-        return Config.get(`${provider}Model`, defaultModels[provider]);
+        return Config.get('openaiModel', 'gpt-4');
     }
 
     /**

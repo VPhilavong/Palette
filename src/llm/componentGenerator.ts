@@ -1,3 +1,17 @@
+/**
+ * Component Generator
+ * 
+ * This is the core component generation engine that:
+ * - Analyzes codebase patterns and existing components
+ * - Generates intelligent, context-aware React components
+ * - Determines optimal file placement based on project structure
+ * - Handles multiple styling approaches (CSS modules, Tailwind, etc.)
+ * - Validates generated code for syntax errors
+ * - Creates components with proper imports and exports
+ * 
+ * Uses OpenAI for intelligent code generation with rich context.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -6,6 +20,21 @@ import { PromptBuilder } from './promptBuilder';
 import { ModelClient, ModelClientFactory } from './modelClient';
 import { CodebaseAnalyzer, CodebasePatterns } from '../codebase/codebaseAnalyzer';
 import { CodeValidator } from './codeValidator';
+
+/**
+ * Removes legacy / disallowed patterns from generated output.
+ * - Strips `import React …`
+ * - Removes `React.` namespace usages (e.g. React.FC)
+ * - Throws if run-time PropTypes appear.
+ */
+function sanitize(code: string): string {
+    code = code.replace(/^import\s+React.*\n?/m, "");
+    code = code.replace(/\bReact\./g, "");
+    if (/prop-types|PropTypes/.test(code)) {
+        throw new Error("Generation aborted: prop-types detected in output");
+    }
+    return code.trimStart();
+}
 
 export class ComponentGenerator {
     private promptBuilder: PromptBuilder;
@@ -18,6 +47,65 @@ export class ComponentGenerator {
         this.modelClient = ModelClientFactory.createClient();
         this.codebaseAnalyzer = new CodebaseAnalyzer();
         this.codeValidator = new CodeValidator();
+    }
+
+    async generateComponentCode(
+        userPrompt: string, 
+        workspaceIndex?: WorkspaceIndex | null
+    ): Promise<string | null> {
+        try {
+            if (!workspaceIndex) {
+                vscode.window.showWarningMessage('Please analyze project first for better context-aware generation');
+                return null;
+            }
+
+            // Analyze codebase patterns for intelligent generation
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
+            
+            // Find similar components for context using embeddings
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            
+            // Build intelligent context-aware prompt
+            const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
+            const systemPrompt = this.buildSystemPrompt(workspaceIndex, patterns);
+            
+            const fullPrompt = this.promptBuilder.buildComponentGenerationPrompt(
+                userPrompt,
+                similarComponents,
+                workspaceIndex.project,
+                patterns,
+                contextInfo
+            );
+
+            // Generate component code with context
+            const generatedCode = await this.modelClient.generateCompletion(
+                `${systemPrompt}\n\n${fullPrompt}`
+            );
+
+            if (!generatedCode) {
+                return null;
+            }
+
+            // Sanitize the generated code
+            const sanitizedCode = sanitize(generatedCode);
+
+            // Validate and fix the generated code
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
+                sanitizedCode, 
+                workspaceIndex
+            );
+
+            if (!validationResult.isValid) {
+                return null;
+            }
+
+            // Return the fixed code
+            return validationResult.fixedCode || sanitizedCode;
+
+        } catch (error) {
+            console.error('Component generation failed:', error);
+            return null;
+        }
     }
 
     async generateComponent(
@@ -35,8 +123,8 @@ export class ComponentGenerator {
             // Analyze codebase patterns for intelligent generation
             const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
             
-            // Find similar components for context
-            const similarComponents = this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            // Find similar components for context using embeddings
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
             
             // Detect target directory based on patterns
             const targetDir = await this.determineTargetDirectory(patterns);
@@ -69,11 +157,20 @@ export class ComponentGenerator {
                 return;
             }
 
+            // Sanitize the generated code
+            let sanitizedCode: string;
+            try {
+                sanitizedCode = sanitize(generatedCode);
+            } catch (e: any) {
+                vscode.window.showErrorMessage(e.message);
+                return;
+            }
+
             vscode.window.showInformationMessage('🔍 Validating and fixing generated code...');
 
             // Validate and fix the generated code
             const validationResult = await this.codeValidator.validateAndFixGeneratedCode(
-                generatedCode, 
+                sanitizedCode, 
                 workspaceIndex
             );
 
@@ -88,14 +185,12 @@ export class ComponentGenerator {
                 return;
             }
 
-            // Use the fixed code
-            const finalCode = validationResult.fixedCode || generatedCode;
+            // Use the fixed code and sanitize it again
+            const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
 
             // Parse and create component file(s) based on patterns
             await this.createIntelligentComponent(finalCode, targetDir, patterns, userPrompt);
             return finalCode;
-
-            
 
         } catch (error) {
             console.error('Component generation failed:', error);
@@ -125,7 +220,11 @@ export class ComponentGenerator {
                 const mostCommonDir = Array.from(componentDirs.entries())
                     .sort(([,a], [,b]) => b - a)[0][0];
                 
-                const fullPath = path.join(rootPath, mostCommonDir);
+                // Handle both relative and absolute paths
+                const fullPath = path.isAbsolute(mostCommonDir) 
+                    ? mostCommonDir 
+                    : path.join(rootPath, mostCommonDir);
+                    
                 if (fs.existsSync(fullPath)) {
                     return fullPath;
                 }
@@ -334,10 +433,7 @@ Generate only the CSS code:`;
         // Remove markdown code blocks if present
         cleanCode = cleanCode.replace(/```[\w]*\n/, '').replace(/\n```$/, '');
         
-        // Ensure proper imports
-        if (hasJSX && !cleanCode.includes("import React")) {
-            cleanCode = "import React from 'react';\n\n" + cleanCode;
-        }
+        // ⚠️ Do NOT auto-insert React import anymore – bundler handles it.
 
         // Add export default if missing
         if (!cleanCode.includes('export default') && !cleanCode.includes('export {')) {

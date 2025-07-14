@@ -1,3 +1,17 @@
+/**
+ * Simple Component Parser
+ * 
+ * This file provides a lightweight alternative to AST parsing:
+ * - Uses regex patterns to extract basic component information
+ * - Faster parsing for large codebases when full AST is not needed
+ * - Identifies component names and basic structure
+ * - Extracts imports and exports using text patterns
+ * - Fallback parser when Babel AST parsing fails
+ * - Handles common React component patterns
+ * 
+ * Complements the full AST parser for performance and reliability.
+ */
+
 import * as vscode from 'vscode';
 import { ComponentInfo, ImportInfo } from '../types';
 

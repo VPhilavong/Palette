@@ -1,3 +1,16 @@
+/**
+ * Prompt Modal
+ * 
+ * This file creates and manages the prompt input modal for user interaction:
+ * - Displays a webview panel for collecting user prompts
+ * - Handles user input validation and formatting
+ * - Manages modal lifecycle (show, hide, dispose)
+ * - Provides a clean interface for gathering component generation requests
+ * - Implements singleton pattern for consistent modal behavior
+ * 
+ * User interface component for initiating AI code generation.
+ */
+
 import * as vscode from 'vscode';
 
 export class PromptModal {

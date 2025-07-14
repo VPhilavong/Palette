@@ -1,7 +1,16 @@
 import * as vscode from 'vscode';
 
 /**
- * WebView panel for live component preview
+ * Live Preview Panel
+ * 
+ * This file creates a webview panel for live component preview:
+ * - Renders React components in real-time as they're generated
+ * - Provides immediate visual feedback for generated code
+ * - Handles component compilation and error display
+ * - Manages webview lifecycle and communication
+ * - Supports hot reloading for component changes
+ * 
+ * Interactive preview system for generated components.
  */
 export class LivePreviewPanel {
     private static currentPanel: LivePreviewPanel | undefined;

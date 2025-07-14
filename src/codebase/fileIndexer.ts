@@ -1,3 +1,16 @@
+/**
+ * File Indexer
+ * 
+ * This file handles workspace file indexing and monitoring:
+ * - Recursively scans workspace directories for relevant files
+ * - Filters files by type and size for efficient processing
+ * - Creates file metadata with paths, extensions, and modification times
+ * - Sets up file watchers for automatic re-indexing on changes
+ * - Excludes common directories (node_modules, .git, etc.)
+ * 
+ * Provides the foundation for codebase analysis and component discovery.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { FileMetadata } from '../types';

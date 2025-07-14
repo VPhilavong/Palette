@@ -1,3 +1,17 @@
+/**
+ * Type Definitions
+ * 
+ * This file contains all TypeScript interfaces and types used throughout
+ * the UI Copilot extension. It defines:
+ * - File and component metadata structures
+ * - Workspace indexing types
+ * - Framework detection interfaces
+ * - Embedding and similarity result types
+ * - Configuration interfaces
+ * 
+ * These types ensure type safety across the entire codebase.
+ */
+
 export interface FileMetadata {
     
     path: string;

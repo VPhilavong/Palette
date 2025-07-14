@@ -1,7 +1,16 @@
 import * as vscode from 'vscode';
 
 /**
- * Centralized logging utility
+ * Logger Utility
+ * 
+ * This file provides centralized logging functionality:
+ * - Manages log levels (debug, info, warn, error)
+ * - Outputs logs to VS Code output channel
+ * - Formats log messages with timestamps and context
+ * - Handles error logging with stack traces
+ * - Provides development and production logging modes
+ * 
+ * Essential for debugging and monitoring extension behavior.
  */
 export class Logger {
     private static instance: Logger;
