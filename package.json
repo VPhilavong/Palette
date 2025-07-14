@@ -7,8 +7,12 @@
   "publisher": "Palette",
   "homepage": "https://github.com/VPhilavong/SAIL_Project",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VPhilavong/SAIL_Project.git"
+  },
   "engines": {
-    "vscode": "^1.103.0",
+    "vscode": "^1.102.0",
     "npm": ">=9.0.0",
     "node": ">=18.0.0"
   },
@@ -251,12 +255,13 @@
     "watch": "tsc -watch -p ./",
     "test": "node test-standalone.js",
     "clean": "rm -rf out",
-    "build": "npm run clean && npm run compile"
+    "build": "npm run clean && npm run compile",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.7",
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.103.0",
+    "@types/vscode": "^1.102.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
