@@ -33,20 +33,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	instantiationService = new InstantiationService(serviceCollection);
 	serviceCollection.set(IInstantiationService, instantiationService);
 	
-	// Chat and tools services
-	serviceCollection.set(IChatAgentService, ChatAgentService);
-	serviceCollection.set(IToolsService, ToolsService);
-	
 	try {
 		logService.info('Palette UI Agent: Starting activation');
 		
-		// Register chat agents
+		// Create and register chat agents
 		const chatAgentService = new ChatAgentService(logService, configurationService);
+		serviceCollection.set(IChatAgentService, chatAgentService);
 		const chatAgentDisposable = chatAgentService.register();
 		context.subscriptions.push(chatAgentDisposable);
 		
-		// Register tools
+		// Create and register tools
 		const toolsService = new ToolsService(logService, configurationService);
+		serviceCollection.set(IToolsService, toolsService);
 		const toolsDisposable = toolsService.register();
 		context.subscriptions.push(toolsDisposable);
 		

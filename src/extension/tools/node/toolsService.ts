@@ -10,12 +10,15 @@ import { IConfigurationService } from '../../../platform/configuration/common/co
 import { IDisposable, DisposableStore } from '../../../util/common/services';
 import { ComponentAnalysisTool } from './componentAnalysisTool';
 import { ComponentGenerationTool } from './componentGenerationTool';
+import { WorkspacePatternSearch } from '../../search/workspacePatternSearch';
+import { ComponentAnalyzer } from '../../../codebase/componentAnalyzer';
 
 export class ToolsService implements IToolsService {
 	declare readonly _serviceBrand: undefined;
 	
 	private componentAnalysisTool: ComponentAnalysisTool;
 	private componentGenerationTool: ComponentGenerationTool;
+	private workspacePatternSearch: WorkspacePatternSearch;
 
 	constructor(
 		private readonly logService: ILogService,
@@ -23,6 +26,7 @@ export class ToolsService implements IToolsService {
 	) {
 		this.componentAnalysisTool = new ComponentAnalysisTool(logService);
 		this.componentGenerationTool = new ComponentGenerationTool(logService, configurationService);
+		this.workspacePatternSearch = new WorkspacePatternSearch(logService);
 	}
 
 	register(): IDisposable {
@@ -234,11 +238,84 @@ export class ToolsService implements IToolsService {
 		try {
 			const { query } = request.input as { query: string };
 			
-			// TODO: Implement pattern search using existing logic from src/embeddings/vectorStore.ts
-			// This will integrate with your existing search and embedding capabilities
+			// Get current workspace components for search
+			const components = await this.getCurrentWorkspaceComponents();
 			
+			// Use the enhanced workspace pattern search
+			const searchResult = await this.workspacePatternSearch.searchDesignPatterns(query, components);
+			
+			if (searchResult.patterns.length === 0 && searchResult.tailwindUtilities.length === 0) {
+				return new vscode.LanguageModelToolResult([
+					new vscode.LanguageModelTextPart(`🔍 **No patterns found for: "${query}"**\\n\\nSuggestions:\\n${searchResult.suggestions.map(s => `- ${s}`).join('\\n')}`)
+				]);
+			}
+
+			// Build comprehensive search results report
+			let report = `🔍 **Design Pattern Search Results for: "${query}"**\\n\\n`;
+			
+			// Design Patterns section
+			if (searchResult.patterns.length > 0) {
+				report += `**🎨 Design Patterns Found (${searchResult.patterns.length}):**\\n`;
+				searchResult.patterns.forEach((pattern, index) => {
+					const icon = pattern.type === 'component' ? '🧩' : 
+							   pattern.type === 'layout' ? '📐' : 
+							   pattern.type === 'interaction' ? '⚡' : '🔧';
+					
+					report += `${icon} **${pattern.name}** (${pattern.designSystem})\\n`;
+					report += `   ${pattern.description}\\n`;
+					report += `   📄 \`${pattern.filePath.split('/').pop()}\` - Used ${pattern.usageCount} times\\n`;
+					
+					// Show accessibility info
+					const a11yFeatures = [];
+					if (pattern.accessibility.hasAriaLabels) a11yFeatures.push('ARIA labels');
+					if (pattern.accessibility.hasSemanticHTML) a11yFeatures.push('Semantic HTML');
+					if (pattern.accessibility.hasKeyboardSupport) a11yFeatures.push('Keyboard support');
+					
+					if (a11yFeatures.length > 0) {
+						report += `   ♿ Accessibility: ${a11yFeatures.join(', ')}\\n`;
+					}
+					
+					report += '\\n';
+				});
+			}
+
+			// Tailwind Utilities section
+			if (searchResult.tailwindUtilities.length > 0) {
+				report += `**🎯 Tailwind Utilities Found (${searchResult.tailwindUtilities.length}):**\\n`;
+				searchResult.tailwindUtilities.forEach(utility => {
+					const categoryIcon = utility.category === 'layout' ? '📐' :
+									   utility.category === 'spacing' ? '📏' :
+									   utility.category === 'colors' ? '🎨' :
+									   utility.category === 'typography' ? '📝' : '📱';
+					
+					report += `${categoryIcon} \`${utility.utility}\` (${utility.category})\\n`;
+					report += `   ${utility.description} - Used ${utility.usage} times\\n`;
+				});
+				report += '\\n';
+			}
+
+			// Related Components section
+			if (searchResult.components.length > 0) {
+				report += `**🧩 Related Components (${searchResult.components.length}):**\\n`;
+				searchResult.components.forEach(component => {
+					report += `- **${component.name}** (\`${component.path.split('/').pop()}\`)\\n`;
+					if (component.props && component.props.length > 0) {
+						report += `  Props: ${component.props.slice(0, 3).join(', ')}\\n`;
+					}
+				});
+				report += '\\n';
+			}
+
+			// Suggestions section
+			if (searchResult.suggestions.length > 0) {
+				report += `**💡 Suggestions:**\\n`;
+				searchResult.suggestions.forEach(suggestion => {
+					report += `- ${suggestion}\\n`;
+				});
+			}
+
 			return new vscode.LanguageModelToolResult([
-				new vscode.LanguageModelTextPart(`🔍 **Design Pattern Search Results for: "${query}"**\\n\\n📁 **Matching Patterns Found:**\\n- Button variants pattern\\n- Form layout pattern\\n- Navigation pattern\\n\\n*Note: Full implementation pending integration with existing search.*`)
+				new vscode.LanguageModelTextPart(report)
 			]);
 			
 		} catch (error) {
@@ -246,6 +323,17 @@ export class ToolsService implements IToolsService {
 			return new vscode.LanguageModelToolResult([
 				new vscode.LanguageModelTextPart(`❌ Error searching patterns: ${error instanceof Error ? error.message : 'Unknown error'}`)
 			]);
+		}
+	}
+
+	private async getCurrentWorkspaceComponents() {
+		try {
+			// Use the component analyzer to get current workspace components
+			const componentAnalyzer = new ComponentAnalyzer();
+			return await componentAnalyzer.analyzeWorkspaceComponents();
+		} catch (error) {
+			this.logService.warn('Tool: Could not get workspace components', error);
+			return [];
 		}
 	}
 }
