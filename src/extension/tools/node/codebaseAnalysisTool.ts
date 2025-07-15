@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ILogService } from '../../../platform/log/common/logService';
+import { ModelClient, ModelClientFactory } from '../../../llm/modelClient';
 
 export interface ProjectStructure {
     framework: 'nextjs' | 'react' | 'vue' | 'unknown';
@@ -42,6 +43,31 @@ export interface IntentAnalysis {
     relatedFiles: string[];
 }
 
+export interface StructuredRequest {
+    intent: 'build' | 'edit' | 'fix' | 'analyze';
+    component_name: string;
+    component_type?: string;
+    elements: Array<{
+        type: string;
+        field_name?: string;
+        attributes?: string[];
+        children?: string[];
+    }>;
+    attributes: string[];
+    styling?: {
+        approach?: 'tailwind' | 'css-modules' | 'styled-components' | 'css';
+        classes?: string[];
+        responsive?: boolean;
+    };
+    behavior?: {
+        interactions?: string[];
+        states?: string[];
+        async_operations?: string[];
+    };
+    confidence: number; // 0-1, how confident we are in the parsing
+    ambiguities?: string[]; // Things that need clarification
+}
+
 export interface CodebaseContext {
     existingComponents: string[];
     existingPages: string[];
@@ -54,9 +80,11 @@ export class CodebaseAnalysisTool {
     private workspaceRoot: string;
     private projectStructure: ProjectStructure | null = null;
     private codebaseContext: CodebaseContext | null = null;
+    private modelClient: ModelClient;
 
     constructor(private readonly logService: ILogService) {
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        this.modelClient = ModelClientFactory.createClient();
     }
 
     async analyzeProject(): Promise<ProjectStructure> {
@@ -89,6 +117,68 @@ export class CodebaseAnalysisTool {
         });
 
         return this.projectStructure;
+    }
+
+    /**
+     * Enhanced intent analysis with NLU - parses natural language into structured request
+     */
+    async parseStructuredRequest(userPrompt: string): Promise<StructuredRequest> {
+        this.logService.info('CodebaseAnalysisTool: Starting NLU parsing', { prompt: userPrompt.substring(0, 100) });
+        
+        const systemPrompt = `You are an expert at parsing user requests for a code generation agent.
+Extract the key entities from the user's request into a JSON object with this exact structure:
+
+{
+    "intent": "build" | "edit" | "fix" | "analyze",
+    "component_name": "string (PascalCase component name)",
+    "component_type": "string (card, form, button, etc.)",
+    "elements": [
+        {
+            "type": "string (input, button, div, etc.)",
+            "field_name": "string (optional)",
+            "attributes": ["array of strings"],
+            "children": ["array of child element types"]
+        }
+    ],
+    "attributes": ["responsive", "accessible", "interactive", etc.],
+    "styling": {
+        "approach": "tailwind" | "css-modules" | "styled-components" | "css",
+        "classes": ["array of style-related keywords"],
+        "responsive": boolean
+    },
+    "behavior": {
+        "interactions": ["click", "hover", "submit", etc.],
+        "states": ["loading", "error", "success", etc.],
+        "async_operations": ["fetch", "submit", "validate", etc.]
+    },
+    "confidence": 0.0-1.0,
+    "ambiguities": ["things that need clarification"]
+}
+
+Focus on extracting concrete, actionable entities. If the request is vague, note it in ambiguities and lower confidence.`;
+
+        const parsingPrompt = `User request: "${userPrompt}"
+
+Parse this request and return ONLY a valid JSON object with the structure above. No explanations or markdown blocks.`;
+
+        try {
+            const response = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${parsingPrompt}`);
+            
+            if (!response) {
+                throw new Error('No response from NLU model');
+            }
+
+            // Clean and parse the JSON response
+            const cleanedResponse = this.cleanJsonResponse(response);
+            const structuredRequest = JSON.parse(cleanedResponse) as StructuredRequest;
+            
+            // Validate and fill in defaults
+            return this.validateAndEnhanceStructuredRequest(structuredRequest, userPrompt);
+            
+        } catch (error) {
+            this.logService.error('NLU parsing failed, falling back to rule-based parsing', error);
+            return this.fallbackStructuredRequest(userPrompt);
+        }
     }
 
     async analyzeIntent(userPrompt: string): Promise<IntentAnalysis> {
@@ -374,8 +464,18 @@ export class CodebaseAnalysisTool {
         
         switch (intent) {
             case 'page':
+                if (project.routing === 'app-router') {
+                    // For Next.js App Router, create a specific route directory
+                    const routeName = this.extractRouteNameFromPrompt(userPrompt);
+                    return path.join(baseDir, project.directories.pages, routeName);
+                }
                 return path.join(baseDir, project.directories.pages);
             case 'api':
+                if (project.routing === 'app-router') {
+                    // For Next.js App Router API routes, create a specific route directory
+                    const routeName = this.extractRouteNameFromPrompt(userPrompt);
+                    return path.join(baseDir, project.directories.api, routeName);
+                }
                 return path.join(baseDir, project.directories.api);
             case 'component':
                 // Check if it's a UI component
@@ -423,7 +523,10 @@ export class CodebaseAnalysisTool {
                 }
                 return `${baseName}.${project.conventions.pageExtension}`;
             case 'api':
-                return `route.ts`;
+                if (project.routing === 'app-router') {
+                    return `route.ts`;
+                }
+                return `${baseName}.ts`;
             case 'component':
                 return `${baseName}.${project.conventions.componentExtension}`;
             case 'utility':
@@ -433,6 +536,45 @@ export class CodebaseAnalysisTool {
             default:
                 return `${baseName}.${project.conventions.componentExtension}`;
         }
+    }
+
+    private extractRouteNameFromPrompt(userPrompt: string): string {
+        // Extract meaningful route name from user prompt
+        const prompt = userPrompt.toLowerCase();
+        
+        // Common route patterns
+        const routePatterns = [
+            /(?:create|build|make|generate)\s+(?:a\s+)?(?:page\s+(?:for\s+)?)?(.+?)(?:\s+page)?$/,
+            /(?:page\s+(?:for\s+)?)?(.+?)(?:\s+page)?$/,
+        ];
+        
+        for (const pattern of routePatterns) {
+            const match = prompt.match(pattern);
+            if (match && match[1]) {
+                let routeName = match[1].trim();
+                
+                // Clean up the route name
+                routeName = routeName
+                    .replace(/\s+/g, '-')
+                    .replace(/[^a-z0-9-]/g, '')
+                    .replace(/^-+|-+$/g, '');
+                
+                // Handle special cases
+                if (routeName === 'home' || routeName === 'index' || routeName === 'main') {
+                    return ''; // Root route
+                }
+                
+                return routeName;
+            }
+        }
+        
+        // Fallback: use first meaningful word
+        const words = prompt.split(/\s+/);
+        const meaningfulWords = words.filter(word => 
+            !['create', 'generate', 'build', 'make', 'add', 'new', 'the', 'a', 'an', 'page', 'for'].includes(word)
+        );
+        
+        return meaningfulWords.length > 0 ? meaningfulWords[0] : 'new-page';
     }
 
     private explainPlacement(intent: IntentAnalysis['type'], suggestedPath: string, fileName: string, project: ProjectStructure): string {
@@ -597,5 +739,184 @@ export class CodebaseAnalysisTool {
 **Existing Files:**
 - ${context.existingComponents.length} components
 - ${context.existingPages.length} pages`;
+    }
+
+    /**
+     * Checks if a request needs clarification based on confidence and ambiguities
+     */
+    async needsClarification(structuredRequest: StructuredRequest): Promise<{ needs: boolean; questions: string[] }> {
+        const questions: string[] = [];
+        
+        // Low confidence threshold
+        if (structuredRequest.confidence < 0.6) {
+            questions.push("Could you provide more specific details about what you want to build?");
+        }
+        
+        // Check for ambiguities
+        if (structuredRequest.ambiguities && structuredRequest.ambiguities.length > 0) {
+            questions.push(...structuredRequest.ambiguities.map(amb => `Could you clarify: ${amb}?`));
+        }
+        
+        // Check for vague component naming
+        if (structuredRequest.component_name.toLowerCase().includes('component') || 
+            structuredRequest.component_name.toLowerCase().includes('element')) {
+            questions.push("What should I call this component? (e.g., PricingCard, LoginForm, UserProfile)");
+        }
+        
+        // Check for missing critical information for specific types
+        if (structuredRequest.component_type === 'form' && structuredRequest.elements.length === 0) {
+            questions.push("What fields should the form include?");
+        }
+        
+        if (structuredRequest.component_type === 'card' && structuredRequest.elements.length === 0) {
+            questions.push("What content should the card display?");
+        }
+        
+        return {
+            needs: questions.length > 0,
+            questions: questions.slice(0, 3) // Limit to 3 questions to avoid overwhelming
+        };
+    }
+
+    /**
+     * Cleans JSON response from LLM (removes markdown, extra text, etc.)
+     */
+    private cleanJsonResponse(response: string): string {
+        // Remove markdown code blocks
+        let cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        
+        // Find the JSON object
+        const jsonStart = cleaned.indexOf('{');
+        const jsonEnd = cleaned.lastIndexOf('}') + 1;
+        
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+            cleaned = cleaned.substring(jsonStart, jsonEnd);
+        }
+        
+        return cleaned.trim();
+    }
+
+    /**
+     * Validates and enhances the structured request with defaults and project context
+     */
+    private async validateAndEnhanceStructuredRequest(
+        request: StructuredRequest, 
+        originalPrompt: string
+    ): Promise<StructuredRequest> {
+        const project = await this.analyzeProject();
+        
+        // Set defaults
+        const enhanced: StructuredRequest = {
+            intent: request.intent || 'build',
+            component_name: request.component_name || this.generateComponentName(originalPrompt),
+            component_type: request.component_type || 'component',
+            elements: request.elements || [],
+            attributes: request.attributes || [],
+            styling: {
+                approach: request.styling?.approach || this.detectProjectStyling(project),
+                classes: request.styling?.classes || [],
+                responsive: request.styling?.responsive !== false // Default to true
+            },
+            behavior: {
+                interactions: request.behavior?.interactions || [],
+                states: request.behavior?.states || [],
+                async_operations: request.behavior?.async_operations || []
+            },
+            confidence: Math.max(0, Math.min(1, request.confidence || 0.5)),
+            ambiguities: request.ambiguities || []
+        };
+        
+        // Add project-specific enhancements
+        if (enhanced.styling?.approach === 'tailwind' && !enhanced.attributes.includes('responsive')) {
+            enhanced.attributes.push('responsive');
+        }
+        
+        return enhanced;
+    }
+
+    /**
+     * Fallback structured request when NLU fails
+     */
+    private fallbackStructuredRequest(userPrompt: string): StructuredRequest {
+        const componentName = this.generateComponentName(userPrompt);
+        const componentType = this.detectComponentType(userPrompt);
+        
+        return {
+            intent: 'build',
+            component_name: componentName,
+            component_type: componentType,
+            elements: [],
+            attributes: ['responsive'],
+            styling: {
+                approach: 'tailwind', // Safe default
+                classes: [],
+                responsive: true
+            },
+            behavior: {
+                interactions: [],
+                states: [],
+                async_operations: []
+            },
+            confidence: 0.3, // Low confidence for fallback
+            ambiguities: ['The request was not clear enough for detailed parsing']
+        };
+    }
+
+    /**
+     * Generates a component name from user prompt
+     */
+    private generateComponentName(prompt: string): string {
+        const words = prompt.toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .split(/\s+/)
+            .filter(word => !['create', 'build', 'make', 'generate', 'add', 'new', 'a', 'an', 'the'].includes(word))
+            .slice(0, 3); // Take first 3 meaningful words
+        
+        if (words.length === 0) return 'NewComponent';
+        
+        return words.map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+    }
+
+    /**
+     * Detects component type from prompt
+     */
+    private detectComponentType(prompt: string): string {
+        const lowerPrompt = prompt.toLowerCase();
+        
+        if (lowerPrompt.includes('card')) return 'card';
+        if (lowerPrompt.includes('form')) return 'form';
+        if (lowerPrompt.includes('button')) return 'button';
+        if (lowerPrompt.includes('modal') || lowerPrompt.includes('dialog')) return 'modal';
+        if (lowerPrompt.includes('table') || lowerPrompt.includes('list')) return 'table';
+        if (lowerPrompt.includes('nav') || lowerPrompt.includes('menu')) return 'navigation';
+        if (lowerPrompt.includes('header')) return 'header';
+        if (lowerPrompt.includes('footer')) return 'footer';
+        if (lowerPrompt.includes('sidebar')) return 'sidebar';
+        
+        return 'component';
+    }
+
+    /**
+     * Detects project styling approach
+     */
+    private detectProjectStyling(project: ProjectStructure): 'tailwind' | 'css-modules' | 'styled-components' | 'css' {
+        switch (project.framework) {
+            case 'nextjs':
+                // Check for Tailwind in Next.js projects
+                try {
+                    const packageJsonPath = path.join(this.workspaceRoot, 'package.json');
+                    if (fs.existsSync(packageJsonPath)) {
+                        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+                        if (deps['tailwindcss']) return 'tailwind';
+                        if (deps['styled-components']) return 'styled-components';
+                    }
+                } catch (error) {
+                    // Ignore errors, fall through to default
+                }
+                return 'css-modules';
+            default:
+                return 'css';
+        }
     }
 }

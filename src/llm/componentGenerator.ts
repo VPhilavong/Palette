@@ -20,7 +20,7 @@ import { PromptBuilder } from './promptBuilder';
 import { ModelClient, ModelClientFactory } from './modelClient';
 import { CodebaseAnalyzer, CodebasePatterns } from '../codebase/codebaseAnalyzer';
 import { CodeValidator } from './codeValidator';
-import { CodebaseAnalysisTool, IntentAnalysis } from '../extension/tools/node/codebaseAnalysisTool';
+import { CodebaseAnalysisTool, IntentAnalysis, StructuredRequest } from '../extension/tools/node/codebaseAnalysisTool';
 import { ILogService } from '../platform/log/common/logService';
 import { ConsoleLogService } from '../platform/log/node/consoleLogService';
 
@@ -54,6 +54,177 @@ export class ComponentGenerator {
         this.codebaseAnalyzer = new CodebaseAnalyzer();
         this.codeValidator = new CodeValidator();
         this.codebaseAnalysisTool = new CodebaseAnalysisTool(this.logService);
+    }
+
+    /**
+     * NEW: "Ask-to-Build" workflow with NLU intent parsing and clarification
+     */
+    async askToBuild(
+        userPrompt: string,
+        workspaceIndex?: WorkspaceIndex | null
+    ): Promise<{ 
+        success: boolean; 
+        needsClarification?: boolean; 
+        questions?: string[]; 
+        files?: { path: string; content: string; }[];
+        structuredRequest?: StructuredRequest;
+    }> {
+        try {
+            if (!workspaceIndex) {
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: ['Please analyze the project first to enable context-aware generation.']
+                };
+            }
+
+            this.logService.info('ComponentGenerator: Starting ask-to-build workflow', { prompt: userPrompt.substring(0, 100) });
+
+            // Step 1: Parse natural language into structured request using NLU
+            vscode.window.showInformationMessage('🧠 Understanding your request...');
+            const structuredRequest = await this.codebaseAnalysisTool.parseStructuredRequest(userPrompt);
+            
+            this.logService.info('ComponentGenerator: Parsed structured request', { 
+                intent: structuredRequest.intent,
+                component_name: structuredRequest.component_name,
+                confidence: structuredRequest.confidence
+            });
+
+            // Step 2: Check if clarification is needed
+            const clarificationCheck = await this.codebaseAnalysisTool.needsClarification(structuredRequest);
+            
+            if (clarificationCheck.needs) {
+                this.logService.info('ComponentGenerator: Clarification needed', { questions: clarificationCheck.questions });
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: clarificationCheck.questions,
+                    structuredRequest
+                };
+            }
+
+            // Step 3: Generate component with structured data
+            vscode.window.showInformationMessage(`🎯 Building ${structuredRequest.component_name} (${structuredRequest.component_type})...`);
+            
+            const files = await this.generateFromStructuredRequest(structuredRequest, workspaceIndex);
+
+            if (files && files.length > 0) {
+                // Step 4: Create files on disk
+                for (const file of files) {
+                    await this.ensureDirectoryExists(path.dirname(file.path));
+                    await this.writeFileWithConfirmation(file.path, file.content);
+                }
+
+                vscode.window.showInformationMessage(
+                    `✅ Created ${structuredRequest.component_name} with ${files.length} file(s)`,
+                    'Open Files'
+                ).then(selection => {
+                    if (selection === 'Open Files' && files.length > 0) {
+                        this.openGeneratedFile(files[0].path);
+                    }
+                });
+
+                return {
+                    success: true,
+                    files,
+                    structuredRequest
+                };
+            } else {
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: ['I couldn\'t generate the component. Could you provide more specific details?'],
+                    structuredRequest
+                };
+            }
+
+        } catch (error) {
+            this.logService.error('Ask-to-build workflow failed', error);
+            return {
+                success: false,
+                needsClarification: true,
+                questions: ['Something went wrong. Could you rephrase your request?']
+            };
+        }
+    }
+
+    /**
+     * Generates component files from structured NLU request
+     */
+    private async generateFromStructuredRequest(
+        structuredRequest: StructuredRequest,
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+
+        try {
+            // Analyze codebase patterns for context
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
+            
+            // Find similar components for context
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(
+                `${structuredRequest.component_type} ${structuredRequest.component_name}`, 
+                workspaceIndex.components
+            );
+            
+            // Build context information
+            const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
+            
+            // Build system prompt
+            const systemPrompt = this.buildSystemPrompt(workspaceIndex, patterns);
+            
+            // Use the new structured prompt builder
+            const fullPrompt = this.promptBuilder.buildStructuredComponentPrompt(
+                structuredRequest,
+                similarComponents,
+                workspaceIndex.project,
+                patterns,
+                contextInfo
+            );
+
+            // Generate component code
+            const generatedCode = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${fullPrompt}`);
+
+            if (!generatedCode) {
+                this.logService.error('No code generated from model');
+                return [];
+            }
+
+            // Sanitize and validate the generated code
+            const sanitizedCode = sanitize(generatedCode);
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(sanitizedCode, workspaceIndex);
+
+            if (!validationResult.isValid) {
+                this.logService.error('Generated code validation failed', { errors: validationResult.errors });
+                return [];
+            }
+
+            const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
+            
+            // Determine file placement using intent analysis
+            const intent = await this.codebaseAnalysisTool.analyzeIntent(
+                `${structuredRequest.intent} ${structuredRequest.component_type} ${structuredRequest.component_name}`
+            );
+
+            const componentPath = path.join(intent.suggestedPath, intent.fileName);
+            files.push({ path: componentPath, content: finalCode });
+
+            // Generate additional files if needed
+            if (structuredRequest.styling?.approach === 'css-modules') {
+                const styleFile = await this.generateStyleFile(
+                    `${structuredRequest.component_type} with ${structuredRequest.styling?.classes?.join(', ') || 'default styling'}`, 
+                    intent, 
+                    finalCode
+                );
+                if (styleFile) files.push(styleFile);
+            }
+
+            return files;
+
+        } catch (error) {
+            this.logService.error('Structured generation failed', error);
+            return [];
+        }
     }
 
     /**

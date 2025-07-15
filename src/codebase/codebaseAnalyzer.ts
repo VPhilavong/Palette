@@ -30,6 +30,8 @@ export interface CodebasePatterns {
     apiPatterns: {
         baseUrls: string[];
         customHooks: string[];
+        serviceImports: string[]; // Add service imports tracking
+        sdkPatterns: string[]; // Add SDK pattern detection
     };
     uiComponents: {
         componentLibrary: 'custom' | 'material-ui' | 'ant-design' | 'chakra-ui' | 'none';
@@ -141,7 +143,9 @@ export class CodebaseAnalyzer {
             existingComponents: workspaceIndex.components,
             apiPatterns: {
                 baseUrls: [],
-                customHooks: []
+                customHooks: [],
+                serviceImports: [],
+                sdkPatterns: []
             },
             uiComponents: {
                 componentLibrary: 'none',
@@ -177,6 +181,18 @@ export class CodebaseAnalyzer {
         
         // Analyze common props
         patterns.commonProps = this.extractCommonProps(workspaceIndex.components);
+        
+        // Analyze API patterns
+        patterns.apiPatterns = await this.analyzeApiPatterns(workspaceIndex);
+        
+        // Analyze UI component patterns
+        patterns.uiComponents = await this.analyzeUiComponents(workspaceIndex);
+        
+        console.log('🎨 Codebase patterns detected:', {
+            apiPatterns: patterns.apiPatterns,
+            uiComponents: patterns.uiComponents,
+            stylingApproach: patterns.stylingApproach
+        });
 
         return patterns;
     }
@@ -300,5 +316,115 @@ export class CodebaseAnalyzer {
             .sort(([_, a], [__, b]) => b - a)
             .slice(0, 10)
             .map(([prop, _]) => prop);
+    }
+
+    private async analyzeApiPatterns(workspaceIndex: WorkspaceIndex): Promise<CodebasePatterns['apiPatterns']> {
+        const patterns: CodebasePatterns['apiPatterns'] = {
+            baseUrls: [],
+            customHooks: [],
+            serviceImports: [],
+            sdkPatterns: []
+        };
+
+        // Find API service files and patterns
+        const files = await vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx}', 'node_modules/**', 100);
+        
+        for (const file of files) {
+            try {
+                const content = await vscode.workspace.fs.readFile(file);
+                const text = content.toString();
+                
+                // Look for service imports (common patterns)
+                const serviceImportRegex = /import\s+{[^}]*}\s+from\s+['"]([^'"]*(?:service|api|client|sdk)[^'"]*)['"]/gi;
+                let match;
+                while ((match = serviceImportRegex.exec(text)) !== null) {
+                    if (!patterns.serviceImports.includes(match[1])) {
+                        patterns.serviceImports.push(match[1]);
+                    }
+                }
+                
+                // Look for SDK patterns like UsersService, ItemsService, etc.
+                const sdkServiceRegex = /(\w+Service)\./g;
+                while ((match = sdkServiceRegex.exec(text)) !== null) {
+                    if (!patterns.sdkPatterns.includes(match[1])) {
+                        patterns.sdkPatterns.push(match[1]);
+                    }
+                }
+                
+                // Look for custom hooks
+                const customHookRegex = /const\s+(use[A-Z]\w*)\s*=/g;
+                while ((match = customHookRegex.exec(text)) !== null) {
+                    if (!patterns.customHooks.includes(match[1])) {
+                        patterns.customHooks.push(match[1]);
+                    }
+                }
+                
+                // Look for API base URLs
+                const baseUrlRegex = /(?:baseURL|base_url|API_URL)\s*[:=]\s*['"]([^'"]+)['"]/gi;
+                while ((match = baseUrlRegex.exec(text)) !== null) {
+                    if (!patterns.baseUrls.includes(match[1])) {
+                        patterns.baseUrls.push(match[1]);
+                    }
+                }
+                
+            } catch (error) {
+                // Skip files that can't be read
+                continue;
+            }
+        }
+
+        return patterns;
+    }
+
+    private async analyzeUiComponents(workspaceIndex: WorkspaceIndex): Promise<CodebasePatterns['uiComponents']> {
+        const patterns: CodebasePatterns['uiComponents'] = {
+            componentLibrary: 'none',
+            commonComponents: {},
+            importPatterns: []
+        };
+
+        // Detect UI library from dependencies
+        const deps = { ...workspaceIndex.project.dependencies, ...workspaceIndex.project.devDependencies };
+        
+        if (deps['@chakra-ui/react']) {
+            patterns.componentLibrary = 'chakra-ui';
+        } else if (deps['@mui/material']) {
+            patterns.componentLibrary = 'material-ui';
+        } else if (deps['antd']) {
+            patterns.componentLibrary = 'ant-design';
+        } else {
+            patterns.componentLibrary = 'custom';
+        }
+
+        // Find common UI component imports
+        const files = await vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx}', 'node_modules/**', 50);
+        
+        for (const file of files) {
+            try {
+                const content = await vscode.workspace.fs.readFile(file);
+                const text = content.toString();
+                
+                // Extract import patterns for UI components
+                const uiImportRegex = /import\s+{([^}]+)}\s+from\s+['"](@chakra-ui\/react|@mui\/material|antd|@\/.*ui.*)['"]/gi;
+                let match;
+                while ((match = uiImportRegex.exec(text)) !== null) {
+                    const importPath = match[2];
+                    if (!patterns.importPatterns.includes(importPath)) {
+                        patterns.importPatterns.push(importPath);
+                    }
+                    
+                    // Count individual components
+                    const components = match[1].split(',').map(c => c.trim());
+                    components.forEach(component => {
+                        patterns.commonComponents[component] = (patterns.commonComponents[component] || 0) + 1;
+                    });
+                }
+                
+            } catch (error) {
+                continue;
+            }
+        }
+
+        return patterns;
     }
 }

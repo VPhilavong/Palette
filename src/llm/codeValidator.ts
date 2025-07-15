@@ -105,6 +105,12 @@ export class CodeValidator {
                         continue;
                     }
                     
+                    // Handle TanStack Router imports
+                    if (this.isTanStackRouterModule(importInfo.module, workspaceIndex)) {
+                        console.log('Skipping TanStack Router error - detected in project');
+                        continue;
+                    }
+                    
                     // Handle common packages that are often available but might not be detected
                     if (this.isCommonlyAvailablePackage(importInfo.module)) {
                         console.log(`Skipping common package error: ${importInfo.module}`);
@@ -152,6 +158,13 @@ export class CodeValidator {
                 if (result.errors.length === 0) {
                     result.isValid = true;
                 }
+            }
+            
+            // Check for router conflicts
+            const routerConflicts = this.checkRouterConflicts(imports, workspaceIndex);
+            if (routerConflicts.length > 0) {
+                result.errors.push(...routerConflicts);
+                result.isValid = false;
             }
             
             // Additional safety net: if we have very few dependencies detected, 
@@ -310,7 +323,37 @@ export class CodeValidator {
     }
 
     /**
-     * Check if this is a commonly available package that we should assume is present
+     * Check if a module is related to TanStack Router and available in the project
+     */
+    private isTanStackRouterModule(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) {
+            return false;
+        }
+
+        const allDeps = [
+            ...Object.keys(workspaceIndex.project.dependencies),
+            ...Object.keys(workspaceIndex.project.devDependencies)
+        ];
+
+        const tanstackRouterModules = [
+            '@tanstack/react-router',
+            '@tanstack/router-core'
+        ];
+
+        // If the module is a TanStack Router module and we have TanStack Router installed
+        if (module.startsWith('@tanstack/react-router') || module.startsWith('@tanstack/router')) {
+            const hasTanStackRouter = tanstackRouterModules.some(dep => allDeps.includes(dep));
+            if (hasTanStackRouter) {
+                console.log(`TanStack Router module ${module} detected as available`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a module is related to Next.js and available in the project
      */
     private isNextJsImport(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
         // Check if Next.js is in the project
@@ -783,6 +826,47 @@ export class CodeValidator {
         }
 
         return fixedCode;
+    }
+
+    /**
+     * Check for router conflicts - e.g., using Next.js router in a TanStack Router project
+     */
+    private checkRouterConflicts(imports: any[], workspaceIndex: WorkspaceIndex | null): string[] {
+        const conflicts: string[] = [];
+        
+        if (!workspaceIndex) {
+            return conflicts;
+        }
+        
+        const detectedFrameworks = workspaceIndex.project.frameworks?.map(f => f.name) || [];
+        const hasNextJs = detectedFrameworks.includes('Next.js');
+        const hasTanStackRouter = detectedFrameworks.includes('TanStack Router');
+        const hasReactRouter = detectedFrameworks.includes('React Router');
+        
+        for (const importInfo of imports) {
+            // Check for Next.js router usage in non-Next.js projects
+            if ((importInfo.module === 'next/router' || importInfo.module === 'next/head') && !hasNextJs) {
+                if (hasTanStackRouter) {
+                    conflicts.push(`Import error: Using '${importInfo.module}' in a TanStack Router project. Use '@tanstack/react-router' instead.`);
+                } else if (hasReactRouter) {
+                    conflicts.push(`Import error: Using '${importInfo.module}' in a React Router project. Use 'react-router-dom' instead.`);
+                } else {
+                    conflicts.push(`Import error: Using '${importInfo.module}' but Next.js is not detected in this project.`);
+                }
+            }
+            
+            // Check for React Router usage in Next.js projects
+            if (importInfo.module === 'react-router-dom' && hasNextJs) {
+                conflicts.push(`Import error: Using 'react-router-dom' in a Next.js project. Use 'next/router' or 'next/navigation' instead.`);
+            }
+            
+            // Check for TanStack Router usage in Next.js projects
+            if (importInfo.module.startsWith('@tanstack/react-router') && hasNextJs) {
+                conflicts.push(`Import error: Using TanStack Router in a Next.js project. Use Next.js built-in routing instead.`);
+            }
+        }
+        
+        return conflicts;
     }
 
     getValidationSummary(result: ValidationResult): string {

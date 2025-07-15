@@ -33,7 +33,10 @@ export class FrameworkDetector {
         // Step 2: Analyze imports in code files
         await this.analyzeCodeImports(metadata);
 
-        // Step 3: Detect TypeScript
+        // Step 3: Analyze file structure patterns
+        await this.analyzeFileStructure(metadata);
+
+        // Step 4: Detect TypeScript
         metadata.hasTypeScript = await this.detectTypeScript();
 
         return metadata;
@@ -109,6 +112,39 @@ export class FrameworkDetector {
         ];
 
         metadata.uiLibraries = uiLibraryPatterns.filter(lib => lib in allDeps);
+        
+        // Detect router libraries separately for better framework understanding
+        this.detectRouterLibraries(metadata, allDeps);
+    }
+
+    private detectRouterLibraries(metadata: ProjectMetadata, allDeps: Record<string, string>): void {
+        // Add router information as a special framework type
+        if (allDeps['@tanstack/react-router']) {
+            metadata.frameworks.push({
+                name: 'TanStack Router',
+                version: allDeps['@tanstack/react-router'],
+                detected: true,
+                confidence: 1.0
+            });
+        }
+        
+        if (allDeps['react-router-dom'] || allDeps['react-router']) {
+            metadata.frameworks.push({
+                name: 'React Router',
+                version: allDeps['react-router-dom'] || allDeps['react-router'],
+                detected: true,
+                confidence: 1.0
+            });
+        }
+        
+        if (allDeps['@reach/router']) {
+            metadata.frameworks.push({
+                name: 'Reach Router',
+                version: allDeps['@reach/router'],
+                detected: true,
+                confidence: 1.0
+            });
+        }
     }
 
     private detectStateManagement(metadata: ProjectMetadata): void {
@@ -164,6 +200,9 @@ export class FrameworkDetector {
 
         // Detect frameworks from imports even without package.json
         this.detectFrameworksFromImports(metadata, importCounts, jsxUsage);
+        
+        // Detect router frameworks from imports
+        this.detectRouterFromImports(metadata, importCounts);
 
         // Boost confidence for frameworks found in imports
         for (const framework of metadata.frameworks) {
@@ -243,7 +282,9 @@ export class FrameworkDetector {
             { pattern: '@mantine/', name: 'Mantine' },
             { pattern: 'styled-components', name: 'Styled Components' },
             { pattern: '@emotion/', name: 'Emotion' },
-            { pattern: 'lucide-react', name: 'Lucide React' }
+            { pattern: 'lucide-react', name: 'Lucide React' },
+            { pattern: '@ark-ui/', name: 'Ark UI' },
+            { pattern: '@zag-js/', name: 'Zag UI' }
         ];
 
         for (const lib of uiLibraryImports) {
@@ -254,6 +295,50 @@ export class FrameworkDetector {
         }
 
         console.log(`Code analysis: JSX in ${jsxUsage.files} files, ${Object.keys(importCounts).length} unique imports`);
+    }
+
+    private detectRouterFromImports(metadata: ProjectMetadata, importCounts: Record<string, number>): void {
+        // TanStack Router detection
+        if (importCounts['@tanstack/react-router'] || 
+            Object.keys(importCounts).some(imp => imp.includes('@tanstack/react-router'))) {
+            const tanstackRouter: Framework = {
+                name: 'TanStack Router',
+                detected: true,
+                confidence: 0.9
+            };
+            
+            if (!metadata.frameworks.some(f => f.name === 'TanStack Router')) {
+                metadata.frameworks.push(tanstackRouter);
+            }
+        }
+
+        // React Router detection
+        if (importCounts['react-router-dom'] || importCounts['react-router'] ||
+            Object.keys(importCounts).some(imp => imp.includes('react-router'))) {
+            const reactRouter: Framework = {
+                name: 'React Router',
+                detected: true,
+                confidence: 0.9
+            };
+            
+            if (!metadata.frameworks.some(f => f.name === 'React Router')) {
+                metadata.frameworks.push(reactRouter);
+            }
+        }
+
+        // Reach Router detection (legacy)
+        if (importCounts['@reach/router'] ||
+            Object.keys(importCounts).some(imp => imp.includes('@reach/router'))) {
+            const reachRouter: Framework = {
+                name: 'Reach Router',
+                detected: true,
+                confidence: 0.8
+            };
+            
+            if (!metadata.frameworks.some(f => f.name === 'Reach Router')) {
+                metadata.frameworks.push(reachRouter);
+            }
+        }
     }
 
     private async detectTypeScript(): Promise<boolean> {
@@ -268,6 +353,73 @@ export class FrameworkDetector {
             // Check for .ts/.tsx files
             const tsFiles = await vscode.workspace.findFiles('**/*.{ts,tsx}', 'node_modules/**', 1);
             return tsFiles.length > 0;
+        }
+    }
+
+    private async analyzeFileStructure(metadata: ProjectMetadata): Promise<void> {
+        if (!vscode.workspace.workspaceFolders) {
+            return;
+        }
+
+        const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        metadata.rootPath = workspaceRoot;
+
+        try {
+            // Check for TanStack Router file structure patterns
+            const routeTreeFile = await vscode.workspace.findFiles('**/routeTree.gen.ts', 'node_modules/**', 1);
+            const rootRouteFile = await vscode.workspace.findFiles('**/__root.tsx', 'node_modules/**', 1);
+            const routesDirectory = await vscode.workspace.findFiles('**/routes/**', 'node_modules/**', 1);
+
+            if (routeTreeFile.length > 0 || rootRouteFile.length > 0 || routesDirectory.length > 0) {
+                // Strong indication of TanStack Router
+                const tanstackRouter: Framework = {
+                    name: 'TanStack Router',
+                    detected: true,
+                    confidence: 0.95 // High confidence based on file structure
+                };
+                
+                if (!metadata.frameworks.some(f => f.name === 'TanStack Router')) {
+                    metadata.frameworks.push(tanstackRouter);
+                    console.log('TanStack Router detected from file structure');
+                }
+            }
+
+            // Check for Next.js App Router structure
+            const appDirectory = await vscode.workspace.findFiles('**/app/**/page.{tsx,ts,jsx,js}', 'node_modules/**', 1);
+            if (appDirectory.length > 0) {
+                // App Router detected
+                const nextFramework = metadata.frameworks.find(f => f.name === 'Next.js');
+                if (nextFramework) {
+                    nextFramework.confidence = Math.min(nextFramework.confidence + 0.2, 1.0);
+                } else {
+                    metadata.frameworks.push({
+                        name: 'Next.js',
+                        detected: true,
+                        confidence: 0.8
+                    });
+                }
+                console.log('Next.js App Router detected from file structure');
+            }
+
+            // Check for Next.js Pages Router structure
+            const pagesDirectory = await vscode.workspace.findFiles('**/pages/**/*.{tsx,ts,jsx,js}', 'node_modules/**', 1);
+            if (pagesDirectory.length > 0 && appDirectory.length === 0) {
+                // Pages Router detected
+                const nextFramework = metadata.frameworks.find(f => f.name === 'Next.js');
+                if (nextFramework) {
+                    nextFramework.confidence = Math.min(nextFramework.confidence + 0.2, 1.0);
+                } else {
+                    metadata.frameworks.push({
+                        name: 'Next.js',
+                        detected: true,
+                        confidence: 0.8
+                    });
+                }
+                console.log('Next.js Pages Router detected from file structure');
+            }
+
+        } catch (error) {
+            console.error('Error analyzing file structure:', error);
         }
     }
 }

@@ -13,11 +13,119 @@
 
 import { ComponentInfo, ProjectMetadata } from '../types';
 import { CodebasePatterns } from '../codebase/codebaseAnalyzer';
+import { StructuredRequest } from '../extension/tools/node/codebaseAnalysisTool';
 
 /**
  * Builds context-aware prompts for component generation
  */
 export class PromptBuilder {
+    /**
+     * Builds a highly detailed prompt from structured NLU entities
+     */
+    buildStructuredComponentPrompt(
+        structuredRequest: StructuredRequest,
+        context: ComponentInfo[],
+        projectMetadata: ProjectMetadata,
+        patterns?: CodebasePatterns,
+        contextInfo?: string
+    ): string {
+        const frameworks = projectMetadata.frameworks?.map(f => f.name).join(', ') || 'React';
+        const hasTypeScript = projectMetadata.hasTypeScript;
+        
+        let prompt = `Create a ${frameworks} component: ${structuredRequest.component_name}\n\n`;
+        
+        // Add detailed component specification based on structured entities
+        prompt += `## Component Specification\n`;
+        prompt += `**Type:** ${structuredRequest.component_type}\n`;
+        prompt += `**Name:** ${structuredRequest.component_name}\n`;
+        
+        // Add element details if specified
+        if (structuredRequest.elements.length > 0) {
+            prompt += `**Elements to include:**\n`;
+            structuredRequest.elements.forEach((element, index) => {
+                prompt += `${index + 1}. ${element.type}`;
+                if (element.field_name) prompt += ` (${element.field_name})`;
+                if (element.attributes && element.attributes.length > 0) {
+                    prompt += ` with attributes: ${element.attributes.join(', ')}`;
+                }
+                if (element.children && element.children.length > 0) {
+                    prompt += ` containing: ${element.children.join(', ')}`;
+                }
+                prompt += '\n';
+            });
+        }
+        
+        // Add specific attributes and behaviors
+        if (structuredRequest.attributes.length > 0) {
+            prompt += `**Required attributes:** ${structuredRequest.attributes.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.interactions && structuredRequest.behavior.interactions.length > 0) {
+            prompt += `**Interactions:** ${structuredRequest.behavior.interactions.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.states && structuredRequest.behavior.states.length > 0) {
+            prompt += `**States to handle:** ${structuredRequest.behavior.states.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.async_operations && structuredRequest.behavior.async_operations.length > 0) {
+            prompt += `**Async operations:** ${structuredRequest.behavior.async_operations.join(', ')}\n`;
+        }
+        
+        prompt += '\n';
+        
+        // Add styling specifications
+        if (structuredRequest.styling) {
+            prompt += `## Styling Requirements\n`;
+            prompt += `**Approach:** ${structuredRequest.styling.approach}\n`;
+            
+            if (structuredRequest.styling.classes && structuredRequest.styling.classes.length > 0) {
+                prompt += `**Style themes:** ${structuredRequest.styling.classes.join(', ')}\n`;
+            }
+            
+            if (structuredRequest.styling.responsive) {
+                prompt += `**Responsive:** Yes, include mobile, tablet, and desktop breakpoints\n`;
+            }
+            
+            prompt += '\n';
+        }
+        
+        // Add codebase-specific patterns FIRST (most important)
+        if (patterns) {
+            prompt += this.buildCodebaseSpecificInstructions(patterns);
+            prompt += '\n';
+        }
+        
+        // Add context from similar components
+        if (contextInfo) {
+            prompt += contextInfo;
+        }
+        
+        // Add technical requirements
+        prompt += `## Technical Requirements\n`;
+        prompt += `- Framework: ${frameworks}\n`;
+        prompt += `- Language: ${hasTypeScript ? 'TypeScript' : 'JavaScript'}\n`;
+        prompt += `- Use modern functional components and hooks\n`;
+        prompt += `- Define props with TypeScript \`interface\` or \`type\`; **do NOT use \`prop-types\`**\n`;
+        prompt += `- **CRITICAL: Do NOT use \`React.FC\` or \`FC\`**. Instead, type props on the function directly\n`;
+        prompt += `- Include accessibility attributes (ARIA) and semantic HTML\n`;
+        prompt += `- Add proper error handling and edge cases\n`;
+        prompt += `- **Do NOT** add \`import React from 'react'\`; modern build tools handle it automatically\n`;
+        
+        // Add component-specific patterns
+        const componentPatterns = this.getComponentPatterns(`${structuredRequest.component_type} ${structuredRequest.component_name}`);
+        if (componentPatterns) {
+            prompt += componentPatterns;
+        }
+        
+        prompt += `\n## Output Format\n`;
+        prompt += `Generate ONLY the complete, functional component code with appropriate imports. `;
+        prompt += `No explanations, markdown blocks, or additional text. `;
+        prompt += `The component should be production-ready and follow all specified requirements.`;
+        
+        return prompt;
+    }
+
     /**
      * Builds a prompt for generating a new component based on existing codebase context
      */
@@ -33,6 +141,18 @@ export class PromptBuilder {
         const uiLibraries = projectMetadata.uiLibraries.join(', ');
         
         let prompt = `Create a ${frameworks} component based on this request: "${request}"\n\n`;
+        
+        // Add codebase-specific patterns FIRST (most important)
+        if (patterns) {
+            prompt += this.buildCodebaseSpecificInstructions(patterns);
+            prompt += '\n';
+        }
+        
+        // Router-specific patterns (critical for project compatibility)
+        const routerInfo = this.getRouterInstructions(projectMetadata.frameworks);
+        if (routerInfo) {
+            prompt += routerInfo;
+        }
         
         prompt += `Technical Requirements:\n`;
         prompt += `- Framework: ${frameworks}\n`;
@@ -96,8 +216,11 @@ export class PromptBuilder {
         prompt += `- Add confirmation dialogs for destructive actions\n`;
         prompt += `- Implement proper form validation with inline error messages\n`;
         
-        if (uiLibraries.includes('Tailwind')) {
+        if (uiLibraries.includes('Tailwind CSS') || uiLibraries.includes('tailwindcss')) {
             prompt += `- Style with Tailwind CSS classes\n`;
+        } else if (uiLibraries.includes('Chakra UI') || uiLibraries.includes('@chakra-ui/react')) {
+            prompt += `- Use Chakra UI components for styling and layout\n`;
+            prompt += `- Import components from '@chakra-ui/react'\n`;
         } else if (uiLibraries.includes('styled-components')) {
             prompt += `- Use styled-components for styling\n`;
         } else {
@@ -113,11 +236,6 @@ export class PromptBuilder {
         const componentPatterns = this.getComponentPatterns(request);
         if (componentPatterns) {
             prompt += componentPatterns;
-        }
-        
-        // Add codebase-specific patterns
-        if (patterns) {
-            prompt += this.buildCodebaseSpecificInstructions(patterns);
         }
         
         // Add specific styling instructions based on patterns
@@ -283,13 +401,28 @@ You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing prop
     private buildCodebaseSpecificInstructions(patterns: CodebasePatterns): string {
         let instructions = '';
 
-        // API patterns - suggest rather than enforce
-        if (patterns.apiPatterns.baseUrls.length > 0) {
-            instructions += `\nDetected API Patterns (consider following these):\n`;
-            instructions += `- Project appears to use backend API(s): ${patterns.apiPatterns.baseUrls.slice(0, 2).join(', ')}\n`;
+        // API patterns - suggest following existing approach
+        if (patterns.apiPatterns.serviceImports.length > 0 || patterns.apiPatterns.sdkPatterns.length > 0 || patterns.apiPatterns.baseUrls.length > 0) {
+            instructions += `\nDetected API Patterns (follow existing approach):\n`;
+            
+            if (patterns.apiPatterns.sdkPatterns.length > 0) {
+                instructions += `- Project uses generated SDK services: ${patterns.apiPatterns.sdkPatterns.slice(0, 3).join(', ')}\n`;
+                instructions += `- IMPORTANT: Use existing SDK services instead of custom fetch functions\n`;
+                instructions += `- Example usage: ${patterns.apiPatterns.sdkPatterns[0]}.methodName(params)\n`;
+            }
+            
+            if (patterns.apiPatterns.serviceImports.length > 0) {
+                instructions += `- API service imports found: ${patterns.apiPatterns.serviceImports.slice(0, 2).join(', ')}\n`;
+                instructions += `- Use existing service imports for API calls\n`;
+            }
+            
+            if (patterns.apiPatterns.baseUrls.length > 0) {
+                instructions += `- Project appears to use backend API(s): ${patterns.apiPatterns.baseUrls.slice(0, 2).join(', ')}\n`;
+            }
             
             if (patterns.apiPatterns.customHooks.length > 0) {
-                instructions += `- Consider using similar data fetching patterns as: ${patterns.apiPatterns.customHooks.slice(0, 3).join(', ')}\n`;
+                instructions += `- Project has custom hooks: ${patterns.apiPatterns.customHooks.slice(0, 3).join(', ')}\n`;
+                instructions += `- Consider using existing hooks for data fetching patterns\n`;
             }
             
             instructions += `- If creating API calls, consider following existing authentication patterns\n`;
@@ -297,9 +430,18 @@ You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing prop
 
         // UI Component patterns - flexible suggestions
         if (patterns.uiComponents.componentLibrary !== 'none') {
-            instructions += `\nDetected UI Patterns (adapt as needed):\n`;
+            instructions += `\nDetected UI Patterns (follow project standards):\n`;
             
-            if (patterns.uiComponents.componentLibrary === 'custom') {
+            if (patterns.uiComponents.componentLibrary === 'chakra-ui') {
+                instructions += `- Project uses Chakra UI components\n`;
+                instructions += `- IMPORTANT: Use Chakra UI components instead of HTML elements\n`;
+                instructions += `- Use Box, VStack, HStack, Text, Heading, Container, etc.\n`;
+                instructions += `- Import from '@chakra-ui/react'\n`;
+                if (Object.keys(patterns.uiComponents.commonComponents).length > 0) {
+                    const commonComponents = Object.keys(patterns.uiComponents.commonComponents).slice(0, 5).join(', ');
+                    instructions += `- Commonly used components: ${commonComponents}\n`;
+                }
+            } else if (patterns.uiComponents.componentLibrary === 'custom') {
                 instructions += `- Project has custom UI components\n`;
                 if (Object.keys(patterns.uiComponents.commonComponents).length > 0) {
                     instructions += `- Available components include: ${Object.keys(patterns.uiComponents.commonComponents).slice(0, 5).join(', ')}\n`;
@@ -362,5 +504,56 @@ You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing prop
         }
 
         return instructions;
+    }
+
+    /**
+     * Get router-specific instructions based on detected frameworks
+     */
+    private getRouterInstructions(frameworks: { name: string; version?: string }[]): string | null {
+        const frameworkNames = frameworks.map(f => f.name);
+        
+        if (frameworkNames.includes('TanStack Router')) {
+            return `\nRouter Instructions (TanStack Router):\n` +
+                   `- Use TanStack Router for navigation: import { useRouter, Link } from '@tanstack/react-router'\n` +
+                   `- Use Link component for internal navigation instead of anchor tags\n` +
+                   `- Use useRouter() hook to access router functions like navigate()\n` +
+                   `- DO NOT use Next.js router imports (next/router, next/head)\n` +
+                   `- For route parameters, use useParams() from TanStack Router\n` +
+                   `- For search params, use useSearch() from TanStack Router\n` +
+                   `- Use type-safe route definitions when possible\n`;
+        }
+        
+        if (frameworkNames.includes('React Router')) {
+            return `\nRouter Instructions (React Router):\n` +
+                   `- Use React Router for navigation: import { useNavigate, Link, useParams } from 'react-router-dom'\n` +
+                   `- Use Link component for internal navigation instead of anchor tags\n` +
+                   `- Use useNavigate() hook for programmatic navigation\n` +
+                   `- Use useParams() for route parameters\n` +
+                   `- Use useSearchParams() for query parameters\n` +
+                   `- DO NOT use Next.js router imports (next/router, next/head)\n`;
+        }
+        
+        if (frameworkNames.includes('Next.js')) {
+            return `\nRouter Instructions (Next.js):\n` +
+                   `- Use Next.js App Router if app/ directory exists, Pages Router if pages/ directory\n` +
+                   `- For App Router: Use 'next/navigation' (useRouter, useParams, useSearchParams)\n` +
+                   `- For Pages Router: Use 'next/router' (useRouter)\n` +
+                   `- Use Link from 'next/link' for internal navigation\n` +
+                   `- Use Head from 'next/head' for page metadata (Pages Router only)\n` +
+                   `- For App Router, metadata is handled differently (metadata object)\n`;
+        }
+        
+        // If no specific router detected but React is present
+        if (frameworkNames.includes('React') && !frameworkNames.some(name => 
+            ['TanStack Router', 'React Router', 'Next.js'].includes(name)
+        )) {
+            return `\nRouter Instructions (Generic React):\n` +
+                   `- DO NOT assume any specific router is available\n` +
+                   `- Use standard anchor tags for external links\n` +
+                   `- For internal navigation, use onClick handlers with window.location or similar\n` +
+                   `- Avoid router-specific imports unless explicitly available\n`;
+        }
+        
+        return null;
     }
 }

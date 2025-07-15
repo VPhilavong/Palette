@@ -5,9 +5,11 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ComponentGenerator } from '../../llm/componentGenerator';
 import { ComponentAnalyzer } from '../../codebase/componentAnalyzer';
 import { FileIndexer } from '../../codebase/fileIndexer';
+import { FrameworkDetector } from '../../codebase/frameworkDetector';
 import { WorkspaceIndex } from '../../types';
 import { ModelClientFactory } from '../../llm/modelClient';
 
@@ -26,16 +28,16 @@ interface ActionRequest {
 export class PaletteSidebarProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = 'palette.sidebar';
 	
-	private view?: vscode.WebviewView;
-	private componentGenerator: ComponentGenerator;
-	private componentAnalyzer: ComponentAnalyzer;
-	private fileIndexer: FileIndexer;
+	private view?: vscode.WebviewView;  private componentGenerator: ComponentGenerator;
+  private componentAnalyzer: ComponentAnalyzer;
+  private fileIndexer: FileIndexer;
+  private frameworkDetector: FrameworkDetector;
 	private workspaceIndex: WorkspaceIndex | null = null;
 
-	constructor(private readonly extensionUri: vscode.Uri) {
-		this.componentGenerator = new ComponentGenerator();
-		this.componentAnalyzer = new ComponentAnalyzer();
-		this.fileIndexer = new FileIndexer();
+	constructor(private readonly extensionUri: vscode.Uri) {    this.componentGenerator = new ComponentGenerator();
+    this.componentAnalyzer = new ComponentAnalyzer();
+    this.fileIndexer = new FileIndexer();
+    this.frameworkDetector = new FrameworkDetector();
 		this.initializeWorkspace();
 	}
 
@@ -67,17 +69,27 @@ export class PaletteSidebarProvider implements vscode.WebviewViewProvider {
 	private async initializeWorkspace() {
 		try {
 			const files = await this.fileIndexer.indexWorkspace();
+			
+			// Use proper framework detection
+			const projectMetadata = await this.frameworkDetector.detectProjectFrameworks();
+			
+			console.log('🔍 Framework detection results:', {
+				frameworks: projectMetadata.frameworks.map(f => f.name),
+				uiLibraries: projectMetadata.uiLibraries,
+				hasTypeScript: projectMetadata.hasTypeScript
+			});
+			
 			this.workspaceIndex = {
 				files: files,
 				components: [],
 				project: {
-					rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
-					frameworks: [],
-					dependencies: {},
-					devDependencies: {},
-					hasTypeScript: false,
-					uiLibraries: [],
-					stateManagement: []
+					rootPath: projectMetadata.rootPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+					frameworks: projectMetadata.frameworks,
+					dependencies: projectMetadata.dependencies,
+					devDependencies: projectMetadata.devDependencies,
+					hasTypeScript: projectMetadata.hasTypeScript,
+					uiLibraries: projectMetadata.uiLibraries,
+					stateManagement: projectMetadata.stateManagement
 				},
 				lastUpdated: new Date()
 			};
@@ -386,36 +398,65 @@ The fix functionality is currently being developed. For now, you can:
 		}
 		
 		body {
-			font-family: var(--vscode-font-family);
-			font-size: var(--vscode-font-size);
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+			font-size: 14px;
 			color: var(--vscode-foreground);
-			background-color: var(--vscode-sidebar-background);
+			background: linear-gradient(135deg, var(--vscode-sidebar-background) 0%, rgba(var(--vscode-sidebar-background), 0.95) 100%);
 			margin: 0;
 			padding: 0;
 			height: 100vh;
 			display: flex;
 			flex-direction: column;
+			position: relative;
+		}
+		
+		/* Subtle background pattern */
+		body::before {
+			content: '';
+			position: fixed;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: 
+				radial-gradient(circle at 25% 25%, rgba(100, 100, 255, 0.03) 0%, transparent 50%),
+				radial-gradient(circle at 75% 75%, rgba(255, 100, 100, 0.03) 0%, transparent 50%);
+			pointer-events: none;
+			z-index: -1;
 		}
 		
 		.header {
-			padding: 16px;
-			border-bottom: 1px solid var(--vscode-panel-border);
-			background-color: var(--vscode-editor-background);
+			padding: 20px;
+			background: linear-gradient(135deg, var(--vscode-editor-background) 0%, rgba(var(--vscode-editor-background), 0.9) 100%);
+			backdrop-filter: blur(10px);
+			border-bottom: 1px solid rgba(var(--vscode-panel-border), 0.3);
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			box-shadow: 0 2px 20px rgba(0, 0, 0, 0.05);
 		}
 		
 		.logo {
 			display: flex;
 			align-items: center;
-			gap: 8px;
-			font-size: 18px;
-			font-weight: 600;
+			gap: 12px;
+			font-size: 22px;
+			font-weight: 700;
 			color: var(--vscode-titleBar-activeForeground);
+			margin-bottom: 4px;
+		}
+		
+		.logo::before {
+			content: '🎨';
+			font-size: 28px;
+			filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 		}
 		
 		.subtitle {
-			font-size: 12px;
+			font-size: 13px;
 			color: var(--vscode-descriptionForeground);
-			margin-top: 4px;
+			font-weight: 500;
+			opacity: 0.8;
 		}
 		
 		.chat-container {
@@ -428,16 +469,45 @@ The fix functionality is currently being developed. For now, you can:
 		.messages {
 			flex: 1;
 			overflow-y: auto;
-			padding: 16px;
+			padding: 20px;
 			display: flex;
 			flex-direction: column;
-			gap: 16px;
+			gap: 20px;
+		}
+		
+		.messages::-webkit-scrollbar {
+			width: 6px;
+		}
+		
+		.messages::-webkit-scrollbar-track {
+			background: transparent;
+		}
+		
+		.messages::-webkit-scrollbar-thumb {
+			background: rgba(var(--vscode-scrollbarSlider-background), 0.3);
+			border-radius: 3px;
+		}
+		
+		.messages::-webkit-scrollbar-thumb:hover {
+			background: rgba(var(--vscode-scrollbarSlider-hoverBackground), 0.5);
 		}
 		
 		.message {
 			display: flex;
 			flex-direction: column;
 			max-width: 100%;
+			animation: slideIn 0.3s ease-out;
+		}
+		
+		@keyframes slideIn {
+			from {
+				opacity: 0;
+				transform: translateY(10px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
 		}
 		
 		.message-user {
@@ -449,52 +519,64 @@ The fix functionality is currently being developed. For now, you can:
 		}
 		
 		.message-bubble {
-			padding: 12px 16px;
-			border-radius: 18px;
-			max-width: 85%;
+			padding: 16px 20px;
+			border-radius: 20px;
+			max-width: 90%;
 			word-wrap: break-word;
-			line-height: 1.4;
+			line-height: 1.5;
+			position: relative;
+			backdrop-filter: blur(10px);
+			transition: all 0.2s ease;
+		}
+		
+		.message-bubble:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 		}
 		
 		.message-user .message-bubble {
-			background-color: var(--vscode-button-background);
+			background: linear-gradient(135deg, var(--vscode-button-background) 0%, rgba(var(--vscode-button-background), 0.9) 100%);
 			color: var(--vscode-button-foreground);
-			border-bottom-right-radius: 6px;
+			border-bottom-right-radius: 8px;
+			border: 1px solid rgba(255, 255, 255, 0.1);
 		}
 		
 		.message-assistant .message-bubble {
-			background-color: var(--vscode-input-background);
+			background: linear-gradient(135deg, var(--vscode-input-background) 0%, rgba(var(--vscode-input-background), 0.95) 100%);
 			color: var(--vscode-foreground);
-			border: 1px solid var(--vscode-input-border);
-			border-bottom-left-radius: 6px;
+			border: 1px solid rgba(var(--vscode-input-border), 0.3);
+			border-bottom-left-radius: 8px;
+			box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
 		}
 		
 		.message-meta {
 			font-size: 11px;
 			color: var(--vscode-descriptionForeground);
-			margin-top: 4px;
-			padding: 0 8px;
+			margin-top: 6px;
+			padding: 0 12px;
+			opacity: 0.7;
 		}
 		
 		.typing-indicator {
 			display: flex;
 			align-items: center;
-			gap: 8px;
-			padding: 12px 16px;
+			gap: 10px;
+			padding: 16px 20px;
 			color: var(--vscode-descriptionForeground);
 			font-size: 13px;
+			font-weight: 500;
 		}
 		
 		.typing-dots {
 			display: flex;
-			gap: 4px;
+			gap: 6px;
 		}
 		
 		.typing-dot {
-			width: 6px;
-			height: 6px;
+			width: 8px;
+			height: 8px;
 			border-radius: 50%;
-			background-color: var(--vscode-descriptionForeground);
+			background: linear-gradient(135deg, var(--vscode-button-background) 0%, rgba(var(--vscode-button-background), 0.7) 100%);
 			animation: typing 1.4s infinite ease-in-out;
 		}
 		
@@ -502,51 +584,69 @@ The fix functionality is currently being developed. For now, you can:
 		.typing-dot:nth-child(2) { animation-delay: -0.16s; }
 		
 		@keyframes typing {
-			0%, 80%, 100% { opacity: 0.3; }
-			40% { opacity: 1; }
+			0%, 80%, 100% { 
+				opacity: 0.3;
+				transform: scale(0.8);
+			}
+			40% { 
+				opacity: 1;
+				transform: scale(1.2);
+			}
 		}
 		
 		.input-container {
-			padding: 16px;
-			border-top: 1px solid var(--vscode-panel-border);
-			background-color: var(--vscode-editor-background);
+			padding: 20px;
+			background: linear-gradient(135deg, var(--vscode-editor-background) 0%, rgba(var(--vscode-editor-background), 0.95) 100%);
+			border-top: 1px solid rgba(var(--vscode-panel-border), 0.3);
+			backdrop-filter: blur(10px);
 		}
 		
 		.quick-actions {
 			display: flex;
 			gap: 8px;
-			margin-bottom: 12px;
+			margin-bottom: 16px;
 			flex-wrap: wrap;
 		}
 		
 		.quick-action {
-			padding: 6px 12px;
-			background-color: var(--vscode-button-secondaryBackground);
+			padding: 8px 16px;
+			background: linear-gradient(135deg, var(--vscode-button-secondaryBackground) 0%, rgba(var(--vscode-button-secondaryBackground), 0.9) 100%);
 			color: var(--vscode-button-secondaryForeground);
-			border: 1px solid var(--vscode-button-border);
-			border-radius: 16px;
+			border: 1px solid rgba(var(--vscode-button-border), 0.3);
+			border-radius: 20px;
 			font-size: 12px;
+			font-weight: 500;
 			cursor: pointer;
-			transition: all 0.2s;
+			transition: all 0.2s ease;
 			white-space: nowrap;
+			backdrop-filter: blur(10px);
 		}
 		
 		.quick-action:hover {
-			background-color: var(--vscode-button-secondaryHoverBackground);
+			background: linear-gradient(135deg, var(--vscode-button-secondaryHoverBackground) 0%, rgba(var(--vscode-button-secondaryHoverBackground), 0.9) 100%);
+			transform: translateY(-1px);
+			box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+		}
+		
+		.quick-action:active {
+			transform: translateY(0);
 		}
 		
 		.input-wrapper {
 			display: flex;
 			align-items: flex-end;
-			gap: 8px;
-			background-color: var(--vscode-input-background);
-			border: 1px solid var(--vscode-input-border);
-			border-radius: 20px;
-			padding: 8px 12px;
+			gap: 12px;
+			background: linear-gradient(135deg, var(--vscode-input-background) 0%, rgba(var(--vscode-input-background), 0.95) 100%);
+			border: 1px solid rgba(var(--vscode-input-border), 0.3);
+			border-radius: 24px;
+			padding: 12px 16px;
+			backdrop-filter: blur(10px);
+			transition: all 0.2s ease;
 		}
 		
 		.input-wrapper:focus-within {
 			border-color: var(--vscode-focusBorder);
+			box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder), 0.2);
 		}
 		
 		.input-field {
@@ -558,30 +658,40 @@ The fix functionality is currently being developed. For now, you can:
 			font-size: 14px;
 			resize: none;
 			max-height: 120px;
-			min-height: 20px;
+			min-height: 22px;
 			line-height: 1.4;
+			font-family: inherit;
 		}
 		
 		.input-field::placeholder {
 			color: var(--vscode-input-placeholderForeground);
+			opacity: 0.7;
 		}
 		
 		.send-button {
-			background-color: var(--vscode-button-background);
+			background: linear-gradient(135deg, var(--vscode-button-background) 0%, rgba(var(--vscode-button-background), 0.9) 100%);
 			color: var(--vscode-button-foreground);
 			border: none;
 			border-radius: 50%;
-			width: 32px;
-			height: 32px;
+			width: 36px;
+			height: 36px;
 			cursor: pointer;
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			transition: background-color 0.2s;
+			transition: all 0.2s ease;
+			font-size: 14px;
+			backdrop-filter: blur(10px);
 		}
 		
 		.send-button:hover:not(:disabled) {
-			background-color: var(--vscode-button-hoverBackground);
+			background: linear-gradient(135deg, var(--vscode-button-hoverBackground) 0%, rgba(var(--vscode-button-hoverBackground), 0.9) 100%);
+			transform: translateY(-1px);
+			box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+		}
+		
+		.send-button:active:not(:disabled) {
+			transform: translateY(0);
 		}
 		
 		.send-button:disabled {
@@ -591,86 +701,163 @@ The fix functionality is currently being developed. For now, you can:
 		
 		.welcome-message {
 			text-align: center;
-			padding: 32px 16px;
+			padding: 40px 20px;
 			color: var(--vscode-descriptionForeground);
+			animation: fadeIn 0.5s ease-out;
+		}
+		
+		@keyframes fadeIn {
+			from { opacity: 0; transform: translateY(20px); }
+			to { opacity: 1; transform: translateY(0); }
 		}
 		
 		.welcome-title {
-			font-size: 16px;
-			font-weight: 600;
-			margin-bottom: 8px;
+			font-size: 24px;
+			font-weight: 700;
+			margin-bottom: 12px;
 			color: var(--vscode-foreground);
+			background: linear-gradient(135deg, var(--vscode-foreground) 0%, rgba(var(--vscode-foreground), 0.7) 100%);
+			-webkit-background-clip: text;
+			-webkit-text-fill-color: transparent;
+			background-clip: text;
+		}
+		
+		.welcome-description {
+			font-size: 15px;
+			line-height: 1.6;
+			margin-bottom: 30px;
+			opacity: 0.9;
 		}
 		
 		.welcome-suggestions {
-			margin-top: 20px;
+			display: grid;
+			gap: 12px;
+			max-width: 400px;
+			margin: 0 auto;
 		}
 		
 		.suggestion {
-			display: block;
-			padding: 12px;
-			margin: 8px 0;
-			background-color: var(--vscode-input-background);
-			border: 1px solid var(--vscode-input-border);
-			border-radius: 12px;
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 16px;
+			background: linear-gradient(135deg, var(--vscode-input-background) 0%, rgba(var(--vscode-input-background), 0.95) 100%);
+			border: 1px solid rgba(var(--vscode-input-border), 0.3);
+			border-radius: 16px;
 			cursor: pointer;
-			transition: all 0.2s;
+			transition: all 0.2s ease;
 			text-align: left;
 			color: var(--vscode-foreground);
 			text-decoration: none;
+			backdrop-filter: blur(10px);
 		}
 		
 		.suggestion:hover {
-			background-color: var(--vscode-list-hoverBackground);
+			background: linear-gradient(135deg, var(--vscode-list-hoverBackground) 0%, rgba(var(--vscode-list-hoverBackground), 0.95) 100%);
 			border-color: var(--vscode-focusBorder);
+			transform: translateY(-2px);
+			box-shadow: 0 6px 25px rgba(0, 0, 0, 0.1);
+		}
+		
+		.suggestion-icon {
+			font-size: 20px;
+			flex-shrink: 0;
+		}
+		
+		.suggestion-text {
+			font-size: 14px;
+			font-weight: 500;
 		}
 		
 		pre {
-			background-color: var(--vscode-textPreformat-background);
-			padding: 12px;
-			border-radius: 8px;
+			background: linear-gradient(135deg, var(--vscode-textPreformat-background) 0%, rgba(var(--vscode-textPreformat-background), 0.95) 100%);
+			padding: 16px;
+			border-radius: 12px;
 			overflow-x: auto;
-			font-size: 12px;
-			border: 1px solid var(--vscode-panel-border);
+			font-size: 13px;
+			border: 1px solid rgba(var(--vscode-panel-border), 0.3);
+			margin: 12px 0;
+			backdrop-filter: blur(10px);
 		}
 		
 		code {
-			background-color: var(--vscode-textCodeBlock-background);
-			padding: 2px 6px;
-			border-radius: 4px;
-			font-size: 12px;
+			background: linear-gradient(135deg, var(--vscode-textCodeBlock-background) 0%, rgba(var(--vscode-textCodeBlock-background), 0.95) 100%);
+			padding: 3px 8px;
+			border-radius: 6px;
+			font-size: 13px;
+			font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+		}
+		
+		h1, h2, h3, h4, h5, h6 {
+			margin: 16px 0 8px 0;
+			font-weight: 600;
+		}
+		
+		h1 { font-size: 20px; }
+		h2 { font-size: 18px; }
+		h3 { font-size: 16px; }
+		
+		strong {
+			font-weight: 600;
 		}
 		
 		.hidden {
 			display: none;
+		}
+		
+		/* Responsive design */
+		@media (max-width: 480px) {
+			.header {
+				padding: 16px;
+			}
+			
+			.messages {
+				padding: 16px;
+			}
+			
+			.input-container {
+				padding: 16px;
+			}
+			
+			.welcome-message {
+				padding: 32px 16px;
+			}
+			
+			.message-bubble {
+				max-width: 95%;
+			}
 		}
 	</style>
 </head>
 <body>
 	<div class="header">
 		<div class="logo">
-			🎨 Palette
+			Palette
 		</div>
-		<div class="subtitle">AI Assistant for UI Development</div>
+		<div class="subtitle">AI Assistant for Intelligent UI Development</div>
 	</div>
 	
 	<div class="chat-container">
 		<div class="messages" id="messages">
 			<div class="welcome-message">
 				<div class="welcome-title">Hello! I'm Palette</div>
-				<div>I'm your AI assistant for intelligent UI development. I can analyze your codebase, understand patterns, and generate components that fit perfectly into your project.</div>
+				<div class="welcome-description">I'm your AI assistant for intelligent UI development. I can analyze your codebase, understand patterns, and generate components that fit perfectly into your project.</div>
 				<div class="welcome-suggestions">
 					<div class="suggestion" onclick="insertPrompt('Create a responsive pricing card with three tiers using Tailwind CSS')">
-						💳 Create a responsive pricing card with three tiers
+						<div class="suggestion-icon">💳</div>
+						<div class="suggestion-text">Create a responsive pricing card with three tiers</div>
 					</div>
 					<div class="suggestion" onclick="insertPrompt('Build a modern navigation header with logo and menu items')">
-						🧭 Build a modern navigation header with logo and menu
+						<div class="suggestion-icon">🧭</div>
+						<div class="suggestion-text">Build a modern navigation header with logo and menu</div>
 					</div>
 					<div class="suggestion" onclick="insertPrompt('Design a user profile card with avatar and stats')">
-						👤 Design a user profile card with avatar and stats
+						<div class="suggestion-icon">👤</div>
+						<div class="suggestion-text">Design a user profile card with avatar and stats</div>
 					</div>
 					<div class="suggestion" onclick="insertPrompt('Create a complete login feature with form validation')">
-						🔐 Create a complete login feature with form validation
+						<div class="suggestion-icon">🔐</div>
+						<div class="suggestion-text">Create a complete login feature with form validation</div>
 					</div>
 				</div>
 			</div>
@@ -692,7 +879,9 @@ The fix functionality is currently being developed. For now, you can:
 					rows="1"
 				></textarea>
 				<button class="send-button" id="sendButton" onclick="sendMessage()">
-					▶
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+						<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+					</svg>
 				</button>
 			</div>
 		</div>
@@ -725,6 +914,8 @@ The fix functionality is currently being developed. For now, you can:
 		function insertPrompt(text) {
 			messageInput.value = text;
 			messageInput.focus();
+			messageInput.style.height = 'auto';
+			messageInput.style.height = messageInput.scrollHeight + 'px';
 		}
 		
 		function sendMessage() {
@@ -792,6 +983,9 @@ The fix functionality is currently being developed. For now, you can:
 			const bubbleDiv = document.createElement('div');
 			bubbleDiv.className = 'message-bubble typing-indicator';
 			bubbleDiv.innerHTML = \`
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+					<path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,6A1,1 0 0,1 13,7A1,1 0 0,1 12,8A1,1 0 0,1 11,7A1,1 0 0,1 12,6M15,7A1,1 0 0,1 16,8A1,1 0 0,1 15,9A1,1 0 0,1 14,8A1,1 0 0,1 15,7M9,7A1,1 0 0,1 10,8A1,1 0 0,1 9,9A1,1 0 0,1 8,8A1,1 0 0,1 9,7Z"/>
+				</svg>
 				Palette is thinking...
 				<div class="typing-dots">
 					<div class="typing-dot"></div>
@@ -810,7 +1004,8 @@ The fix functionality is currently being developed. For now, you can:
 		function removeTypingIndicator() {
 			const typingElement = document.getElementById('typing-indicator');
 			if (typingElement) {
-				typingElement.remove();
+				typingElement.style.animation = 'slideOut 0.2s ease-in';
+				setTimeout(() => typingElement.remove(), 200);
 			}
 		}
 		
@@ -827,7 +1022,12 @@ The fix functionality is currently being developed. For now, you can:
 		}
 		
 		function scrollToBottom() {
-			messages.scrollTop = messages.scrollHeight;
+			requestAnimationFrame(() => {
+				messages.scrollTo({
+					top: messages.scrollHeight,
+					behavior: 'smooth'
+				});
+			});
 		}
 		
 		function generateRequestId() {
@@ -863,7 +1063,7 @@ The fix functionality is currently being developed. For now, you can:
 						break;
 					case 'error':
 						removeTypingIndicator();
-						addMessage('assistant', \`❌ \${message.content}\`);
+						addMessage('assistant', \`<div style="color: var(--vscode-errorForeground); background: rgba(var(--vscode-errorBackground), 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid var(--vscode-errorForeground);">❌ \${message.content}</div>\`);
 						sendButton.disabled = false;
 						currentRequestId = null;
 						break;
@@ -877,11 +1077,46 @@ The fix functionality is currently being developed. For now, you can:
 			if (!hasInteracted) {
 				const welcomeMsg = document.querySelector('.welcome-message');
 				if (welcomeMsg) {
-					welcomeMsg.style.display = 'none';
+					welcomeMsg.style.animation = 'fadeOut 0.3s ease-out';
+					setTimeout(() => welcomeMsg.style.display = 'none', 300);
 				}
 				hasInteracted = true;
 			}
 		});
+		
+		// Add fade out animation
+		const style = document.createElement('style');
+		style.textContent = \`
+			@keyframes slideOut {
+				from { opacity: 1; transform: translateY(0); }
+				to { opacity: 0; transform: translateY(-10px); }
+			}
+			
+			@keyframes fadeOut {
+				from { opacity: 1; transform: scale(1); }
+				to { opacity: 0; transform: scale(0.95); }
+			}
+		\`;
+		document.head.appendChild(style);
+		
+		// Add keyboard shortcuts
+		document.addEventListener('keydown', function(e) {
+			// Ctrl/Cmd + K to focus input
+			if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+				e.preventDefault();
+				messageInput.focus();
+			}
+			
+			// Escape to clear input
+			if (e.key === 'Escape' && document.activeElement === messageInput) {
+				messageInput.value = '';
+				messageInput.style.height = 'auto';
+				messageInput.blur();
+			}
+		});
+		
+		// Initialize
+		messageInput.focus();
 	</script>
 </body>
 </html>`;
