@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ComponentGenerator } from '../../llm/componentGenerator';
 import { ComponentAnalyzer } from '../../codebase/componentAnalyzer';
 import { FileIndexer } from '../../codebase/fileIndexer';
@@ -171,16 +172,23 @@ export class PaletteSidebarProvider implements vscode.WebviewViewProvider {
 		// Stream initial response
 		this.sendMessage({
 			type: 'stream',
-			content: '🔨 **Building Component**\n\nAnalyzing your request...',
+			content: '🔨 **Building Component**\n\nAnalyzing your request and project structure...',
 			requestId
 		});
 
-		// Simulate processing time
+		await this.delay(500);
+
+		this.sendMessage({
+			type: 'stream',
+			content: '🔨 **Building Component**\n\n🎯 Analyzing intent and determining optimal file placement...',
+			requestId
+		});
+
 		await this.delay(1000);
 
 		this.sendMessage({
 			type: 'stream',
-			content: '🔨 **Building Component**\n\nGenerating code based on your project patterns...',
+			content: '🔨 **Building Component**\n\n🧠 Generating intelligent, context-aware code...',
 			requestId
 		});
 
@@ -189,33 +197,54 @@ export class PaletteSidebarProvider implements vscode.WebviewViewProvider {
 				await this.initializeWorkspace();
 			}
 
-			const generatedCode = await this.componentGenerator.generateComponent(
+			// Use the enhanced multi-file generation method
+			const result = await this.componentGenerator.generateComponentWithAnalysis(
 				prompt,
 				this.workspaceIndex
 			);
 
-			if (generatedCode) {
-				this.sendMessage({
-					type: 'complete',
-					content: `✅ **Component Created Successfully!**
+			if (result && result.files.length > 0) {
+				const { files, intent } = result;
+				
+				// Build success message
+				let successMessage = `✅ **Files Created Successfully!**
 
 **Request:** ${prompt}
+**Intent:** ${intent.type} - ${intent.rationale}
 
-The component has been automatically placed in the optimal location based on your project structure.
+**Generated Files:**
+`;
 
-**Generated Code:**
+				files.forEach((file, index) => {
+					const relativePath = vscode.workspace.asRelativePath(file.path);
+					successMessage += `${index + 1}. \`${relativePath}\`\n`;
+				});
+
+				// Show preview of main file
+				const mainFile = files[0];
+				if (mainFile.content.length > 0) {
+					successMessage += `\n**Preview of ${path.basename(mainFile.path)}:**
 \`\`\`tsx
-${generatedCode.length > 800 ? generatedCode.slice(0, 800) + '...' : generatedCode}
-\`\`\`
+${mainFile.content.length > 600 ? mainFile.content.slice(0, 600) + '...' : mainFile.content}
+\`\`\``;
+				}
 
-Check your file explorer to see the new component file(s).`,
+				successMessage += `\n\nCheck your file explorer to see all generated files.`;
+
+				if (intent.relatedFiles.length > 0) {
+					successMessage += `\n\n**Related Files Found:**\n${intent.relatedFiles.map(f => `- ${f}`).join('\n')}`;
+				}
+
+				this.sendMessage({
+					type: 'complete',
+					content: successMessage,
 					requestId
 				});
 
 				// Refresh workspace index
 				this.initializeWorkspace();
 			} else {
-				throw new Error('Failed to generate component');
+				throw new Error('Failed to generate any files');
 			}
 		} catch (error) {
 			this.sendMessage({
@@ -629,7 +658,7 @@ The fix functionality is currently being developed. For now, you can:
 		<div class="messages" id="messages">
 			<div class="welcome-message">
 				<div class="welcome-title">Hello! I'm Palette</div>
-				<div>I can help you build beautiful React components, analyze your code, and fix design issues.</div>
+				<div>I'm your AI assistant for intelligent UI development. I can analyze your codebase, understand patterns, and generate components that fit perfectly into your project.</div>
 				<div class="welcome-suggestions">
 					<div class="suggestion" onclick="insertPrompt('Create a responsive pricing card with three tiers using Tailwind CSS')">
 						💳 Create a responsive pricing card with three tiers
@@ -640,6 +669,9 @@ The fix functionality is currently being developed. For now, you can:
 					<div class="suggestion" onclick="insertPrompt('Design a user profile card with avatar and stats')">
 						👤 Design a user profile card with avatar and stats
 					</div>
+					<div class="suggestion" onclick="insertPrompt('Create a complete login feature with form validation')">
+						🔐 Create a complete login feature with form validation
+					</div>
 				</div>
 			</div>
 		</div>
@@ -648,15 +680,15 @@ The fix functionality is currently being developed. For now, you can:
 			<div class="quick-actions">
 				<button class="quick-action" onclick="insertPrompt('Analyze current file')">🔍 Analyze</button>
 				<button class="quick-action" onclick="insertPrompt('Fix accessibility issues')">♿ Fix A11y</button>
-				<button class="quick-action" onclick="insertPrompt('Add TypeScript types')">� Add Types</button>
-				<button class="quick-action" onclick="insertPrompt('Make responsive')">📱 Responsive</button>
+				<button class="quick-action" onclick="insertPrompt('Create a feature with multiple components')">📦 Feature</button>
+				<button class="quick-action" onclick="insertPrompt('Build a complete page')">📄 Page</button>
 			</div>
 			
 			<div class="input-wrapper">
 				<textarea 
 					id="messageInput" 
 					class="input-field" 
-					placeholder="Ask Palette to build, analyze, or fix components..."
+					placeholder="Describe what you want to build, analyze, or fix. I'll understand your intent and place files intelligently..."
 					rows="1"
 				></textarea>
 				<button class="send-button" id="sendButton" onclick="sendMessage()">

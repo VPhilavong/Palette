@@ -34,7 +34,7 @@ export class CodeValidator {
     
     async validateAndFixGeneratedCode(
         code: string, 
-        workspaceIndex: WorkspaceIndex
+        workspaceIndex: WorkspaceIndex | null
     ): Promise<ValidationResult> {
         const result: ValidationResult = {
             isValid: true,
@@ -44,11 +44,26 @@ export class CodeValidator {
         };
 
         try {
+            // If no workspace index, be very lenient
+            if (!workspaceIndex) {
+                console.log('No workspace index provided. Applying lenient validation...');
+                
+                // Just check for basic syntax issues and return as valid
+                const hasBasicStructure = code.includes('export') && 
+                                         (code.includes('function') || code.includes('const') || code.includes('class'));
+                
+                if (hasBasicStructure) {
+                    result.isValid = true;
+                    result.warnings.push('Validation bypassed due to missing workspace information.');
+                    return result;
+                }
+            }
+            
             // Debug: Log workspace information
             console.log('=== DEPENDENCY VALIDATION DEBUG ===');
-            console.log('Workspace dependencies:', Object.keys(workspaceIndex.project.dependencies));
-            console.log('Workspace devDependencies:', Object.keys(workspaceIndex.project.devDependencies));
-            console.log('Detected frameworks:', workspaceIndex.project.frameworks.map(f => f.name));
+            console.log('Workspace dependencies:', Object.keys(workspaceIndex?.project?.dependencies || {}));
+            console.log('Workspace devDependencies:', Object.keys(workspaceIndex?.project?.devDependencies || {}));
+            console.log('Detected frameworks:', workspaceIndex?.project?.frameworks?.map(f => f.name) || []);
             console.log('===============================');
 
             // Extract imports from the code
@@ -78,6 +93,12 @@ export class CodeValidator {
                         continue;
                     }
                     
+                    // Handle Next.js imports (framework-provided)
+                    if (this.isNextJsImport(importInfo.module, workspaceIndex)) {
+                        console.log(`Skipping Next.js import error: ${importInfo.module}`);
+                        continue;
+                    }
+                    
                     // Handle TanStack Query variations
                     if (this.isTanStackQueryModule(importInfo.module, workspaceIndex)) {
                         console.log('Skipping TanStack Query error - detected in project');
@@ -87,6 +108,12 @@ export class CodeValidator {
                     // Handle common packages that are often available but might not be detected
                     if (this.isCommonlyAvailablePackage(importInfo.module)) {
                         console.log(`Skipping common package error: ${importInfo.module}`);
+                        continue;
+                    }
+                    
+                    // Handle relative imports (always valid)
+                    if (importInfo.module.startsWith('.') || importInfo.module.startsWith('/')) {
+                        console.log(`Skipping relative import: ${importInfo.module}`);
                         continue;
                     }
                     
@@ -129,8 +156,8 @@ export class CodeValidator {
             
             // Additional safety net: if we have very few dependencies detected, 
             // assume this might be a detection issue and be more lenient
-            const totalDepsDetected = Object.keys(workspaceIndex.project.dependencies).length + 
-                                    Object.keys(workspaceIndex.project.devDependencies).length;
+            const totalDepsDetected = Object.keys(workspaceIndex?.project?.dependencies || {}).length + 
+                                    Object.keys(workspaceIndex?.project?.devDependencies || {}).length;
             
             if (totalDepsDetected < 5 && result.errors.length > 0) {
                 console.log(`Warning: Only ${totalDepsDetected} dependencies detected. Workspace detection might be incorrect.`);
@@ -142,6 +169,14 @@ export class CodeValidator {
                     const isCommonPackageError = error.includes('@tanstack/') || 
                                                 error.includes('@types/') ||
                                                 error.includes('@mui/') ||
+                                                error.includes('next/') ||
+                                                error.includes('react-router') ||
+                                                error.includes('styled-components') ||
+                                                error.includes('framer-motion') ||
+                                                error.includes('@emotion/') ||
+                                                error.includes('tailwindcss') ||
+                                                error.includes('@headlessui/') ||
+                                                error.includes('@radix-ui/') ||
                                                 error.includes('react-router') ||
                                                 error.includes('clsx') ||
                                                 error.includes('classnames');
@@ -156,6 +191,22 @@ export class CodeValidator {
                     result.isValid = true;
                 }
             }
+            
+            // Final aggressive fallback: if we still have errors but the code looks syntactically correct,
+            // and we have few dependencies detected, just allow it
+            if (!result.isValid && totalDepsDetected < 3 && result.errors.length > 0) {
+                console.log('Applying aggressive fallback validation due to poor dependency detection...');
+                
+                // Check if the code has basic React component structure
+                const hasReactComponentStructure = code.includes('export') && 
+                                                  (code.includes('function') || code.includes('const') || code.includes('class'));
+                
+                if (hasReactComponentStructure) {
+                    console.log('Code appears to have valid React component structure. Allowing despite dependency errors.');
+                    result.isValid = true;
+                    result.warnings.push('Validation bypassed due to dependency detection issues. Please verify imports manually.');
+                }
+            }
 
         } catch (error) {
             result.errors.push(`Validation error: ${error}`);
@@ -168,7 +219,9 @@ export class CodeValidator {
     /**
      * Comprehensive check to determine if this is a React ecosystem project
      */
-    private isReactEcosystemProject(workspaceIndex: WorkspaceIndex): boolean {
+    private isReactEcosystemProject(workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const frameworks = workspaceIndex.project.frameworks.map(f => f.name.toLowerCase());
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
@@ -230,7 +283,9 @@ export class CodeValidator {
     /**
      * Check if a module is related to TanStack Query and available in the project
      */
-    private isTanStackQueryModule(module: string, workspaceIndex: WorkspaceIndex): boolean {
+    private isTanStackQueryModule(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
         const allDeps = [...dependencies, ...devDependencies];
@@ -257,6 +312,47 @@ export class CodeValidator {
     /**
      * Check if this is a commonly available package that we should assume is present
      */
+    private isNextJsImport(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        // Check if Next.js is in the project
+        if (!workspaceIndex) return false;
+        
+        const hasNextJs = workspaceIndex.project.frameworks.some(f => f.name.toLowerCase().includes('next')) ||
+                         Object.keys(workspaceIndex.project.dependencies).includes('next') ||
+                         Object.keys(workspaceIndex.project.devDependencies).includes('next');
+        
+        if (!hasNextJs) {
+            return false;
+        }
+        
+        // Common Next.js imports that are framework-provided
+        const nextJsImports = [
+            'next/head',
+            'next/router',
+            'next/link',
+            'next/image',
+            'next/script',
+            'next/document',
+            'next/app',
+            'next/server',
+            'next/navigation',
+            'next/font/google',
+            'next/font/local',
+            'next/dynamic',
+            'next/auth',
+            'next/auth/providers',
+            'next/auth/react',
+            'next/headers',
+            'next/cookies',
+            'next/redirect',
+            'next/notFound',
+            'next/cache'
+        ];
+        
+        return nextJsImports.some(nextImport => 
+            module === nextImport || module.startsWith(nextImport + '/')
+        );
+    }
+
     private isCommonlyAvailablePackage(module: string): boolean {
         const commonPackages = [
             // TanStack Query variations
@@ -320,12 +416,17 @@ export class CodeValidator {
 
     private async checkDependency(
         importInfo: {module: string, imports: string[], line: string}, 
-        workspaceIndex: WorkspaceIndex
+        workspaceIndex: WorkspaceIndex | null
     ): Promise<DependencyInfo> {
         const module = importInfo.module;
         
         // Check if it's a relative import
         if (module.startsWith('.') || module.startsWith('@/')) {
+            return { name: module, isInstalled: true, isDevDependency: false };
+        }
+
+        // If no workspace index, assume it's installed
+        if (!workspaceIndex) {
             return { name: module, isInstalled: true, isDevDependency: false };
         }
 
@@ -362,7 +463,9 @@ export class CodeValidator {
         };
     }
 
-    private isFrameworkProvidedDependency(module: string, workspaceIndex: WorkspaceIndex): boolean {
+    private isFrameworkProvidedDependency(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const frameworks = workspaceIndex.project.frameworks.map(f => f.name.toLowerCase());
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
@@ -470,7 +573,9 @@ export class CodeValidator {
         return false;
     }
 
-    private getSuggestedAlternative(module: string, workspaceIndex: WorkspaceIndex): string | undefined {
+    private getSuggestedAlternative(module: string, workspaceIndex: WorkspaceIndex | null): string | undefined {
+        if (!workspaceIndex) return undefined;
+        
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
         const allDeps = [...dependencies, ...devDependencies];
@@ -494,8 +599,13 @@ export class CodeValidator {
         return code.replace(regex, `from '${newModule}'`);
     }
 
-    private async fixTypeImports(code: string, workspaceIndex: WorkspaceIndex): Promise<string> {
+    private async fixTypeImports(code: string, workspaceIndex: WorkspaceIndex | null): Promise<string> {
         let fixedCode = code;
+
+        // If no workspace index, don't modify type imports
+        if (!workspaceIndex) {
+            return fixedCode;
+        }
 
         // Check for @/ type imports that don't exist
         const typeImportRegex = /import\s+.*?\s+from\s+['"]@\/types\/([^'"]+)['"];?/g;
@@ -648,8 +758,13 @@ export class CodeValidator {
         return fixedCode;
     }
 
-    private removeProblematicImports(code: string, workspaceIndex: WorkspaceIndex): string {
+    private removeProblematicImports(code: string, workspaceIndex: WorkspaceIndex | null): string {
         let fixedCode = code;
+
+        // If no workspace index, don't modify imports
+        if (!workspaceIndex) {
+            return fixedCode;
+        }
 
         // Remove icon imports if the package isn't available
         const iconPackages = ['lucide-react', '@heroicons/react', 'react-icons'];
