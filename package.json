@@ -63,143 +63,76 @@
     "documentFiltersExclusive"
   ],
   "contributes": {
-    "languageModelTools": [
-      {
-        "name": "palette_analyzeComponent",
-        "toolReferenceName": "analyzeComponent",
-        "displayName": "Analyze React Component",
-        "icon": "$(symbol-class)",
-        "canBeReferencedInPrompt": true,
-        "userDescription": "Analyze React components for design patterns, accessibility, and usability",
-        "modelDescription": "Analyze React components for design heuristics, accessibility compliance (WCAG 2.1 AA), Tailwind CSS patterns, and UI/UX best practices. Returns detailed analysis with suggestions.",
-        "tags": ["ui", "design", "accessibility", "react"],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "filePath": {
-              "type": "string",
-              "description": "Path to the React component file to analyze"
-            },
-            "analysisType": {
-              "type": "string",
-              "enum": ["full", "accessibility", "design", "performance"],
-              "description": "Type of analysis to perform"
-            }
-          },
-          "required": ["filePath"]
+    "views": {
+      "palette-activity": [
+        {
+          "id": "palette.sidebar",
+          "name": "Assistant",
+          "type": "webview"
         }
-      },
-      {
-        "name": "palette_generateComponent",
-        "toolReferenceName": "generateComponent",
-        "displayName": "Generate React Component",
-        "icon": "$(add)",
-        "canBeReferencedInPrompt": true,
-        "userDescription": "Generate React components following design system patterns",
-        "modelDescription": "Generate React components with Tailwind CSS following design system conventions, accessibility standards, and responsive design patterns.",
-        "tags": ["ui", "generate", "react", "tailwind"],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "componentName": {
-              "type": "string",
-              "description": "Name of the component to generate"
-            },
-            "description": {
-              "type": "string",
-              "description": "Description of the component functionality and design requirements"
-            },
-            "designSystem": {
-              "type": "string",
-              "enum": ["tailwindui", "shadcn", "custom"],
-              "description": "Design system to follow"
-            }
-          },
-          "required": ["componentName", "description"]
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "palette-activity",
+          "title": "Palette",
+          "icon": "$(sparkle)"
         }
-      },
-      {
-        "name": "palette_searchDesignPatterns",
-        "toolReferenceName": "searchPatterns",
-        "displayName": "Search Design Patterns",
-        "icon": "$(search)",
-        "canBeReferencedInPrompt": true,
-        "userDescription": "Search for UI patterns and design components in the codebase",
-        "modelDescription": "Search the codebase for UI patterns, design components, and reusable elements. Returns relevant patterns that match the query.",
-        "tags": ["ui", "patterns", "search"],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "Search query for design patterns (e.g., 'button variants', 'form layouts', 'navigation patterns')"
-            }
-          },
-          "required": ["query"]
-        }
-      }
-    ],
-    "chatParticipants": [
-      {
-        "id": "palette.ui",
-        "name": "ui",
-        "description": "UI/UX design expert for React and Tailwind CSS",
-        "isSticky": true,
-        "commands": [
-          {
-            "name": "analyze",
-            "description": "Analyze component for design and accessibility issues"
-          },
-          {
-            "name": "generate",
-            "description": "Generate new React component with design system compliance"
-          },
-          {
-            "name": "critique",
-            "description": "Provide design critique using Nielsen's heuristics"
-          },
-          {
-            "name": "patterns",
-            "description": "Suggest UI patterns and best practices"
-          }
-        ]
-      },
-      {
-        "id": "palette.accessibility",
-        "name": "a11y",
-        "description": "Accessibility specialist for WCAG 2.1 AA compliance",
-        "isSticky": false,
-        "commands": [
-          {
-            "name": "audit",
-            "description": "Audit component for accessibility issues"
-          },
-          {
-            "name": "fix",
-            "description": "Fix accessibility issues in components"
-          }
-        ]
-      }
-    ],
+      ]
+    },
     "configuration": {
       "title": "Palette UI Agent",
       "properties": {
+        "palette.openai.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API key for code generation and embeddings"
+        },
+        "palette.openai.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "enum": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4",
+            "gpt-4-turbo"
+          ],
+          "description": "OpenAI model to use for code generation"
+        },
         "palette.design.heuristics": {
           "type": "array",
-          "default": ["nielsen", "wcag", "responsive"],
-          "enum": ["nielsen", "wcag", "responsive", "performance"],
+          "default": [
+            "nielsen",
+            "wcag",
+            "responsive"
+          ],
+          "enum": [
+            "nielsen",
+            "wcag",
+            "responsive",
+            "performance"
+          ],
           "description": "Design heuristics to apply during analysis"
         },
         "palette.design.system": {
           "type": "string",
           "default": "tailwindui",
-          "enum": ["tailwindui", "shadcn", "custom"],
+          "enum": [
+            "tailwindui",
+            "shadcn",
+            "custom"
+          ],
           "description": "Design system to follow for component generation"
         },
         "palette.accessibility.level": {
           "type": "string",
           "default": "AA",
-          "enum": ["A", "AA", "AAA"],
+          "enum": [
+            "A",
+            "AA",
+            "AAA"
+          ],
           "description": "WCAG accessibility compliance level"
         },
         "palette.context.maxTokens": {
@@ -214,35 +147,30 @@
         },
         "palette.indexing.excludePatterns": {
           "type": "array",
-          "default": ["node_modules", ".git", "dist", "build", ".next", "coverage"],
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "build",
+            ".next",
+            "coverage"
+          ],
           "description": "Patterns to exclude from indexing"
         }
       }
     },
     "commands": [
       {
-        "command": "palette.analyzeComponent",
-        "title": "Analyze Component",
+        "command": "palette.focus",
+        "title": "Focus Palette",
         "category": "Palette",
-        "icon": "$(symbol-class)"
-      },
-      {
-        "command": "palette.generateComponent",
-        "title": "Generate Component",
-        "category": "Palette",
-        "icon": "$(add)"
-      },
-      {
-        "command": "palette.critiqueDesign",
-        "title": "Critique Design",
-        "category": "Palette",
-        "icon": "$(comment-discussion)"
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "palette.analyzeComponent",
+          "command": "palette.focus",
           "when": "resourceExtname =~ /\\.(tsx?|jsx?)$/",
           "group": "palette"
         }
@@ -268,6 +196,7 @@
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
-    "openai": "^4.0.0"
+    "dotenv": "^17.2.0",
+    "openai": "^4.104.0"
   }
 }

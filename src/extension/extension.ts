@@ -3,6 +3,34 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+// Load environment variables for development
+try {
+	const dotenv = require('dotenv');
+	const path = require('path');
+	
+	// Load .env file from project root
+	const result = dotenv.config({ 
+		path: path.join(__dirname, '../../.env') 
+	});
+	
+	if (result.parsed) {
+		console.log('Palette: Loaded environment variables from .env file');
+		console.log('Palette: Available env vars:', Object.keys(result.parsed));
+	} else if (result.error) {
+		console.log('Palette: .env file not found or error loading:', result.error.message);
+	}
+	
+	// Also try loading from workspace root as fallback
+	if (!result.parsed) {
+		const workspaceResult = dotenv.config();
+		if (workspaceResult.parsed) {
+			console.log('Palette: Loaded environment variables from workspace .env file');
+		}
+	}
+} catch (e) {
+	console.log('Palette: dotenv not available, using system environment variables only');
+}
+
 import * as vscode from 'vscode';
 import { ServiceCollection } from '../platform/instantiation/common/serviceCollection';
 import { IInstantiationService, InstantiationService } from '../platform/instantiation/common/instantiationService';
@@ -10,10 +38,7 @@ import { ILogService, LogLevel } from '../platform/log/common/logService';
 import { ConsoleLogService } from '../platform/log/node/consoleLogService';
 import { IConfigurationService } from '../platform/configuration/common/configurationService';
 import { ConfigurationService } from '../platform/configuration/node/configurationService';
-import { IChatAgentService } from '../platform/chat/common/chatAgentService';
-import { ChatAgentService } from './chat/chatAgentService';
-import { IToolsService } from './tools/common/toolsService';
-import { ToolsService } from './tools/node/toolsService';
+import { PaletteSidebarProvider } from './sidebar/paletteSidebarProvider';
 
 let serviceCollection: ServiceCollection | undefined;
 let instantiationService: IInstantiationService | undefined;
@@ -36,20 +61,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	try {
 		logService.info('Palette UI Agent: Starting activation');
 		
-		// Create and register chat agents
-		const chatAgentService = new ChatAgentService(logService, configurationService);
-		serviceCollection.set(IChatAgentService, chatAgentService);
-		const chatAgentDisposable = chatAgentService.register();
-		context.subscriptions.push(chatAgentDisposable);
-		
-		// Create and register tools
-		const toolsService = new ToolsService(logService, configurationService);
-		serviceCollection.set(IToolsService, toolsService);
-		const toolsDisposable = toolsService.register();
-		context.subscriptions.push(toolsDisposable);
+		// Register sidebar webview provider - this is your main interface
+		const sidebarProvider = new PaletteSidebarProvider(context.extensionUri);
+		context.subscriptions.push(
+			vscode.window.registerWebviewViewProvider(
+				PaletteSidebarProvider.viewType,
+				sidebarProvider
+			)
+		);
 		
 		// Register commands
-		registerCommands(context, chatAgentService, toolsService);
+		registerCommands(context, logService);
 		
 		logService.info('Palette UI Agent: Activation complete');
 	} catch (error) {
@@ -68,29 +90,12 @@ export function deactivate(): void {
 
 function registerCommands(
 	context: vscode.ExtensionContext, 
-	chatAgentService: ChatAgentService,
-	toolsService: ToolsService
+	logService: ILogService
 ): void {
-	// Analyze Component command
-	const analyzeCommand = vscode.commands.registerCommand('palette.analyzeComponent', async (uri?: vscode.Uri) => {
-		// Open chat and suggest analyze command
-		await vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
-		await vscode.commands.executeCommand('workbench.action.chat.newChat', '@ui /analyze');
+	// Focus Palette sidebar
+	const focusCommand = vscode.commands.registerCommand('palette.focus', async () => {
+		await vscode.commands.executeCommand('palette.sidebar.focus');
 	});
 	
-	// Generate Component command  
-	const generateCommand = vscode.commands.registerCommand('palette.generateComponent', async () => {
-		// Open chat and suggest generate command
-		await vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
-		await vscode.commands.executeCommand('workbench.action.chat.newChat', '@ui /generate');
-	});
-	
-	// Critique Design command
-	const critiqueCommand = vscode.commands.registerCommand('palette.critiqueDesign', async (uri?: vscode.Uri) => {
-		// Open chat and suggest critique command
-		await vscode.commands.executeCommand('workbench.panel.chat.view.copilot.focus');
-		await vscode.commands.executeCommand('workbench.action.chat.newChat', '@ui /critique');
-	});
-	
-	context.subscriptions.push(analyzeCommand, generateCommand, critiqueCommand);
+	context.subscriptions.push(focusCommand);
 }
