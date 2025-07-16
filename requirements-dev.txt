@@ -1,0 +1,10 @@
+# Development dependencies for linting, formatting, and testing
+flake8>=6.0.0          # PEP 8 style guide enforcement
+black>=23.0.0          # Code formatter
+isort>=5.12.0          # Import sorting
+mypy>=1.5.0            # Static type checking
+pylint>=2.17.0         # Comprehensive code analysis
+pytest>=7.4.0          # Testing framework
+pytest-cov>=4.1.0     # Coverage reporting
+bandit>=1.7.5          # Security linting
+pre-commit>=3.3.0      # Git hooks for code quality
