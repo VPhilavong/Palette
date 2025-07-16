@@ -1,0 +1,108 @@
+import click
+import os
+import sys
+from typing import Optional
+from rich.console import Console
+from rich.panel import Panel
+
+from .generator import UIGenerator
+from .context import ProjectAnalyzer
+from .file_manager import FileManager
+
+console = Console()
+
+@click.group()
+@click.version_option(version="0.1.0")
+def main():
+    """Code Palette - Design-to-Code UI/UX Agent for React + Tailwind components"""
+    pass
+
+@main.command()
+@click.argument('prompt', required=True)
+@click.option('--preview', is_flag=True, help='Preview component before creating file')
+@click.option('--output', '-o', help='Output file path (auto-detected if not provided)')
+@click.option('--model', default='gpt-4', help='LLM model to use')
+def generate(prompt: str, preview: bool, output: Optional[str], model: str):
+    """Generate a React component from a natural language prompt"""
+    
+    console.print(Panel(f"[bold blue]Generating component:[/bold blue] {prompt}", 
+                       title="Code Palette", border_style="blue"))
+    
+    try:
+        # Analyze project context
+        analyzer = ProjectAnalyzer()
+        context = analyzer.analyze_project(os.getcwd())
+        
+        console.print(f"[green]✓[/green] Detected {context['framework']} project with {context['styling']}")
+        
+        # Generate component
+        generator = UIGenerator(model=model)
+        component_code = generator.generate_component(prompt, context)
+        
+        if preview:
+            console.print(Panel(component_code, title="Generated Component", border_style="green"))
+            if not click.confirm("Create this component?"):
+                console.print("[yellow]Component generation cancelled[/yellow]")
+                return
+        
+        # Save component
+        file_manager = FileManager()
+        file_path = file_manager.save_component(component_code, output, context)
+        
+        console.print(f"[green]✓[/green] Component created at: {file_path}")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+@main.command()
+def analyze():
+    """Analyze project design patterns and configuration"""
+    
+    console.print(Panel("[bold blue]Analyzing project...[/bold blue]", 
+                       title="Code Palette", border_style="blue"))
+    
+    try:
+        analyzer = ProjectAnalyzer()
+        context = analyzer.analyze_project(os.getcwd())
+        
+        # Display analysis results
+        console.print(f"[bold]Framework:[/bold] {context.get('framework', 'Unknown')}")
+        console.print(f"[bold]Styling:[/bold] {context.get('styling', 'Unknown')}")
+        console.print(f"[bold]Component Library:[/bold] {context.get('component_library', 'None detected')}")
+        
+        if context.get('design_tokens'):
+            tokens = context['design_tokens']
+            console.print(f"[bold]Colors:[/bold] {', '.join(tokens.get('colors', []))}")
+            console.print(f"[bold]Spacing:[/bold] {', '.join(tokens.get('spacing', []))}")
+            console.print(f"[bold]Typography:[/bold] {', '.join(tokens.get('typography', []))}")
+        
+        console.print("[green]✓[/green] Project analysis complete")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+@main.command()
+@click.argument('prompt', required=True)
+def preview(prompt: str):
+    """Preview a component without creating it"""
+    
+    console.print(Panel(f"[bold blue]Previewing component:[/bold blue] {prompt}", 
+                       title="Code Palette", border_style="blue"))
+    
+    try:
+        analyzer = ProjectAnalyzer()
+        context = analyzer.analyze_project(os.getcwd())
+        
+        generator = UIGenerator()
+        component_code = generator.generate_component(prompt, context)
+        
+        console.print(Panel(component_code, title="Component Preview", border_style="green"))
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

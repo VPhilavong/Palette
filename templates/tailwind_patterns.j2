@@ -1,0 +1,122 @@
+{# Common Tailwind CSS patterns for UI components #}
+
+{# Layout Patterns #}
+{% macro container_pattern() -%}
+container mx-auto px-4 py-8 max-w-6xl
+{%- endmacro %}
+
+{% macro responsive_grid(cols=3) -%}
+grid grid-cols-1 {% if cols >= 2 %}md:grid-cols-{{ cols // 2 }}{% endif %} lg:grid-cols-{{ cols }} gap-6
+{%- endmacro %}
+
+{% macro flex_center() -%}
+flex items-center justify-center
+{%- endmacro %}
+
+{% macro flex_between() -%}
+flex items-center justify-between
+{%- endmacro %}
+
+{# Button Patterns #}
+{% macro button_base() -%}
+inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50
+{%- endmacro %}
+
+{% macro button_primary() -%}
+{{ button_base() }} bg-primary text-primary-foreground hover:bg-primary/90
+{%- endmacro %}
+
+{% macro button_secondary() -%}
+{{ button_base() }} bg-secondary text-secondary-foreground hover:bg-secondary/80
+{%- endmacro %}
+
+{% macro button_outline() -%}
+{{ button_base() }} border border-input bg-background hover:bg-accent hover:text-accent-foreground
+{%- endmacro %}
+
+{# Card Patterns #}
+{% macro card_base() -%}
+rounded-lg border bg-card text-card-foreground shadow-sm
+{%- endmacro %}
+
+{% macro card_hover() -%}
+{{ card_base() }} transition-all hover:shadow-md hover:-translate-y-1
+{%- endmacro %}
+
+{% macro card_interactive() -%}
+{{ card_hover() }} cursor-pointer hover:bg-accent/50
+{%- endmacro %}
+
+{# Form Patterns #}
+{% macro input_base() -%}
+flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50
+{%- endmacro %}
+
+{% macro label_base() -%}
+text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70
+{%- endmacro %}
+
+{# Navigation Patterns #}
+{% macro nav_link() -%}
+text-sm font-medium transition-colors hover:text-primary
+{%- endmacro %}
+
+{% macro nav_link_active() -%}
+{{ nav_link() }} text-primary
+{%- endmacro %}
+
+{# Spacing Patterns #}
+{% macro section_spacing() -%}
+py-12 md:py-16 lg:py-20
+{%- endmacro %}
+
+{% macro content_spacing() -%}
+space-y-6
+{%- endmacro %}
+
+{# Typography Patterns #}
+{% macro heading_1() -%}
+text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl
+{%- endmacro %}
+
+{% macro heading_2() -%}
+text-2xl font-bold tracking-tight sm:text-3xl
+{%- endmacro %}
+
+{% macro heading_3() -%}
+text-xl font-semibold tracking-tight
+{%- endmacro %}
+
+{% macro body_large() -%}
+text-lg text-muted-foreground
+{%- endmacro %}
+
+{% macro body_text() -%}
+text-sm text-muted-foreground
+{%- endmacro %}
+
+{# Animation Patterns #}
+{% macro fade_in() -%}
+animate-in fade-in duration-300
+{%- endmacro %}
+
+{% macro slide_up() -%}
+animate-in slide-in-from-bottom duration-300
+{%- endmacro %}
+
+{% macro scale_in() -%}
+animate-in zoom-in duration-200
+{%- endmacro %}
+
+{# Modern Effects #}
+{% macro glassmorphism() -%}
+backdrop-blur-sm bg-white/30 border border-white/20
+{%- endmacro %}
+
+{% macro gradient_primary() -%}
+bg-gradient-to-r from-primary to-primary/80
+{%- endmacro %}
+
+{% macro gradient_background() -%}
+bg-gradient-to-br from-background via-background to-muted
+{%- endmacro %}
