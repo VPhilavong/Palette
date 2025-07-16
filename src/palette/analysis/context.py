@@ -200,8 +200,8 @@ class ProjectAnalyzer:
         
         try:
             # Get the path to our Node.js helper script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            parser_script = os.path.join(script_dir, 'tailwind_parser.js')
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            parser_script = os.path.join(script_dir, 'utils', 'tailwind_parser.js')
             
             # Run the Node.js script to parse the config
             result = subprocess.run(

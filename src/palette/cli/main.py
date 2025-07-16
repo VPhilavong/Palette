@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.panel import Panel
 from dotenv import load_dotenv
 
-from .generator import UIGenerator
-from .context import ProjectAnalyzer
-from .file_manager import FileManager
+from ..generation.generator import UIGenerator
+from ..analysis.context import ProjectAnalyzer
+from ..utils.file_manager import FileManager
 
 # Load environment variables from .env file
 load_dotenv()

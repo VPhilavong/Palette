@@ -165,8 +165,8 @@ def main():
     # Provide usage instructions
     print("\n📋 Next steps:")
     print("1. Clone a test project: git clone <repo-url> test-project")
-    print("2. Run analysis: cd test-project && PYTHONPATH=/path/to/palette python3 -m src.cli analyze")
-    print("3. Generate components: PYTHONPATH=/path/to/palette python3 -m src.cli generate \"your prompt\"")
+    print("2. Run analysis: cd test-project && python3 ../palette.py analyze")
+    print("3. Generate components: python3 ../palette.py generate \"your prompt\"")
 
 if __name__ == "__main__":
     main()

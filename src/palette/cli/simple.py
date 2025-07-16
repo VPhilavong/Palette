@@ -9,9 +9,9 @@ import os
 import sys
 from typing import Optional
 
-from .generator import UIGenerator
-from .context import ProjectAnalyzer
-from .file_manager import FileManager
+from ..generation.generator import UIGenerator
+from ..analysis.context import ProjectAnalyzer
+from ..utils.file_manager import FileManager
 
 @click.group()
 @click.version_option(version="0.1.0")

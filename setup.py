@@ -3,9 +3,14 @@ from setuptools import setup, find_packages
 setup(
     name="code-palette",
     version="0.1.0",
-    description="Design-to-Code UI/UX Agent for React + Tailwind components",
-    author="SAIL Project",
-    packages=find_packages(),
+    description="AI-powered component generator for design systems",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    author="VPhilavong",
+    author_email="vphilavong@example.com",
+    url="https://github.com/VPhilavong/palette",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
     install_requires=[
         "click>=8.1.0",
         "openai>=1.0.0",
@@ -18,8 +23,21 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "palette=src.cli:main",
+            "palette=palette.cli.main:main",
         ],
     },
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+    ],
     python_requires=">=3.9",
+    include_package_data=True,
+    package_data={
+        "palette": ["utils/*.js", "generation/templates/*.j2"],
+    },
 )
