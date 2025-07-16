@@ -145,6 +145,9 @@ export class CodeValidator {
             // Fix common React patterns
             result.fixedCode = this.fixReactPatterns(result.fixedCode || code);
             
+            // CRITICAL: Deduplicate imports and declarations to fix LLM duplicate identifier errors
+            result.fixedCode = this.deduplicateCode(result.fixedCode || code);
+            
             // Remove problematic imports
             result.fixedCode = this.removeProblematicImports(result.fixedCode || code, workspaceIndex);
             
@@ -761,7 +764,7 @@ export class CodeValidator {
             fixedCode = "import React from 'react';\n" + fixedCode;
         }
 
-        // Fix useState, useEffect imports
+        // Fix useState, useEffect imports (with deduplication)
         const usedHooks = [];
         if (fixedCode.includes('useState')) usedHooks.push('useState');
         if (fixedCode.includes('useEffect')) usedHooks.push('useEffect');
@@ -770,8 +773,14 @@ export class CodeValidator {
         if (fixedCode.includes('useMemo')) usedHooks.push('useMemo');
         if (fixedCode.includes('useRef')) usedHooks.push('useRef');
         if (fixedCode.includes('useReducer')) usedHooks.push('useReducer');
+        if (fixedCode.includes('useLayoutEffect')) usedHooks.push('useLayoutEffect');
+        if (fixedCode.includes('useDebugValue')) usedHooks.push('useDebugValue');
+        if (fixedCode.includes('useImperativeHandle')) usedHooks.push('useImperativeHandle');
+        
+        // Remove duplicates from hooks array
+        const uniqueHooks = [...new Set(usedHooks)];
 
-        if (usedHooks.length > 0) {
+        if (uniqueHooks.length > 0) {
             const reactImportMatch = fixedCode.match(/import React.*?from 'react';/);
             if (reactImportMatch) {
                 // Update existing React import
@@ -779,21 +788,21 @@ export class CodeValidator {
                 if (existingImport.includes('{')) {
                     // Already has named imports, merge them
                     const existingHooks = existingImport.match(/\{([^}]+)\}/)?.[1]?.split(',').map(s => s.trim()) || [];
-                    const allHooks = [...new Set([...existingHooks, ...usedHooks])];
+                    const allHooks = [...new Set([...existingHooks, ...uniqueHooks])];
                     const newImport = `import React, { ${allHooks.join(', ')} } from 'react';`;
                     fixedCode = fixedCode.replace(existingImport, newImport);
                 } else {
                     // Add named imports
-                    const newImport = `import React, { ${usedHooks.join(', ')} } from 'react';`;
+                    const newImport = `import React, { ${uniqueHooks.join(', ')} } from 'react';`;
                     fixedCode = fixedCode.replace(existingImport, newImport);
                 }
             } else {
                 // Add React import with hooks
                 if (hasReactUsage || !isNextProject) {
-                    fixedCode = `import React, { ${usedHooks.join(', ')} } from 'react';\n` + fixedCode;
+                    fixedCode = `import React, { ${uniqueHooks.join(', ')} } from 'react';\n` + fixedCode;
                 } else {
                     // Next.js 13+ - just import the hooks
-                    fixedCode = `import { ${usedHooks.join(', ')} } from 'react';\n` + fixedCode;
+                    fixedCode = `import { ${uniqueHooks.join(', ')} } from 'react';\n` + fixedCode;
                 }
             }
         }
@@ -867,6 +876,205 @@ export class CodeValidator {
         }
         
         return conflicts;
+    }
+
+    /**
+     * CRITICAL: Comprehensive deduplication to fix common LLM duplicate identifier errors
+     * This addresses ts(2300) "Duplicate identifier" errors for useState, useEffect, etc.
+     */
+    private deduplicateCode(code: string): string {
+        let deduplicatedCode = code;
+        
+        try {
+            // Step 1: Deduplicate imports (most critical)
+            deduplicatedCode = this.deduplicateImports(deduplicatedCode);
+            
+            // Step 2: Deduplicate variable declarations
+            deduplicatedCode = this.deduplicateVariableDeclarations(deduplicatedCode);
+            
+            // Step 3: Remove duplicate lines (catches other LLM repetitions)
+            deduplicatedCode = this.removeDuplicateLines(deduplicatedCode);
+            
+            // Step 4: Clean up extra whitespace created by deduplication
+            deduplicatedCode = this.cleanupWhitespace(deduplicatedCode);
+            
+        } catch (error) {
+            console.error('Error during code deduplication:', error);
+            // Return original code if deduplication fails
+            return code;
+        }
+        
+        return deduplicatedCode;
+    }
+
+    /**
+     * Remove duplicate import statements - fixes ts(2300) for useState, useEffect, etc.
+     */
+    private deduplicateImports(code: string): string {
+        const lines = code.split('\n');
+        const importMap = new Map<string, Set<string>>();
+        const nonImportLines: string[] = [];
+        const importLineIndices: number[] = [];
+        
+        // Parse all imports
+        lines.forEach((line, index) => {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('import ') && trimmedLine.includes(' from ')) {
+                importLineIndices.push(index);
+                
+                // Extract module name and imports
+                const fromMatch = trimmedLine.match(/from\s+['"]([^'"]+)['"]/);
+                const module = fromMatch ? fromMatch[1] : '';
+                
+                if (module) {
+                    if (!importMap.has(module)) {
+                        importMap.set(module, new Set());
+                    }
+                    
+                    // Extract named imports
+                    const namedImportsMatch = trimmedLine.match(/import\s+\{([^}]+)\}/);
+                    if (namedImportsMatch) {
+                        const namedImports = namedImportsMatch[1]
+                            .split(',')
+                            .map(imp => imp.trim())
+                            .filter(imp => imp.length > 0);
+                        
+                        namedImports.forEach(imp => importMap.get(module)!.add(imp));
+                    }
+                    
+                    // Extract default imports
+                    const defaultImportMatch = trimmedLine.match(/import\s+(\w+)(?:\s*,|\s+from)/);
+                    if (defaultImportMatch && !trimmedLine.includes('{')) {
+                        importMap.get(module)!.add(`default:${defaultImportMatch[1]}`);
+                    }
+                    
+                    // Handle mixed imports (default + named)
+                    const mixedMatch = trimmedLine.match(/import\s+(\w+)\s*,\s*\{([^}]+)\}/);
+                    if (mixedMatch) {
+                        importMap.get(module)!.add(`default:${mixedMatch[1]}`);
+                        const namedImports = mixedMatch[2]
+                            .split(',')
+                            .map(imp => imp.trim())
+                            .filter(imp => imp.length > 0);
+                        namedImports.forEach(imp => importMap.get(module)!.add(imp));
+                    }
+                }
+            } else {
+                nonImportLines.push(line);
+            }
+        });
+        
+        // Rebuild deduplicated imports
+        const deduplicatedImports: string[] = [];
+        
+        importMap.forEach((imports, module) => {
+            const namedImports = Array.from(imports).filter(imp => !imp.startsWith('default:'));
+            const defaultImports = Array.from(imports).filter(imp => imp.startsWith('default:')).map(imp => imp.replace('default:', ''));
+            
+            if (defaultImports.length > 0 && namedImports.length > 0) {
+                // Mixed import
+                deduplicatedImports.push(`import ${defaultImports[0]}, { ${namedImports.join(', ')} } from '${module}';`);
+            } else if (defaultImports.length > 0) {
+                // Default import only
+                deduplicatedImports.push(`import ${defaultImports[0]} from '${module}';`);
+            } else if (namedImports.length > 0) {
+                // Named imports only
+                deduplicatedImports.push(`import { ${namedImports.join(', ')} } from '${module}';`);
+            }
+        });
+        
+        // Combine deduplicated imports with non-import lines
+        return [...deduplicatedImports, '', ...nonImportLines].join('\n');
+    }
+
+    /**
+     * Remove duplicate variable declarations (const, let, var)
+     */
+    private deduplicateVariableDeclarations(code: string): string {
+        const lines = code.split('\n');
+        const seenDeclarations = new Set<string>();
+        const filteredLines: string[] = [];
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Check for variable declarations
+            const varMatch = trimmedLine.match(/^(const|let|var)\s+(\w+)/);
+            if (varMatch) {
+                const declarationType = varMatch[1];
+                const variableName = varMatch[2];
+                const declarationKey = `${declarationType}:${variableName}`;
+                
+                if (seenDeclarations.has(declarationKey)) {
+                    // Skip duplicate declaration
+                    continue;
+                }
+                seenDeclarations.add(declarationKey);
+            }
+            
+            // Check for function declarations
+            const funcMatch = trimmedLine.match(/^(function\s+(\w+)|const\s+(\w+)\s*=\s*(?:\([^)]*\)\s*=>|\([^)]*\)\s*:\s*[^=]+=\s*))/);
+            if (funcMatch) {
+                const functionName = funcMatch[2] || funcMatch[3];
+                if (functionName) {
+                    const declarationKey = `function:${functionName}`;
+                    
+                    if (seenDeclarations.has(declarationKey)) {
+                        // Skip duplicate function declaration
+                        continue;
+                    }
+                    seenDeclarations.add(declarationKey);
+                }
+            }
+            
+            filteredLines.push(line);
+        }
+        
+        return filteredLines.join('\n');
+    }
+
+    /**
+     * Remove duplicate lines (catches other LLM repetitions)
+     */
+    private removeDuplicateLines(code: string): string {
+        const lines = code.split('\n');
+        const seenLines = new Set<string>();
+        const filteredLines: string[] = [];
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Always keep empty lines and comments
+            if (trimmedLine === '' || trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
+                filteredLines.push(line);
+                continue;
+            }
+            
+            // Check for duplicate non-empty lines
+            if (seenLines.has(trimmedLine)) {
+                // Skip duplicate line
+                continue;
+            }
+            
+            seenLines.add(trimmedLine);
+            filteredLines.push(line);
+        }
+        
+        return filteredLines.join('\n');
+    }
+
+    /**
+     * Clean up extra whitespace created by deduplication
+     */
+    private cleanupWhitespace(code: string): string {
+        return code
+            // Remove multiple consecutive empty lines
+            .replace(/\n\s*\n\s*\n/g, '\n\n')
+            // Remove trailing whitespace
+            .replace(/[ \t]+$/gm, '')
+            // Ensure file ends with single newline
+            .replace(/\n*$/, '\n');
     }
 
     getValidationSummary(result: ValidationResult): string {
