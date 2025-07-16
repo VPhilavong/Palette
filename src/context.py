@@ -252,11 +252,25 @@ class ProjectAnalyzer:
         # Step 3: Extract theme blocks
         theme_content = self.extract_theme_blocks(aggregated_content)
         
-        # Step 4: Parse theme tokens
-        theme_tokens = self.parse_theme_tokens(theme_content)
+        # Step 4: Parse and classify theme tokens using new logic
+        classified_tokens = self.parse_and_classify_theme(theme_content)
         
-        # Step 5: Structure the data like a tailwind.config.js would
-        return self._structure_css_theme_tokens(theme_tokens)
+        # Step 5: Structure the data for tailwind.config.js format
+        structured_data = {
+            'colors': classified_tokens['colors'],
+            'fontFamily': classified_tokens['fonts'],
+            'fontSize': classified_tokens['typography'],
+            'spacing': classified_tokens['spacing'],
+            'extend': {
+                'colors': classified_tokens['colors'],
+                'fontFamily': classified_tokens['fonts'],
+                'spacing': classified_tokens['spacing']
+            }
+        }
+        
+        print(f"Info: Structured {len(classified_tokens['colors'])} colors, {len(classified_tokens['fonts'])} fonts, {len(classified_tokens['typography'])} typography, {len(classified_tokens['spacing'])} spacing tokens")
+        
+        return structured_data
     
     def _find_main_css_file(self, project_path: str) -> Optional[str]:
         """Find the main CSS entry point by recursively searching all subdirectories"""
@@ -367,6 +381,11 @@ class ProjectAnalyzer:
             imports = re.findall(import_pattern, content)
             
             for import_path in imports:
+                # Skip known Tailwind v4 imports that don't resolve to local files
+                if import_path in ['tailwindcss', 'tailwindcss/base', 'tailwindcss/components', 'tailwindcss/utilities']:
+                    print(f"Info: Skipping Tailwind v4 import: {import_path}")
+                    continue
+                
                 # Resolve relative paths
                 if import_path.startswith('./') or import_path.startswith('../'):
                     # Relative to current CSS file
@@ -380,7 +399,9 @@ class ProjectAnalyzer:
                 if os.path.exists(resolved_path):
                     imported_files.append(resolved_path)
                 else:
-                    print(f"Warning: Import not found: {import_path} -> {resolved_path}")
+                    # Only show warning for non-Tailwind imports
+                    if not import_path.startswith('tailwind') and not import_path in ['normalize.css', 'reset.css']:
+                        print(f"Warning: Import not found: {import_path} -> {resolved_path}")
                     
         except Exception as e:
             print(f"Warning: Error reading CSS file {css_file_path}: {e}")
@@ -423,29 +444,51 @@ class ProjectAnalyzer:
         return aggregated_content
     
     def extract_theme_blocks(self, css_content: str) -> str:
-        """Extract content from @theme { ... } blocks using regex"""
+        """Extract content from @theme { ... } blocks using improved regex for Tailwind v4"""
         
         if not css_content:
             print("Info: No CSS content to extract theme blocks from")
             return ""
         
-        # Pattern to match @theme { ... } blocks
-        # Uses DOTALL flag to match newlines and handles nested braces
-        pattern = r'@theme\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}'
+        # Multiple patterns to match different @theme block formats
+        patterns = [
+            # Standard @theme { ... } blocks
+            r'@theme\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}',
+            # Tailwind v4 style with potential nested structures
+            r'@theme\s*\{([\s\S]*?)\}(?=\s*(?:@|\.|#|$))',
+            # More permissive pattern for complex nested blocks
+            r'@theme\s*\{((?:[^{}]|\{[^{}]*\})*)\}'
+        ]
         
-        # Find all @theme blocks
-        theme_matches = re.findall(pattern, css_content, re.DOTALL)
+        all_theme_matches = []
         
-        if not theme_matches:
+        # Try each pattern
+        for i, pattern in enumerate(patterns):
+            theme_matches = re.findall(pattern, css_content, re.DOTALL | re.MULTILINE)
+            if theme_matches:
+                print(f"Info: Pattern {i+1} found {len(theme_matches)} @theme blocks")
+                all_theme_matches.extend(theme_matches)
+                break  # Use the first pattern that finds matches
+        
+        # If no patterns worked, try a more aggressive approach
+        if not all_theme_matches:
+            # Manual parsing approach for complex cases
+            theme_blocks = self._manual_theme_extraction(css_content)
+            if theme_blocks:
+                all_theme_matches.extend(theme_blocks)
+        
+        if not all_theme_matches:
             print("Info: No @theme blocks found in CSS content")
+            print("Debug: First 500 characters of CSS content:")
+            print(css_content[:500])
             return ""
         
-        print(f"Info: Found {len(theme_matches)} @theme blocks")
+        print(f"Info: Found {len(all_theme_matches)} @theme blocks total")
         
         # Combine all theme block contents
         combined_theme_content = []
         
-        for i, theme_content in enumerate(theme_matches):
+        for i, theme_content in enumerate(all_theme_matches):
             theme_content = theme_content.strip()
             print(f"Info: Theme block {i+1}: {len(theme_content)} characters")
             combined_theme_content.append(theme_content)
@@ -456,6 +499,103 @@ class ProjectAnalyzer:
         print(f"Info: Extracted {len(result)} characters from @theme blocks")
         
         return result
+    
+    def _manual_theme_extraction(self, css_content: str) -> List[str]:
+        """Manual extraction for complex @theme blocks that regex might miss"""
+        
+        theme_blocks = []
+        lines = css_content.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Look for @theme declaration
+            if line.startswith('@theme') and '{' in line:
+                theme_content = []
+                brace_count = line.count('{') - line.count('}')
+                
+                # If the opening brace is on the same line, extract content after it
+                if '{' in line:
+                    content_start = line.find('{') + 1
+                    remaining_content = line[content_start:].strip()
+                    if remaining_content and not remaining_content.startswith('}'):
+                        theme_content.append(remaining_content)
+                    brace_count = line.count('{') - line.count('}')
+                
+                i += 1
+                
+                # Continue reading until we close all braces
+                while i < len(lines) and brace_count > 0:
+                    current_line = lines[i]
+                    theme_content.append(current_line)
+                    brace_count += current_line.count('{') - current_line.count('}')
+                    i += 1
+                
+                # Remove the closing brace from the last line if present
+                if theme_content and '}' in theme_content[-1]:
+                    last_line = theme_content[-1]
+                    closing_brace_pos = last_line.rfind('}')
+                    if closing_brace_pos >= 0:
+                        theme_content[-1] = last_line[:closing_brace_pos]
+                
+                # Join and clean up the theme content
+                block_content = '\n'.join(theme_content).strip()
+                if block_content:
+                    theme_blocks.append(block_content)
+                    print(f"Info: Manual extraction found @theme block with {len(block_content)} characters")
+            else:
+                i += 1
+        
+        return theme_blocks
+    
+    def parse_and_classify_theme(self, theme_content: str) -> dict:
+        """
+        Parses a string of CSS theme content and classifies tokens
+        into colors, fonts, typography, and spacing.
+        """
+        tokens = {
+            'colors': {},
+            'fonts': {},
+            'typography': {},
+            'spacing': {}
+        }
+        
+        # Regex to find CSS custom properties or theme key-value pairs
+        # Handles lines like '--color-primary: #ffffff;' or 'primary: #ffffff;'
+        token_pattern = re.compile(r'(--[\w-]+|[\w-]+)\s*:\s*([^;]+);')
+
+        for line in theme_content.splitlines():
+            line = line.strip()
+            if not line or line.startswith('@'):
+                continue # Skip empty lines and directives like @keyframes
+
+            match = token_pattern.match(line)
+            if not match:
+                continue
+
+            name = match.group(1).strip()
+            value = match.group(2).strip()
+
+            # --- CLASSIFICATION LOGIC ---
+            if 'font' in name:
+                tokens['fonts'][name] = value
+            elif '#' in value or 'rgb' in value or 'hsl' in value:
+                # Clean up the name for color tokens
+                clean_name = name.replace('--color-', '').replace('--', '')
+                tokens['colors'][clean_name] = value
+            elif 'spacing' in name and ('rem' in value or 'px' in value):
+                # Spacing tokens (prioritize name + value check)
+                clean_name = name.replace('--spacing-', '').replace('--', '')
+                tokens['spacing'][clean_name] = value
+            elif 'rem' in value or 'px' in value:
+                # Typography/size tokens
+                tokens['typography'][name] = value
+            elif ' ' in value: # Likely a font-family
+                 tokens['fonts'][name] = value
+            # Add more specific rules if needed
+
+        return tokens
     
     def parse_theme_tokens(self, theme_content: str) -> Dict[str, str]:
         """Parse theme block content into a dictionary of key-value pairs"""
@@ -474,6 +614,10 @@ class ProjectAnalyzer:
             
             # Skip empty lines and comments
             if not line or line.startswith('/*') or line.startswith('//'):
+                continue
+            
+            # Skip @ rules like @keyframes, @media, etc.
+            if line.startswith('@'):
                 continue
             
             # Parse CSS custom properties (--variable: value;)
@@ -528,29 +672,88 @@ class ProjectAnalyzer:
         
         return theme_tokens
     
+    def _classify_token(self, key: str, value: str) -> str:
+        """Intelligently classify a token based on its name and value"""
+        
+        key_lower = key.lower()
+        value_lower = value.lower()
+        
+        # Rule 1: If token name starts with font-, classify as font
+        if key_lower.startswith('font-'):
+            return 'font'
+        
+        # Rule 2: If token name starts with text-, classify as typography
+        if key_lower.startswith('text-'):
+            return 'typography'
+        
+        # Rule 3: If value contains color indicators, classify as color
+        # Check for hex colors, rgb/rgba, hsl/hsla functions, and named colors
+        color_indicators = ['#', 'rgb(', 'rgba(', 'hsl(', 'hsla(', 'rgb ', 'rgba ', 'hsl ', 'hsla ']
+        if any(color_indicator in value_lower for color_indicator in color_indicators):
+            return 'color'
+        
+        # Additional check for CSS color keywords (but not if it's just a number)
+        css_color_keywords = ['red', 'blue', 'green', 'white', 'black', 'transparent', 'currentcolor']
+        value_stripped = value_lower.strip()
+        if value_stripped in css_color_keywords:
+            return 'color'
+        
+        # Don't classify pure numbers as colors
+        try:
+            float(value_stripped)
+            # If it's a pure number, it's not a color, continue to other rules
+        except ValueError:
+            # Not a pure number, could still be a color
+            pass
+        
+        # Rule 4: If value contains size units, classify as spacing
+        if any(unit in value_lower for unit in ['rem', 'px', 'em', 'vh', 'vw', '%']):
+            # But if the key suggests it's font-related, it's typography
+            if any(font_word in key_lower for font_word in ['size', 'height', 'weight', 'leading', 'tracking']):
+                return 'typography'
+            return 'spacing'
+        
+        # Fallback rules based on key names
+        if any(color_word in key_lower for color_word in ['color', 'primary', 'secondary', 'accent', 'background', 'foreground', 'muted', 'border']):
+            return 'color'
+        elif any(font_word in key_lower for font_word in ['font', 'family', 'weight']):
+            return 'font'
+        elif any(typo_word in key_lower for typo_word in ['size', 'height', 'leading', 'tracking', 'line']):
+            return 'typography'
+        elif any(spacing_word in key_lower for spacing_word in ['spacing', 'margin', 'padding', 'gap', 'width', 'height']):
+            return 'spacing'
+        
+        return 'other'
+
     def _structure_css_theme_tokens(self, theme_tokens: Dict[str, str]) -> Dict:
-        """Structure CSS theme tokens like a tailwind.config.js would"""
+        """Structure CSS theme tokens using intelligent classification"""
         
         if not theme_tokens:
             return {}
         
-        # Separate tokens by category
+        # Separate tokens by category using intelligent classification
         colors = {}
         fonts = {}
+        typography = {}
         spacing = {}
         other = {}
         
         for key, value in theme_tokens.items():
-            # Categorize tokens based on key names
-            if any(color_word in key.lower() for color_word in ['color', 'primary', 'secondary', 'accent', 'background', 'foreground', 'muted', 'border', 'text']):
+            classification = self._classify_token(key, value)
+            
+            if classification == 'color':
                 # Remove color- prefix if present
                 color_key = key.replace('color-', '') if key.startswith('color-') else key
                 colors[color_key] = value
-            elif any(font_word in key.lower() for font_word in ['font', 'family', 'size', 'weight']):
+            elif classification == 'font':
                 # Remove font- prefix if present
                 font_key = key.replace('font-', '') if key.startswith('font-') else key
                 fonts[font_key] = value
-            elif any(spacing_word in key.lower() for spacing_word in ['spacing', 'size', 'width', 'height', 'margin', 'padding']):
+            elif classification == 'typography':
+                # Remove text- prefix if present
+                typo_key = key.replace('text-', '') if key.startswith('text-') else key
+                typography[typo_key] = value
+            elif classification == 'spacing':
                 # Remove spacing- prefix if present
                 spacing_key = key.replace('spacing-', '') if key.startswith('spacing-') else key
                 spacing[spacing_key] = value
@@ -561,7 +764,7 @@ class ProjectAnalyzer:
         structured_data = {
             'colors': colors,
             'fontFamily': fonts,
-            'fontSize': {k: v for k, v in fonts.items() if 'size' in k.lower()},
+            'fontSize': typography,
             'spacing': spacing,
             'extend': {
                 'colors': colors,
@@ -570,7 +773,7 @@ class ProjectAnalyzer:
             }
         }
         
-        print(f"Info: Structured {len(colors)} colors, {len(fonts)} fonts, {len(spacing)} spacing tokens")
+        print(f"Info: Structured {len(colors)} colors, {len(fonts)} fonts, {len(typography)} typography, {len(spacing)} spacing tokens")
         
         return structured_data
     
