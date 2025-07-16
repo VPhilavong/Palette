@@ -32,7 +32,38 @@ export class PromptBuilder {
         const frameworks = projectMetadata.frameworks?.map(f => f.name).join(', ') || 'React';
         const hasTypeScript = projectMetadata.hasTypeScript;
         
+        // Check if we need client directive
+        const nextFramework = projectMetadata.frameworks.find(f => f.name === 'Next.js');
+        const needsClient = this.structuredRequestNeedsClient(structuredRequest, nextFramework);
+        
         let prompt = `Create a ${frameworks} component: ${structuredRequest.component_name}\n\n`;
+        
+        // Add App Router specific instructions FIRST if needed
+        if (needsClient) {
+            prompt += `## CRITICAL NEXT.JS APP ROUTER REQUIREMENT\n`;
+            prompt += `This component requires client-side functionality (`;
+            
+            const reasons = [];
+            if (structuredRequest.behavior?.interactions?.length && structuredRequest.behavior.interactions.length > 0) {
+                reasons.push('user interactions');
+            }
+            if (structuredRequest.behavior?.states?.length && structuredRequest.behavior.states.length > 0) {
+                reasons.push('state management');
+            }
+            if (structuredRequest.elements.some(e => ['button', 'form', 'input'].includes(e.type.toLowerCase()))) {
+                reasons.push('interactive elements');
+            }
+            
+            prompt += reasons.join(', ');
+            prompt += `).\n\n`;
+            
+            prompt += `**You MUST add 'use client' as the VERY FIRST LINE of the file:**\n`;
+            prompt += `\`\`\`\n`;
+            prompt += `'use client'\n\n`;
+            prompt += `import { useState } from 'react'\n`;
+            prompt += `// ... other imports\n`;
+            prompt += `\`\`\`\n\n`;
+        }
         
         // Add detailed component specification based on structured entities
         prompt += `## Component Specification\n`;
@@ -140,7 +171,22 @@ export class PromptBuilder {
         const hasTypeScript = projectMetadata.hasTypeScript;
         const uiLibraries = projectMetadata.uiLibraries.join(', ');
         
+        // Check if we need client directive
+        const nextFramework = projectMetadata.frameworks.find(f => f.name === 'Next.js');
+        const needsClient = this.needsClientDirective(request, nextFramework);
+        
         let prompt = `Create a ${frameworks} component based on this request: "${request}"\n\n`;
+        
+        // Add App Router specific instructions FIRST if needed
+        if (needsClient) {
+            prompt += `**CRITICAL NEXT.JS APP ROUTER REQUIREMENT**:\n`;
+            prompt += `This component will likely need client-side interactivity (hooks, event handlers, etc).\n`;
+            prompt += `You MUST add 'use client' as the VERY FIRST LINE of the file, before any imports.\n`;
+            prompt += `Example:\n`;
+            prompt += `'use client'\n\n`;
+            prompt += `import { useState } from 'react'\n`;
+            prompt += `// ... other imports\n\n`;
+        }
         
         // Add codebase-specific patterns FIRST (most important)
         if (patterns) {
@@ -509,51 +555,118 @@ You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing prop
     /**
      * Get router-specific instructions based on detected frameworks
      */
-    private getRouterInstructions(frameworks: { name: string; version?: string }[]): string | null {
-        const frameworkNames = frameworks.map(f => f.name);
+    private getRouterInstructions(frameworks: { name: string; version?: string; variant?: string }[]): string | null {
+        const nextFramework = frameworks.find(f => f.name === 'Next.js');
         
-        if (frameworkNames.includes('TanStack Router')) {
+        if (nextFramework) {
+            if (nextFramework.variant === 'app-router') {
+                return `\nRouter Instructions (Next.js App Router):\n` +
+                       `- **CRITICAL**: This is a Next.js App Router project (app/ directory)\n` +
+                       `- **CRITICAL**: Components are Server Components by default\n` +
+                       `- **CRITICAL**: If using useState, useEffect, or any client-side hooks, you MUST add 'use client' directive at the very top of the file\n` +
+                       `- **CRITICAL**: The 'use client' directive must be the FIRST line, before any imports\n` +
+                       `- Use 'next/navigation' for routing: import { useRouter, useParams, useSearchParams } from 'next/navigation'\n` +
+                       `- Use Link from 'next/link' for internal navigation\n` +
+                       `- For metadata, export a metadata object or generateMetadata function\n` +
+                       `- Server Components can be async and fetch data directly\n` +
+                       `- Example with client hooks:\n` +
+                       `  'use client'\n` +
+                       `  \n` +
+                       `  import { useState } from 'react'\n` +
+                       `  // ... rest of imports\n`;
+            } else if (nextFramework.variant === 'pages-router') {
+                return `\nRouter Instructions (Next.js Pages Router):\n` +
+                       `- This is a Next.js Pages Router project (pages/ directory)\n` +
+                       `- Use 'next/router' for routing: import { useRouter } from 'next/router'\n` +
+                       `- Use Link from 'next/link' for internal navigation\n` +
+                       `- Use Head from 'next/head' for page metadata\n` +
+                       `- Components can use hooks without any special directives\n`;
+            } else {
+                // Fallback for when variant is not detected
+                return `\nRouter Instructions (Next.js - Unknown Router Type):\n` +
+                       `- **IMPORTANT**: Could not detect if this uses App Router or Pages Router\n` +
+                       `- If you see an app/ directory, assume App Router and add 'use client' for components with hooks\n` +
+                       `- If you see a pages/ directory, assume Pages Router (no 'use client' needed)\n` +
+                       `- When in doubt, check the project structure\n`;
+            }
+        }
+        
+        // TanStack Router
+        if (frameworks.some(f => f.name === 'TanStack Router')) {
             return `\nRouter Instructions (TanStack Router):\n` +
                    `- Use TanStack Router for navigation: import { useRouter, Link } from '@tanstack/react-router'\n` +
                    `- Use Link component for internal navigation instead of anchor tags\n` +
                    `- Use useRouter() hook to access router functions like navigate()\n` +
-                   `- DO NOT use Next.js router imports (next/router, next/head)\n` +
+                   `- DO NOT use Next.js router imports (next/router, next/navigation, next/head)\n` +
                    `- For route parameters, use useParams() from TanStack Router\n` +
                    `- For search params, use useSearch() from TanStack Router\n` +
-                   `- Use type-safe route definitions when possible\n`;
+                   `- Components can use hooks without any special directives\n`;
         }
         
-        if (frameworkNames.includes('React Router')) {
+        // React Router
+        if (frameworks.some(f => f.name === 'React Router')) {
             return `\nRouter Instructions (React Router):\n` +
                    `- Use React Router for navigation: import { useNavigate, Link, useParams } from 'react-router-dom'\n` +
                    `- Use Link component for internal navigation instead of anchor tags\n` +
                    `- Use useNavigate() hook for programmatic navigation\n` +
-                   `- Use useParams() for route parameters\n` +
-                   `- Use useSearchParams() for query parameters\n` +
-                   `- DO NOT use Next.js router imports (next/router, next/head)\n`;
+                   `- Components can use hooks without any special directives\n`;
         }
         
-        if (frameworkNames.includes('Next.js')) {
-            return `\nRouter Instructions (Next.js):\n` +
-                   `- Use Next.js App Router if app/ directory exists, Pages Router if pages/ directory\n` +
-                   `- For App Router: Use 'next/navigation' (useRouter, useParams, useSearchParams)\n` +
-                   `- For Pages Router: Use 'next/router' (useRouter)\n` +
-                   `- Use Link from 'next/link' for internal navigation\n` +
-                   `- Use Head from 'next/head' for page metadata (Pages Router only)\n` +
-                   `- For App Router, metadata is handled differently (metadata object)\n`;
-        }
-        
-        // If no specific router detected but React is present
-        if (frameworkNames.includes('React') && !frameworkNames.some(name => 
-            ['TanStack Router', 'React Router', 'Next.js'].includes(name)
-        )) {
+        // Generic React
+        if (frameworks.some(f => f.name === 'React')) {
             return `\nRouter Instructions (Generic React):\n` +
                    `- DO NOT assume any specific router is available\n` +
                    `- Use standard anchor tags for external links\n` +
-                   `- For internal navigation, use onClick handlers with window.location or similar\n` +
-                   `- Avoid router-specific imports unless explicitly available\n`;
+                   `- Components can use hooks without any special directives\n`;
         }
         
         return null;
+    }
+
+    /**
+     * Add this helper method to detect if component needs client directive
+     */
+    private needsClientDirective(request: string, framework: any): boolean {
+        const clientIndicators = [
+            'form', 'input', 'button', 'click', 'submit', 'interactive',
+            'modal', 'dialog', 'dropdown', 'toggle', 'carousel', 'tabs',
+            'state', 'effect', 'ref', 'context', 'reducer'
+        ];
+        
+        const requestLower = request.toLowerCase();
+        const hasClientIndicator = clientIndicators.some(indicator => requestLower.includes(indicator));
+        const isAppRouter = framework?.name === 'Next.js' && framework?.variant === 'app-router';
+        
+        return isAppRouter && hasClientIndicator;
+    }
+
+    /**
+     * Determines if a structured request requires client-side functionality
+     */
+    private structuredRequestNeedsClient(
+        structuredRequest: StructuredRequest,
+        framework: any
+    ): boolean {
+        if (framework?.name !== 'Next.js' || framework?.variant !== 'app-router') {
+            return false; // Only matters for Next.js App Router
+        }
+        
+        // Check behavior for client-side indicators
+        const hasInteractions = structuredRequest.behavior?.interactions?.length ? structuredRequest.behavior.interactions.length > 0 : false;
+        const hasStates = structuredRequest.behavior?.states?.length ? structuredRequest.behavior.states.length > 0 : false;
+        const hasAsync = structuredRequest.behavior?.async_operations?.length ? structuredRequest.behavior.async_operations.length > 0 : false;
+        
+        // Check elements for interactive components
+        const hasInteractiveElements = structuredRequest.elements.some(element => 
+            ['button', 'form', 'input', 'select', 'textarea'].includes(element.type.toLowerCase())
+        );
+        
+        // Check component type
+        const interactiveTypes = ['form', 'modal', 'dialog', 'carousel', 'tabs', 'accordion'];
+        const isInteractiveType = structuredRequest.component_type ? interactiveTypes.some(type => 
+            structuredRequest.component_type!.toLowerCase().includes(type)
+        ) : false;
+        
+        return hasInteractions || hasStates || hasAsync || hasInteractiveElements || isInteractiveType;
     }
 }
