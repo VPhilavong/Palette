@@ -1,1 +1,0 @@
-# Code Palette - Design-to-Code UI/UX Agent

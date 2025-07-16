@@ -1,33 +1,144 @@
-# UI Copilot - VSCode Extension
+# Palette - AI-Powered Component Generator
 
-AI-powered React component generation that understands your codebase and generates modern, context-aware React components.
+🎨 **Smart component generation that understands your design system**
 
-## 🚀 Quick Setup
+Palette analyzes your project's design patterns, color schemes, and component structure to generate React components that perfectly match your existing codebase.
 
-### 1. Install Dependencies
+## ✨ Features
+
+- 🔍 **Smart Project Analysis** - Automatically detects colors, typography, and design patterns
+- 🎯 **Context-Aware Generation** - Components match your existing design system
+- 🎨 **Design Token Extraction** - Supports Tailwind v4 @theme blocks and traditional configs
+- 🚀 **Multiple Frameworks** - Next.js, React, Vue.js support
+- 🛠️ **VS Code Extension** - Integrated development experience
+
+## 🚀 Quick Start
+
+### Installation
+
 ```bash
-npm install
+# Clone the repository
+git clone https://github.com/VPhilavong/palette.git
+cd palette
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up environment
+cp .env.example .env
+# Add your OpenAI/Anthropic API keys to .env
 ```
 
-### 2. Configure AI Provider
-Choose between OpenAI or Google Gemini:
+### Basic Usage
 
-**Option A: Google Gemini (Recommended - Free tier available)**
-1. Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Open VSCode Settings (Cmd/Ctrl + ,)
-3. Search for "ui-copilot"
-4. Set `ui-copilot.apiProvider` to "gemini"
-5. Set your Gemini API key in `ui-copilot.geminiApiKey`
-
-**Option B: OpenAI**
-1. Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Open VSCode Settings (Cmd/Ctrl + ,)
-3. Search for "ui-copilot"
-4. Set `ui-copilot.apiProvider` to "openai"
-5. Set your OpenAI API key in `ui-copilot.openaiApiKey`
-
-### 3. Build the Extension
 ```bash
+# Analyze your project
+python3 palette.py analyze
+
+# Generate a component
+python3 palette.py generate "hero section with gradient background"
+```
+
+## 📁 Project Structure
+
+```
+palette/
+├── 📁 src/palette/         # Main package
+│   ├── 📁 analysis/        # Project analysis
+│   ├── 📁 generation/      # Component generation
+│   ├── 📁 cli/            # Command-line interface
+│   └── 📁 utils/          # Utilities and helpers
+├── 📁 docs/               # Documentation
+├── 📁 examples/           # Example projects and CSS
+├── 📁 scripts/            # Utility scripts
+├── 📁 tests/              # Test files
+├── 📁 templates/          # Component templates
+├── 📁 vscode-extension/   # VS Code extension
+└── palette.py             # CLI entry point
+```
+
+## 🎯 How It Works
+
+1. **Analysis Phase**: Palette scans your project for:
+   - CSS files and @theme blocks
+   - Component usage patterns
+   - Color schemes and design tokens
+   - Typography scales and spacing
+
+2. **Context Building**: Creates a comprehensive design system profile
+
+3. **Generation Phase**: Uses AI to generate components that:
+   - Match your color palette
+   - Follow your naming conventions
+   - Use your preferred component patterns
+   - Integrate seamlessly with existing code
+
+## 🔧 Advanced Usage
+
+### Project Analysis
+```bash
+# Detailed analysis
+python3 palette.py analyze
+
+# Analyze specific directory
+cd your-project && python3 /path/to/palette/palette.py analyze
+```
+
+### Component Generation
+```bash
+# Generate with context
+python3 palette.py generate "responsive card component with image"
+
+# Specify framework
+python3 palette.py generate "navigation bar" --framework next.js
+```
+
+### Cleanup & Testing
+```bash
+# Quick cleanup between tests
+./scripts/quick-clean.sh
+
+# Full repository sanitization
+python3 scripts/sanitize.py
+```
+
+## 🎨 Supported Design Systems
+
+- ✅ **Tailwind CSS v3 & v4** - Including @theme blocks
+- ✅ **CSS Custom Properties** - Automatic detection
+- ✅ **Component Libraries** - Automatic inference
+- ✅ **Design Tokens** - Colors, typography, spacing
+
+## 📚 Documentation
+
+- [Getting Started](docs/README.md)
+- [Development Guide](docs/development.md)
+- [Cleanup Scripts](docs/CLEANUP.md)
+- [Examples](examples/README.md)
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test with example projects
+5. Submit a pull request
+
+## 📄 License
+
+MIT License - see [LICENSE.md](LICENSE.md) for details
+
+## 🚀 VS Code Extension
+
+Palette also includes a VS Code extension for integrated development:
+
+```bash
+cd vscode-extension
+npm install
+npm run compile
+```
+
+See [vscode-extension/README.md](vscode-extension/README.md) for extension-specific documentation.
 npm run compile
 ```
 

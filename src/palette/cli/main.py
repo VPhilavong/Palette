@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.panel import Panel
 from dotenv import load_dotenv
 
-from .generator import UIGenerator
-from .context import ProjectAnalyzer
-from .file_manager import FileManager
+from ..generation.generator import UIGenerator
+from ..analysis.context import ProjectAnalyzer
+from ..utils.file_manager import FileManager
 
 # Load environment variables from .env file
 load_dotenv()
@@ -43,15 +43,20 @@ def generate(prompt: str, preview: bool, output: Optional[str], model: str):
         generator = UIGenerator(model=model)
         component_code = generator.generate_component(prompt, context)
         
+        console.print("[yellow]Formatting and linting code...[/yellow]")
+        
+        # Format and lint the generated code
+        formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
+        
         if preview:
-            console.print(Panel(component_code, title="Generated Component", border_style="green"))
+            console.print(Panel(formatted_code, title="Generated Component", border_style="green"))
             if not click.confirm("Create this component?"):
                 console.print("[yellow]Component generation cancelled[/yellow]")
                 return
         
         # Save component
         file_manager = FileManager()
-        file_path = file_manager.save_component(component_code, output, context)
+        file_path = file_manager.save_component(formatted_code, output, context, prompt)
         
         console.print(f"[green]✓[/green] Component created at: {file_path}")
         
@@ -74,6 +79,13 @@ def analyze():
         console.print(f"[bold]Framework:[/bold] {context.get('framework', 'Unknown')}")
         console.print(f"[bold]Styling:[/bold] {context.get('styling', 'Unknown')}")
         console.print(f"[bold]Component Library:[/bold] {context.get('component_library', 'None detected')}")
+        
+        # Display main CSS file path
+        main_css_file = context.get('main_css_file')
+        if main_css_file:
+            console.print(f"[bold]Main CSS File:[/bold] {main_css_file}")
+        else:
+            console.print(f"[bold]Main CSS File:[/bold] Not found")
         
         if context.get('design_tokens'):
             tokens = context['design_tokens']
@@ -102,7 +114,12 @@ def preview(prompt: str):
         generator = UIGenerator()
         component_code = generator.generate_component(prompt, context)
         
-        console.print(Panel(component_code, title="Component Preview", border_style="green"))
+        console.print("[yellow]Formatting and linting code...[/yellow]")
+        
+        # Format and lint the generated code
+        formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
+        
+        console.print(Panel(formatted_code, title="Component Preview", border_style="green"))
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
