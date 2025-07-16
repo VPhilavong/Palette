@@ -578,22 +578,33 @@ class ProjectAnalyzer:
             value = match.group(2).strip()
 
             # --- CLASSIFICATION LOGIC ---
-            if 'font' in name:
-                tokens['fonts'][name] = value
-            elif '#' in value or 'rgb' in value or 'hsl' in value:
-                # Clean up the name for color tokens
-                clean_name = name.replace('--color-', '').replace('--', '')
+            # Clean up common prefixes for better classification
+            clean_name = name.replace('--color-', '').replace('--font-', '').replace('--spacing-', '').replace('--text-', '').replace('--', '')
+            
+            # Color classification (check first as it's most specific)
+            if ('color' in name.lower() or 
+                  '#' in value or 'rgb' in value or 'hsl' in value or 
+                  name.lower() in ['primary', 'secondary', 'accent', 'background', 'foreground', 'muted']):
                 tokens['colors'][clean_name] = value
-            elif 'spacing' in name and ('rem' in value or 'px' in value):
-                # Spacing tokens (prioritize name + value check)
-                clean_name = name.replace('--spacing-', '').replace('--', '')
+            # Typography classification (check before general font classification)
+            elif ('font-size' in name.lower() or 'text-' in name.lower() or 
+                  ('size' in name.lower() and ('rem' in value or 'px' in value))):
+                tokens['typography'][clean_name] = value
+            # Font family classification
+            elif ('font-family' in name.lower() or 'font' in name.lower() or 
+                  ('family' in name.lower() and ' ' in value and ',' in value)):
+                tokens['fonts'][clean_name] = value
+            # Spacing classification
+            elif ('spacing' in name.lower() or 
+                  (('rem' in value or 'px' in value or 'em' in value) and 
+                   ('spacing' in name.lower() or 'gap' in name.lower() or 'margin' in name.lower() or 'padding' in name.lower()))):
                 tokens['spacing'][clean_name] = value
+            # Fallback for font families (space-separated values with commas)
+            elif ' ' in value and ',' in value:
+                tokens['fonts'][clean_name] = value
+            # Fallback for numeric values that could be spacing
             elif 'rem' in value or 'px' in value:
-                # Typography/size tokens
-                tokens['typography'][name] = value
-            elif ' ' in value: # Likely a font-family
-                 tokens['fonts'][name] = value
-            # Add more specific rules if needed
+                tokens['spacing'][clean_name] = value
 
         return tokens
     
@@ -1019,20 +1030,28 @@ class ProjectAnalyzer:
         
         typography = []
         
-        # Get font sizes from config
+        # Get font sizes from new structured config
         if 'fontSize' in tailwind_config and tailwind_config['fontSize']:
             config_font_sizes = tailwind_config['fontSize']
             
-            # Extract font size names
-            for font_size_name in config_font_sizes.keys():
-                typography.append(font_size_name)
+            # Extract font size names (could be dict or already processed)
+            if isinstance(config_font_sizes, dict):
+                for font_size_name in config_font_sizes.keys():
+                    typography.append(font_size_name)
+            elif isinstance(config_font_sizes, list):
+                typography.extend(config_font_sizes)
         
         # Get extended font sizes
         if 'extend' in tailwind_config and 'fontSize' in tailwind_config['extend']:
             extend_font_sizes = tailwind_config['extend']['fontSize']
-            for font_size_name in extend_font_sizes.keys():
-                if font_size_name not in typography:
-                    typography.append(font_size_name)
+            if isinstance(extend_font_sizes, dict):
+                for font_size_name in extend_font_sizes.keys():
+                    if font_size_name not in typography:
+                        typography.append(font_size_name)
+            elif isinstance(extend_font_sizes, list):
+                for font_size_name in extend_font_sizes:
+                    if font_size_name not in typography:
+                        typography.append(font_size_name)
         
         # Fallback to component analysis if no typography found
         if not typography:
