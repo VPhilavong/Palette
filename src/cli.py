@@ -80,6 +80,13 @@ def analyze():
         console.print(f"[bold]Styling:[/bold] {context.get('styling', 'Unknown')}")
         console.print(f"[bold]Component Library:[/bold] {context.get('component_library', 'None detected')}")
         
+        # Display main CSS file path
+        main_css_file = context.get('main_css_file')
+        if main_css_file:
+            console.print(f"[bold]Main CSS File:[/bold] {main_css_file}")
+        else:
+            console.print(f"[bold]Main CSS File:[/bold] Not found")
+        
         if context.get('design_tokens'):
             tokens = context['design_tokens']
             console.print(f"[bold]Colors:[/bold] {', '.join(tokens.get('colors', []))}")

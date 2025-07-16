@@ -21,6 +21,9 @@ class ProjectAnalyzer:
             'material-ui': ['@mui/material', '@material-ui'],
             'ant-design': ['antd'],
         }
+        
+        # Store the main CSS file path for debugging/info purposes
+        self.main_css_file_path = None
     
     def analyze_project(self, project_path: str) -> Dict:
         """Extract design patterns for UI generation"""
@@ -32,7 +35,8 @@ class ProjectAnalyzer:
             'design_tokens': self._extract_design_tokens(project_path),
             'component_patterns': self._analyze_component_patterns(project_path),
             'project_structure': self._analyze_project_structure(project_path),
-            'available_imports': self.get_available_imports(project_path)
+            'available_imports': self.get_available_imports(project_path),
+            'main_css_file': self.main_css_file_path
         }
         
         return context
@@ -237,6 +241,11 @@ class ProjectAnalyzer:
             print("Info: No CSS files found for theme parsing")
             return {}
         
+        # Store the main CSS file path (first one is the main file)
+        if css_files:
+            self.main_css_file_path = os.path.abspath(css_files[0])
+            print(f"Info: Main CSS file found: {self.main_css_file_path}")
+        
         # Step 2: Aggregate all CSS content
         aggregated_content = self.aggregate_css_content(css_files)
         
@@ -250,10 +259,21 @@ class ProjectAnalyzer:
         return self._structure_css_theme_tokens(theme_tokens)
     
     def _find_main_css_file(self, project_path: str) -> Optional[str]:
-        """Find the main CSS entry point"""
+        """Find the main CSS entry point by recursively searching all subdirectories"""
         
-        # Common CSS file names to look for
-        css_candidates = [
+        # Common CSS file names to look for (prioritized by importance)
+        css_filenames = [
+            'style.css',
+            'styles.css', 
+            'globals.css',
+            'global.css',
+            'tailwind.css',
+            'app.css',
+            'main.css'
+        ]
+        
+        # First, try the predefined paths for faster lookup
+        predefined_candidates = [
             'style.css',
             'styles.css', 
             'globals.css',
@@ -266,13 +286,32 @@ class ProjectAnalyzer:
             'src/globals.css',
             'styles/globals.css',
             'styles/style.css',
-            'app/globals.css'
+            'app/globals.css',
+            'app/css/style.css',
+            'app/css/styles.css',
+            'test_css/style.css',
+            'test_css/styles.css',
+            'css/style.css',
+            'css/styles.css'
         ]
         
-        for candidate in css_candidates:
+        for candidate in predefined_candidates:
             css_path = os.path.join(project_path, candidate)
             if os.path.exists(css_path):
                 return css_path
+        
+        # If no predefined paths work, recursively search through all directories
+        print(f"Info: No CSS file found in common locations, searching recursively...")
+        
+        for root, dirs, files in os.walk(project_path):
+            # Skip common directories that shouldn't contain main CSS files
+            dirs[:] = [d for d in dirs if d not in ['.git', 'node_modules', '.next', 'dist', 'build', '__pycache__', '.vscode']]
+            
+            for filename in files:
+                if filename in css_filenames:
+                    css_path = os.path.join(root, filename)
+                    print(f"Info: Found CSS file during recursive search: {css_path}")
+                    return css_path
         
         return None
     
