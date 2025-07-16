@@ -2,7 +2,7 @@
   "name": "code-palette",
   "displayName": "Code Palette",
   "description": "AI-powered design-to-code tool for React components",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "sail-project",
   "engines": {
     "vscode": "^1.60.0"
@@ -36,6 +36,11 @@
         "command": "palette.analyze",
         "title": "Analyze Project",
         "category": "Palette"
+      },
+      {
+        "command": "palette.openWebview",
+        "title": "Open Palette",
+        "category": "Palette"
       }
     ],
     "menus": {
@@ -45,6 +50,9 @@
         },
         {
           "command": "palette.analyze"
+        },
+        {
+          "command": "palette.openWebview"
         }
       ],
       "explorer/context": [

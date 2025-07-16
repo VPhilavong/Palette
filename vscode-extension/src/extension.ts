@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
+import { PalettePanel } from './UICopilotPanel';
+import { runPalettePreview } from './paletteRunner';
 
 const execAsync = promisify(exec);
 
@@ -17,7 +19,20 @@ export function activate(context: vscode.ExtensionContext) {
         await analyzeProject();
     });
 
-    context.subscriptions.push(generateCommand, analyzeCommand);
+    const openWebviewCommand = vscode.commands.registerCommand('palette.openWebview', () => {
+        PalettePanel.createOrShow(context.extensionUri);
+    });
+
+    context.subscriptions.push(generateCommand, analyzeCommand, openWebviewCommand);
+
+    // Handle webview panel restoration
+    if (vscode.window.registerWebviewPanelSerializer) {
+        vscode.window.registerWebviewPanelSerializer('palette', {
+            async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, _state: any) {
+                PalettePanel.revive(webviewPanel, context.extensionUri);
+            }
+        });
+    }
 }
 
 async function generateComponent(uri?: vscode.Uri) {
@@ -51,54 +66,13 @@ async function generateComponent(uri?: vscode.Uri) {
             progress.report({ increment: 0, message: 'Analyzing project...' });
 
             try {
-                // Get CLI path from configuration
-                const config = vscode.workspace.getConfiguration('palette');
-                const cliPath = config.get<string>('cliPath', 'palette');
-
-                // Determine output directory
-                let outputDir = workspaceFolder.uri.fsPath;
-                if (uri && uri.scheme === 'file') {
-                    const stat = await vscode.workspace.fs.stat(uri);
-                    if (stat.type === vscode.FileType.Directory) {
-                        outputDir = uri.fsPath;
-                    } else {
-                        outputDir = path.dirname(uri.fsPath);
-                    }
-                }
-
                 progress.report({ increment: 30, message: 'Generating component code...' });
-
-                // Execute palette CLI command for preview
-                const command = `echo "n" | ${cliPath} generate "${prompt}" --preview`;
-                const { stdout, stderr } = await execAsync(command, {
-                    cwd: workspaceFolder.uri.fsPath,
-                    timeout: 30000 // 30 second timeout
-                });
-
-                progress.report({ increment: 70, message: 'Creating component file...' });
-
-                if (stderr && !stderr.includes('Create this component?') && !stderr.includes('Error:')) {
-                    throw new Error(stderr);
-                }
-
-                // Parse the output to get the generated component
-                // Extract content between the component box borders
-                const lines = stdout.split('\n');
-                const startIndex = lines.findIndex(line => line.includes('Generated Component'));
-                const endIndex = lines.findIndex((line, index) => index > startIndex && line.includes('╰'));
                 
-                if (startIndex === -1 || endIndex === -1) {
-                    throw new Error('Failed to parse generated component from CLI output');
-                }
+                // Use the shared function for consistent output
+                const componentCode = await runPalettePreview(prompt, workspaceFolder.uri.fsPath);
                 
-                // Extract the component code, removing box borders and formatting
-                const componentLines = lines.slice(startIndex + 1, endIndex)
-                    .filter(line => line.startsWith('│'))
-                    .map(line => line.substring(1).trim())
-                    .filter(line => line !== '');
+                progress.report({ increment: 70, message: 'Component preview ready!' });
                 
-                const componentCode = componentLines.join('\n');
-
                 // Ask user if they want to create the component
                 const create = await vscode.window.showInformationMessage(
                     'Component generated successfully! Create the file?',
@@ -107,26 +81,21 @@ async function generateComponent(uri?: vscode.Uri) {
                 );
 
                 if (create === 'Create') {
-                    // Execute the actual generation command without preview
-                    const createCommand = `echo "y" | ${cliPath} generate "${prompt}"`;
-                    const { stdout: createOutput } = await execAsync(createCommand, {
-                        cwd: workspaceFolder.uri.fsPath,
-                        timeout: 30000
+                    // Get file name from user
+                    const fileName = await vscode.window.showInputBox({
+                        prompt: 'Enter component file name',
+                        placeHolder: 'components/Button.tsx',
+                        value: 'components/NewComponent.tsx'
                     });
 
-                    // Extract file path from output
-                    const filePathMatch = createOutput.match(/Component created at: (.+)/);
-                    if (filePathMatch) {
-                        const filePath = path.join(workspaceFolder.uri.fsPath, filePathMatch[1]);
-                        const fileUri = vscode.Uri.file(filePath);
+                    if (fileName) {
+                        // Add .tsx extension if not provided
+                        const finalFileName = fileName.includes('.') ? fileName : fileName + '.tsx';
                         
-                        // Open the created file
-                        const document = await vscode.workspace.openTextDocument(fileUri);
-                        await vscode.window.showTextDocument(document);
+                        // Create the component file
+                        await createComponentFile(componentCode, finalFileName, workspaceFolder.uri.fsPath);
                         
-                        vscode.window.showInformationMessage(`Component created: ${filePathMatch[1]}`);
-                    } else {
-                        vscode.window.showInformationMessage('Component created successfully!');
+                        vscode.window.showInformationMessage(`Component created: ${finalFileName}`);
                     }
                 }
 
@@ -160,6 +129,28 @@ async function generateComponent(uri?: vscode.Uri) {
     }
 }
 
+async function createComponentFile(componentCode: string, fileName: string, workspacePath: string) {
+    const fullPath = path.join(workspacePath, fileName);
+    const fileUri = vscode.Uri.file(fullPath);
+    
+    // Ensure directory exists
+    const directory = path.dirname(fullPath);
+    const directoryUri = vscode.Uri.file(directory);
+    
+    try {
+        await vscode.workspace.fs.stat(directoryUri);
+    } catch {
+        // Directory doesn't exist, create it
+        await vscode.workspace.fs.createDirectory(directoryUri);
+    }
+    
+    // Create the file
+    await vscode.workspace.fs.writeFile(fileUri, Buffer.from(componentCode, 'utf8'));
+    
+    // Open the created file
+    const document = await vscode.workspace.openTextDocument(fileUri);
+    await vscode.window.showTextDocument(document);
+}
 
 async function analyzeProject() {
     try {
@@ -184,7 +175,7 @@ async function analyzeProject() {
             });
 
             // Show analysis results in information message
-            const lines = stdout.split('\\n').filter(line => 
+            const lines = stdout.split('\n').filter(line => 
                 line.includes('Framework:') || 
                 line.includes('Styling:') || 
                 line.includes('Component Library:') ||
@@ -193,9 +184,9 @@ async function analyzeProject() {
             );
 
             if (lines.length > 0) {
-                const summary = lines.join('\\n');
+                const summary = lines.join('\n');
                 vscode.window.showInformationMessage(
-                    `Project Analysis:\\n${summary}`,
+                    `Project Analysis:\n${summary}`,
                     { modal: true }
                 );
             } else {

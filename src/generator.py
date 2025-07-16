@@ -8,8 +8,9 @@ from .prompts import UIPromptBuilder
 class UIGenerator:
     """Core UI generation logic using LLM APIs"""
     
-    def __init__(self, model: str = "gpt-4"):
-        self.model = model
+    def __init__(self, model: str = None):
+        # Use environment variable or provided model or fallback
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.prompt_builder = UIPromptBuilder()
         
         # Initialize API clients

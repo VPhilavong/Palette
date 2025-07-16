@@ -4,10 +4,14 @@ import sys
 from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
+from dotenv import load_dotenv
 
 from .generator import UIGenerator
 from .context import ProjectAnalyzer
 from .file_manager import FileManager
+
+# Load environment variables from .env file
+load_dotenv()
 
 console = Console()
 
@@ -21,7 +25,7 @@ def main():
 @click.argument('prompt', required=True)
 @click.option('--preview', is_flag=True, help='Preview component before creating file')
 @click.option('--output', '-o', help='Output file path (auto-detected if not provided)')
-@click.option('--model', default='gpt-4', help='LLM model to use')
+@click.option('--model', default=None, help='LLM model to use (defaults to OPENAI_MODEL env var)')
 def generate(prompt: str, preview: bool, output: Optional[str], model: str):
     """Generate a React component from a natural language prompt"""
     

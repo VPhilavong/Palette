@@ -263,3 +263,4 @@ test_repos/
 .claude
 copilot-chat-source
 copilot-chat-source/*
+test_projects
