@@ -2,6 +2,7 @@ import os
 import json
 import re
 import subprocess
+import glob
 from typing import Dict, List, Optional
 from pathlib import Path
 
@@ -255,7 +256,14 @@ class ProjectAnalyzer:
         # Step 4: Parse and classify theme tokens using new logic
         classified_tokens = self.parse_and_classify_theme(theme_content)
         
-        # Step 5: Structure the data for tailwind.config.js format
+        # Step 5: If no colors found in @theme, extract from components
+        if not classified_tokens['colors']:
+            component_colors = self._extract_colors_from_components(project_path)
+            # Convert component color names to proper color structure
+            for color_name in component_colors:
+                classified_tokens['colors'][color_name] = f'<{color_name}>'  # Placeholder value
+        
+        # Step 6: Structure the data for tailwind.config.js format
         structured_data = {
             'colors': classified_tokens['colors'],
             'fontFamily': classified_tokens['fonts'],
@@ -931,7 +939,7 @@ class ProjectAnalyzer:
             'structure': {}  # Full color structure for reference
         }
         
-        # Get colors from config
+        # First, try to get colors from new structured config
         if 'colors' in tailwind_config and tailwind_config['colors']:
             config_colors = tailwind_config['colors']
             colors['structure'].update(config_colors)
@@ -958,7 +966,19 @@ class ProjectAnalyzer:
                 if isinstance(color_value, str):
                     colors['semantic'].append(color_name)
         
-        # Fallback to regex-based extraction if no colors found
+        # Debug: Print what we found in the structured config (remove in production)
+        # print(f"Debug: tailwind_config keys: {list(tailwind_config.keys())}")
+        # if 'colors' in tailwind_config:
+        #     print(f"Debug: colors in config: {tailwind_config['colors']}")
+        # if 'extend' in tailwind_config and 'colors' in tailwind_config['extend']:
+        #     print(f"Debug: extended colors: {tailwind_config['extend']['colors']}")
+        
+        # Fallback to component-based extraction if no colors found
+        if not colors['custom']:
+            component_colors = self._extract_colors_from_components(project_path)
+            colors['custom'] = component_colors
+        
+        # Fallback to regex-based extraction if still no colors found
         if not colors['custom']:
             fallback_colors = self._extract_tailwind_colors_fallback(project_path)
             colors['custom'] = fallback_colors
@@ -970,6 +990,61 @@ class ProjectAnalyzer:
         print(f"Info: Found {len(colors['custom'])} custom colors, {len(colors['semantic'])} semantic colors")
         
         return colors
+    
+    def _extract_colors_from_components(self, project_path: str) -> List[str]:
+        """Extract color names from Tailwind classes used in component files"""
+        
+        colors = set()
+        
+        # Common file extensions for components
+        extensions = ['*.tsx', '*.jsx', '*.ts', '*.js', '*.vue', '*.html']
+        
+        # Common directories to search
+        directories = ['components', 'src', 'app', 'pages', '.']
+        
+        # Regex to match Tailwind color classes
+        color_patterns = [
+            r'(?:bg|text|border|ring|shadow|outline|decoration|accent|caret|divide|placeholder)-([a-z]+)-\d+',  # bg-blue-500
+            r'(?:bg|text|border|ring|shadow|outline|decoration|accent|caret|divide|placeholder)-([a-z]+)(?:\s|"|\'|>|$)',  # bg-blue
+            r'(?:from|via|to)-([a-z]+)-\d+',  # gradient colors
+            r'(?:from|via|to)-([a-z]+)(?:\s|"|\'|>|$)',      # gradient colors
+        ]
+        
+        compiled_patterns = [re.compile(pattern) for pattern in color_patterns]
+        
+        for directory in directories:
+            dir_path = os.path.join(project_path, directory)
+            if not os.path.exists(dir_path):
+                continue
+                
+            for extension in extensions:
+                pattern = os.path.join(dir_path, '**', extension)
+                files = glob.glob(pattern, recursive=True)
+                
+                for file_path in files[:20]:  # Limit to 20 files for performance
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            
+                            for pattern in compiled_patterns:
+                                matches = pattern.findall(content)
+                                for match in matches:
+                                    # Only include valid Tailwind color names
+                                    valid_colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 
+                                                  'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 
+                                                  'fuchsia', 'pink', 'rose', 'gray', 'slate', 'zinc', 'neutral', 
+                                                  'stone', 'white', 'black']
+                                    if match in valid_colors:
+                                        colors.add(match)
+                    except Exception:
+                        continue
+        
+        # Sort and limit colors
+        color_list = sorted(list(colors))[:8]  # Return up to 8 colors
+        
+        print(f"Info: Extracted {len(color_list)} colors from component files: {color_list}")
+        
+        return color_list
     
     def _extract_tailwind_colors_fallback(self, project_path: str) -> List[str]:
         """Fallback method: Extract color palette from Tailwind config using regex"""
