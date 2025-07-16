@@ -124,7 +124,8 @@ export class FrameworkDetector {
                 name: 'TanStack Router',
                 version: allDeps['@tanstack/react-router'],
                 detected: true,
-                confidence: 1.0
+                confidence: 1.0,
+                variant: 'standard'
             });
         }
         
@@ -133,7 +134,8 @@ export class FrameworkDetector {
                 name: 'React Router',
                 version: allDeps['react-router-dom'] || allDeps['react-router'],
                 detected: true,
-                confidence: 1.0
+                confidence: 1.0,
+                variant: 'standard'
             });
         }
         
@@ -142,7 +144,8 @@ export class FrameworkDetector {
                 name: 'Reach Router',
                 version: allDeps['@reach/router'],
                 detected: true,
-                confidence: 1.0
+                confidence: 1.0,
+                variant: 'standard'
             });
         }
     }
@@ -304,7 +307,8 @@ export class FrameworkDetector {
             const tanstackRouter: Framework = {
                 name: 'TanStack Router',
                 detected: true,
-                confidence: 0.9
+                confidence: 0.9,
+                variant: 'standard'
             };
             
             if (!metadata.frameworks.some(f => f.name === 'TanStack Router')) {
@@ -318,7 +322,8 @@ export class FrameworkDetector {
             const reactRouter: Framework = {
                 name: 'React Router',
                 detected: true,
-                confidence: 0.9
+                confidence: 0.9,
+                variant: 'standard'
             };
             
             if (!metadata.frameworks.some(f => f.name === 'React Router')) {
@@ -332,7 +337,8 @@ export class FrameworkDetector {
             const reachRouter: Framework = {
                 name: 'Reach Router',
                 detected: true,
-                confidence: 0.8
+                confidence: 0.8,
+                variant: 'standard'
             };
             
             if (!metadata.frameworks.some(f => f.name === 'Reach Router')) {
@@ -365,57 +371,63 @@ export class FrameworkDetector {
         metadata.rootPath = workspaceRoot;
 
         try {
-            // Check for TanStack Router file structure patterns
+            // Check for Next.js App Router structure
+            const appDirectory = await vscode.workspace.findFiles('**/app/**/page.{tsx,ts,jsx,js}', 'node_modules/**', 1);
+            const appLayoutFiles = await vscode.workspace.findFiles('**/app/**/layout.{tsx,ts,jsx,js}', 'node_modules/**', 1);
+            
+            // Check for Next.js Pages Router structure
+            const pagesDirectory = await vscode.workspace.findFiles('**/pages/**/*.{tsx,ts,jsx,js}', 'node_modules/**', 1);
+            
+            // Determine Next.js variant
+            if (appDirectory.length > 0 || appLayoutFiles.length > 0) {
+                // App Router detected
+                const existingNext = metadata.frameworks.find(f => f.name === 'Next.js');
+                if (existingNext) {
+                    existingNext.variant = 'app-router';
+                    existingNext.confidence = 1.0;
+                } else {
+                    metadata.frameworks.push({
+                        name: 'Next.js',
+                        detected: true,
+                        confidence: 0.95,
+                        variant: 'app-router'
+                    });
+                }
+                console.log('Next.js App Router detected from file structure');
+            } else if (pagesDirectory.length > 0) {
+                // Pages Router detected
+                const existingNext = metadata.frameworks.find(f => f.name === 'Next.js');
+                if (existingNext) {
+                    existingNext.variant = 'pages-router';
+                    existingNext.confidence = 1.0;
+                } else {
+                    metadata.frameworks.push({
+                        name: 'Next.js',
+                        detected: true,
+                        confidence: 0.95,
+                        variant: 'pages-router'
+                    });
+                }
+                console.log('Next.js Pages Router detected from file structure');
+            }
+
+            // Check for TanStack Router patterns
             const routeTreeFile = await vscode.workspace.findFiles('**/routeTree.gen.ts', 'node_modules/**', 1);
             const rootRouteFile = await vscode.workspace.findFiles('**/__root.tsx', 'node_modules/**', 1);
             const routesDirectory = await vscode.workspace.findFiles('**/routes/**', 'node_modules/**', 1);
 
             if (routeTreeFile.length > 0 || rootRouteFile.length > 0 || routesDirectory.length > 0) {
-                // Strong indication of TanStack Router
                 const tanstackRouter: Framework = {
                     name: 'TanStack Router',
                     detected: true,
-                    confidence: 0.95 // High confidence based on file structure
+                    confidence: 0.95,
+                    variant: 'standard'
                 };
                 
                 if (!metadata.frameworks.some(f => f.name === 'TanStack Router')) {
                     metadata.frameworks.push(tanstackRouter);
                     console.log('TanStack Router detected from file structure');
                 }
-            }
-
-            // Check for Next.js App Router structure
-            const appDirectory = await vscode.workspace.findFiles('**/app/**/page.{tsx,ts,jsx,js}', 'node_modules/**', 1);
-            if (appDirectory.length > 0) {
-                // App Router detected
-                const nextFramework = metadata.frameworks.find(f => f.name === 'Next.js');
-                if (nextFramework) {
-                    nextFramework.confidence = Math.min(nextFramework.confidence + 0.2, 1.0);
-                } else {
-                    metadata.frameworks.push({
-                        name: 'Next.js',
-                        detected: true,
-                        confidence: 0.8
-                    });
-                }
-                console.log('Next.js App Router detected from file structure');
-            }
-
-            // Check for Next.js Pages Router structure
-            const pagesDirectory = await vscode.workspace.findFiles('**/pages/**/*.{tsx,ts,jsx,js}', 'node_modules/**', 1);
-            if (pagesDirectory.length > 0 && appDirectory.length === 0) {
-                // Pages Router detected
-                const nextFramework = metadata.frameworks.find(f => f.name === 'Next.js');
-                if (nextFramework) {
-                    nextFramework.confidence = Math.min(nextFramework.confidence + 0.2, 1.0);
-                } else {
-                    metadata.frameworks.push({
-                        name: 'Next.js',
-                        detected: true,
-                        confidence: 0.8
-                    });
-                }
-                console.log('Next.js Pages Router detected from file structure');
             }
 
         } catch (error) {
