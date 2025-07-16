@@ -1,0 +1,92 @@
+{
+  "name": "code-palette",
+  "displayName": "Code Palette",
+  "description": "AI-powered design-to-code tool for React components",
+  "version": "0.1.1",
+  "publisher": "sail-project",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "react",
+    "component",
+    "ai",
+    "tailwind",
+    "ui",
+    "design"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "palette.generate",
+        "title": "Ask to Build",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.analyze",
+        "title": "Analyze Project",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.openWebview",
+        "title": "Open Palette",
+        "category": "Palette"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "palette.generate"
+        },
+        {
+          "command": "palette.analyze"
+        },
+        {
+          "command": "palette.openWebview"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "palette.generate",
+          "when": "explorerResourceIsFolder",
+          "group": "palette"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Code Palette",
+      "properties": {
+        "palette.cliPath": {
+          "type": "string",
+          "default": "palette",
+          "description": "Path to the palette CLI executable"
+        },
+        "palette.defaultModel": {
+          "type": "string",
+          "default": "gpt-4o-2024-08-06",
+          "description": "Default AI model to use"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.60.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  }
+}
