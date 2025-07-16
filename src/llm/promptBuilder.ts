@@ -13,11 +13,150 @@
 
 import { ComponentInfo, ProjectMetadata } from '../types';
 import { CodebasePatterns } from '../codebase/codebaseAnalyzer';
+import { StructuredRequest } from '../extension/tools/node/codebaseAnalysisTool';
 
 /**
  * Builds context-aware prompts for component generation
  */
 export class PromptBuilder {
+    /**
+     * Builds a highly detailed prompt from structured NLU entities
+     */
+    buildStructuredComponentPrompt(
+        structuredRequest: StructuredRequest,
+        context: ComponentInfo[],
+        projectMetadata: ProjectMetadata,
+        patterns?: CodebasePatterns,
+        contextInfo?: string
+    ): string {
+        const frameworks = projectMetadata.frameworks?.map(f => f.name).join(', ') || 'React';
+        const hasTypeScript = projectMetadata.hasTypeScript;
+        
+        // Check if we need client directive
+        const nextFramework = projectMetadata.frameworks.find(f => f.name === 'Next.js');
+        const needsClient = this.structuredRequestNeedsClient(structuredRequest, nextFramework);
+        
+        let prompt = `Create a ${frameworks} component: ${structuredRequest.component_name}\n\n`;
+        
+        // Add App Router specific instructions FIRST if needed
+        if (needsClient) {
+            prompt += `## CRITICAL NEXT.JS APP ROUTER REQUIREMENT\n`;
+            prompt += `This component requires client-side functionality (`;
+            
+            const reasons = [];
+            if (structuredRequest.behavior?.interactions?.length && structuredRequest.behavior.interactions.length > 0) {
+                reasons.push('user interactions');
+            }
+            if (structuredRequest.behavior?.states?.length && structuredRequest.behavior.states.length > 0) {
+                reasons.push('state management');
+            }
+            if (structuredRequest.elements.some(e => ['button', 'form', 'input'].includes(e.type.toLowerCase()))) {
+                reasons.push('interactive elements');
+            }
+            
+            prompt += reasons.join(', ');
+            prompt += `).\n\n`;
+            
+            prompt += `**You MUST add 'use client' as the VERY FIRST LINE of the file:**\n`;
+            prompt += `\`\`\`\n`;
+            prompt += `'use client'\n\n`;
+            prompt += `import { useState } from 'react'\n`;
+            prompt += `// ... other imports\n`;
+            prompt += `\`\`\`\n\n`;
+        }
+        
+        // Add detailed component specification based on structured entities
+        prompt += `## Component Specification\n`;
+        prompt += `**Type:** ${structuredRequest.component_type}\n`;
+        prompt += `**Name:** ${structuredRequest.component_name}\n`;
+        
+        // Add element details if specified
+        if (structuredRequest.elements.length > 0) {
+            prompt += `**Elements to include:**\n`;
+            structuredRequest.elements.forEach((element, index) => {
+                prompt += `${index + 1}. ${element.type}`;
+                if (element.field_name) prompt += ` (${element.field_name})`;
+                if (element.attributes && element.attributes.length > 0) {
+                    prompt += ` with attributes: ${element.attributes.join(', ')}`;
+                }
+                if (element.children && element.children.length > 0) {
+                    prompt += ` containing: ${element.children.join(', ')}`;
+                }
+                prompt += '\n';
+            });
+        }
+        
+        // Add specific attributes and behaviors
+        if (structuredRequest.attributes.length > 0) {
+            prompt += `**Required attributes:** ${structuredRequest.attributes.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.interactions && structuredRequest.behavior.interactions.length > 0) {
+            prompt += `**Interactions:** ${structuredRequest.behavior.interactions.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.states && structuredRequest.behavior.states.length > 0) {
+            prompt += `**States to handle:** ${structuredRequest.behavior.states.join(', ')}\n`;
+        }
+        
+        if (structuredRequest.behavior?.async_operations && structuredRequest.behavior.async_operations.length > 0) {
+            prompt += `**Async operations:** ${structuredRequest.behavior.async_operations.join(', ')}\n`;
+        }
+        
+        prompt += '\n';
+        
+        // Add styling specifications
+        if (structuredRequest.styling) {
+            prompt += `## Styling Requirements\n`;
+            prompt += `**Approach:** ${structuredRequest.styling.approach}\n`;
+            
+            if (structuredRequest.styling.classes && structuredRequest.styling.classes.length > 0) {
+                prompt += `**Style themes:** ${structuredRequest.styling.classes.join(', ')}\n`;
+            }
+            
+            if (structuredRequest.styling.responsive) {
+                prompt += `**Responsive:** Yes, include mobile, tablet, and desktop breakpoints\n`;
+            }
+            
+            prompt += '\n';
+        }
+        
+        // Add codebase-specific patterns FIRST (most important)
+        if (patterns) {
+            prompt += this.buildCodebaseSpecificInstructions(patterns);
+            prompt += '\n';
+        }
+        
+        // Add context from similar components
+        if (contextInfo) {
+            prompt += contextInfo;
+        }
+        
+        // Add technical requirements
+        prompt += `## Technical Requirements\n`;
+        prompt += `- Framework: ${frameworks}\n`;
+        prompt += `- Language: ${hasTypeScript ? 'TypeScript' : 'JavaScript'}\n`;
+        prompt += `- Use modern functional components and hooks\n`;
+        prompt += `- Define props with TypeScript \`interface\` or \`type\`; **do NOT use \`prop-types\`**\n`;
+        prompt += `- **CRITICAL: Do NOT use \`React.FC\` or \`FC\`**. Instead, type props on the function directly\n`;
+        prompt += `- Include accessibility attributes (ARIA) and semantic HTML\n`;
+        prompt += `- Add proper error handling and edge cases\n`;
+        prompt += `- **Do NOT** add \`import React from 'react'\`; modern build tools handle it automatically\n`;
+        
+        // Add component-specific patterns
+        const componentPatterns = this.getComponentPatterns(`${structuredRequest.component_type} ${structuredRequest.component_name}`);
+        if (componentPatterns) {
+            prompt += componentPatterns;
+        }
+        
+        prompt += `\n## Output Format\n`;
+        prompt += `Generate ONLY the complete, functional component code with appropriate imports. `;
+        prompt += `No explanations, markdown blocks, or additional text. `;
+        prompt += `The component should be production-ready and follow all specified requirements.`;
+        
+        return prompt;
+    }
+
     /**
      * Builds a prompt for generating a new component based on existing codebase context
      */
@@ -32,7 +171,34 @@ export class PromptBuilder {
         const hasTypeScript = projectMetadata.hasTypeScript;
         const uiLibraries = projectMetadata.uiLibraries.join(', ');
         
+        // Check if we need client directive
+        const nextFramework = projectMetadata.frameworks.find(f => f.name === 'Next.js');
+        const needsClient = this.needsClientDirective(request, nextFramework);
+        
         let prompt = `Create a ${frameworks} component based on this request: "${request}"\n\n`;
+        
+        // Add App Router specific instructions FIRST if needed
+        if (needsClient) {
+            prompt += `**CRITICAL NEXT.JS APP ROUTER REQUIREMENT**:\n`;
+            prompt += `This component will likely need client-side interactivity (hooks, event handlers, etc).\n`;
+            prompt += `You MUST add 'use client' as the VERY FIRST LINE of the file, before any imports.\n`;
+            prompt += `Example:\n`;
+            prompt += `'use client'\n\n`;
+            prompt += `import { useState } from 'react'\n`;
+            prompt += `// ... other imports\n\n`;
+        }
+        
+        // Add codebase-specific patterns FIRST (most important)
+        if (patterns) {
+            prompt += this.buildCodebaseSpecificInstructions(patterns);
+            prompt += '\n';
+        }
+        
+        // Router-specific patterns (critical for project compatibility)
+        const routerInfo = this.getRouterInstructions(projectMetadata.frameworks);
+        if (routerInfo) {
+            prompt += routerInfo;
+        }
         
         prompt += `Technical Requirements:\n`;
         prompt += `- Framework: ${frameworks}\n`;
@@ -54,7 +220,7 @@ export class PromptBuilder {
         prompt += `- If icons are needed and no icon package is available, use text placeholders like [Icon]\n`;
         prompt += `- Create self-contained components with inline types if \`@/\` imports don’t exist\n`;
         prompt += `- **Do NOT** add \`import React from 'react'\`; Vite/ESBuild handles it automatically\n`;
-        prompt += `- **Do NOT** use \`React.FC\` or \`FC\`; instead write a plain function like \`export default function Component(props: Props) { … }\`.\n`;
+        prompt += `- **CRITICAL: Do NOT use \`React.FC\` or \`FC\`**. Instead, type props on the function directly. For example: \`export default function Component(props: Props) { … }\` or \`const Component = (props: Props) => { … }\`.\n`;
         
         // Add modern React patterns
         prompt += `\nModern React Patterns:\n`;
@@ -96,8 +262,11 @@ export class PromptBuilder {
         prompt += `- Add confirmation dialogs for destructive actions\n`;
         prompt += `- Implement proper form validation with inline error messages\n`;
         
-        if (uiLibraries.includes('Tailwind')) {
+        if (uiLibraries.includes('Tailwind CSS') || uiLibraries.includes('tailwindcss')) {
             prompt += `- Style with Tailwind CSS classes\n`;
+        } else if (uiLibraries.includes('Chakra UI') || uiLibraries.includes('@chakra-ui/react')) {
+            prompt += `- Use Chakra UI components for styling and layout\n`;
+            prompt += `- Import components from '@chakra-ui/react'\n`;
         } else if (uiLibraries.includes('styled-components')) {
             prompt += `- Use styled-components for styling\n`;
         } else {
@@ -113,11 +282,6 @@ export class PromptBuilder {
         const componentPatterns = this.getComponentPatterns(request);
         if (componentPatterns) {
             prompt += componentPatterns;
-        }
-        
-        // Add codebase-specific patterns
-        if (patterns) {
-            prompt += this.buildCodebaseSpecificInstructions(patterns);
         }
         
         // Add specific styling instructions based on patterns
@@ -170,13 +334,15 @@ export class PromptBuilder {
         const prompts = {
             'React': `You are an expert React developer who creates production-ready, accessible, and user-friendly components. 
 You always include proper TypeScript interfaces, loading/error states, accessibility features, and follow modern React patterns. 
+You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing props directly on the function.
 Your components are interactive, handle edge cases gracefully, and provide excellent user experience.`,
             
             'Vue': `You are an expert Vue.js developer who creates production-ready Vue 3 components using Composition API. 
 You always include proper TypeScript support, loading/error states, accessibility features, and follow modern Vue patterns.`,
             
             'Next.js': `You are an expert Next.js developer who creates SSR-ready, performance-optimized React components. 
-You understand Next.js patterns, proper data fetching with loading states, accessibility, and modern React development practices.`
+You understand Next.js patterns, proper data fetching with loading states, accessibility, and modern React development practices.
+You do NOT use \`React.FC\` or \`FC\` for typing components, instead typing props directly on the function.`
         };
 
         return prompts[framework as keyof typeof prompts] || prompts['React'];
@@ -281,13 +447,28 @@ You understand Next.js patterns, proper data fetching with loading states, acces
     private buildCodebaseSpecificInstructions(patterns: CodebasePatterns): string {
         let instructions = '';
 
-        // API patterns - suggest rather than enforce
-        if (patterns.apiPatterns.baseUrls.length > 0) {
-            instructions += `\nDetected API Patterns (consider following these):\n`;
-            instructions += `- Project appears to use backend API(s): ${patterns.apiPatterns.baseUrls.slice(0, 2).join(', ')}\n`;
+        // API patterns - suggest following existing approach
+        if (patterns.apiPatterns.serviceImports.length > 0 || patterns.apiPatterns.sdkPatterns.length > 0 || patterns.apiPatterns.baseUrls.length > 0) {
+            instructions += `\nDetected API Patterns (follow existing approach):\n`;
+            
+            if (patterns.apiPatterns.sdkPatterns.length > 0) {
+                instructions += `- Project uses generated SDK services: ${patterns.apiPatterns.sdkPatterns.slice(0, 3).join(', ')}\n`;
+                instructions += `- IMPORTANT: Use existing SDK services instead of custom fetch functions\n`;
+                instructions += `- Example usage: ${patterns.apiPatterns.sdkPatterns[0]}.methodName(params)\n`;
+            }
+            
+            if (patterns.apiPatterns.serviceImports.length > 0) {
+                instructions += `- API service imports found: ${patterns.apiPatterns.serviceImports.slice(0, 2).join(', ')}\n`;
+                instructions += `- Use existing service imports for API calls\n`;
+            }
+            
+            if (patterns.apiPatterns.baseUrls.length > 0) {
+                instructions += `- Project appears to use backend API(s): ${patterns.apiPatterns.baseUrls.slice(0, 2).join(', ')}\n`;
+            }
             
             if (patterns.apiPatterns.customHooks.length > 0) {
-                instructions += `- Consider using similar data fetching patterns as: ${patterns.apiPatterns.customHooks.slice(0, 3).join(', ')}\n`;
+                instructions += `- Project has custom hooks: ${patterns.apiPatterns.customHooks.slice(0, 3).join(', ')}\n`;
+                instructions += `- Consider using existing hooks for data fetching patterns\n`;
             }
             
             instructions += `- If creating API calls, consider following existing authentication patterns\n`;
@@ -295,9 +476,18 @@ You understand Next.js patterns, proper data fetching with loading states, acces
 
         // UI Component patterns - flexible suggestions
         if (patterns.uiComponents.componentLibrary !== 'none') {
-            instructions += `\nDetected UI Patterns (adapt as needed):\n`;
+            instructions += `\nDetected UI Patterns (follow project standards):\n`;
             
-            if (patterns.uiComponents.componentLibrary === 'custom') {
+            if (patterns.uiComponents.componentLibrary === 'chakra-ui') {
+                instructions += `- Project uses Chakra UI components\n`;
+                instructions += `- IMPORTANT: Use Chakra UI components instead of HTML elements\n`;
+                instructions += `- Use Box, VStack, HStack, Text, Heading, Container, etc.\n`;
+                instructions += `- Import from '@chakra-ui/react'\n`;
+                if (Object.keys(patterns.uiComponents.commonComponents).length > 0) {
+                    const commonComponents = Object.keys(patterns.uiComponents.commonComponents).slice(0, 5).join(', ');
+                    instructions += `- Commonly used components: ${commonComponents}\n`;
+                }
+            } else if (patterns.uiComponents.componentLibrary === 'custom') {
                 instructions += `- Project has custom UI components\n`;
                 if (Object.keys(patterns.uiComponents.commonComponents).length > 0) {
                     instructions += `- Available components include: ${Object.keys(patterns.uiComponents.commonComponents).slice(0, 5).join(', ')}\n`;
@@ -360,5 +550,123 @@ You understand Next.js patterns, proper data fetching with loading states, acces
         }
 
         return instructions;
+    }
+
+    /**
+     * Get router-specific instructions based on detected frameworks
+     */
+    private getRouterInstructions(frameworks: { name: string; version?: string; variant?: string }[]): string | null {
+        const nextFramework = frameworks.find(f => f.name === 'Next.js');
+        
+        if (nextFramework) {
+            if (nextFramework.variant === 'app-router') {
+                return `\nRouter Instructions (Next.js App Router):\n` +
+                       `- **CRITICAL**: This is a Next.js App Router project (app/ directory)\n` +
+                       `- **CRITICAL**: Components are Server Components by default\n` +
+                       `- **CRITICAL**: If using useState, useEffect, or any client-side hooks, you MUST add 'use client' directive at the very top of the file\n` +
+                       `- **CRITICAL**: The 'use client' directive must be the FIRST line, before any imports\n` +
+                       `- Use 'next/navigation' for routing: import { useRouter, useParams, useSearchParams } from 'next/navigation'\n` +
+                       `- Use Link from 'next/link' for internal navigation\n` +
+                       `- For metadata, export a metadata object or generateMetadata function\n` +
+                       `- Server Components can be async and fetch data directly\n` +
+                       `- Example with client hooks:\n` +
+                       `  'use client'\n` +
+                       `  \n` +
+                       `  import { useState } from 'react'\n` +
+                       `  // ... rest of imports\n`;
+            } else if (nextFramework.variant === 'pages-router') {
+                return `\nRouter Instructions (Next.js Pages Router):\n` +
+                       `- This is a Next.js Pages Router project (pages/ directory)\n` +
+                       `- Use 'next/router' for routing: import { useRouter } from 'next/router'\n` +
+                       `- Use Link from 'next/link' for internal navigation\n` +
+                       `- Use Head from 'next/head' for page metadata\n` +
+                       `- Components can use hooks without any special directives\n`;
+            } else {
+                // Fallback for when variant is not detected
+                return `\nRouter Instructions (Next.js - Unknown Router Type):\n` +
+                       `- **IMPORTANT**: Could not detect if this uses App Router or Pages Router\n` +
+                       `- If you see an app/ directory, assume App Router and add 'use client' for components with hooks\n` +
+                       `- If you see a pages/ directory, assume Pages Router (no 'use client' needed)\n` +
+                       `- When in doubt, check the project structure\n`;
+            }
+        }
+        
+        // TanStack Router
+        if (frameworks.some(f => f.name === 'TanStack Router')) {
+            return `\nRouter Instructions (TanStack Router):\n` +
+                   `- Use TanStack Router for navigation: import { useRouter, Link } from '@tanstack/react-router'\n` +
+                   `- Use Link component for internal navigation instead of anchor tags\n` +
+                   `- Use useRouter() hook to access router functions like navigate()\n` +
+                   `- DO NOT use Next.js router imports (next/router, next/navigation, next/head)\n` +
+                   `- For route parameters, use useParams() from TanStack Router\n` +
+                   `- For search params, use useSearch() from TanStack Router\n` +
+                   `- Components can use hooks without any special directives\n`;
+        }
+        
+        // React Router
+        if (frameworks.some(f => f.name === 'React Router')) {
+            return `\nRouter Instructions (React Router):\n` +
+                   `- Use React Router for navigation: import { useNavigate, Link, useParams } from 'react-router-dom'\n` +
+                   `- Use Link component for internal navigation instead of anchor tags\n` +
+                   `- Use useNavigate() hook for programmatic navigation\n` +
+                   `- Components can use hooks without any special directives\n`;
+        }
+        
+        // Generic React
+        if (frameworks.some(f => f.name === 'React')) {
+            return `\nRouter Instructions (Generic React):\n` +
+                   `- DO NOT assume any specific router is available\n` +
+                   `- Use standard anchor tags for external links\n` +
+                   `- Components can use hooks without any special directives\n`;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Add this helper method to detect if component needs client directive
+     */
+    private needsClientDirective(request: string, framework: any): boolean {
+        const clientIndicators = [
+            'form', 'input', 'button', 'click', 'submit', 'interactive',
+            'modal', 'dialog', 'dropdown', 'toggle', 'carousel', 'tabs',
+            'state', 'effect', 'ref', 'context', 'reducer'
+        ];
+        
+        const requestLower = request.toLowerCase();
+        const hasClientIndicator = clientIndicators.some(indicator => requestLower.includes(indicator));
+        const isAppRouter = framework?.name === 'Next.js' && framework?.variant === 'app-router';
+        
+        return isAppRouter && hasClientIndicator;
+    }
+
+    /**
+     * Determines if a structured request requires client-side functionality
+     */
+    private structuredRequestNeedsClient(
+        structuredRequest: StructuredRequest,
+        framework: any
+    ): boolean {
+        if (framework?.name !== 'Next.js' || framework?.variant !== 'app-router') {
+            return false; // Only matters for Next.js App Router
+        }
+        
+        // Check behavior for client-side indicators
+        const hasInteractions = structuredRequest.behavior?.interactions?.length ? structuredRequest.behavior.interactions.length > 0 : false;
+        const hasStates = structuredRequest.behavior?.states?.length ? structuredRequest.behavior.states.length > 0 : false;
+        const hasAsync = structuredRequest.behavior?.async_operations?.length ? structuredRequest.behavior.async_operations.length > 0 : false;
+        
+        // Check elements for interactive components
+        const hasInteractiveElements = structuredRequest.elements.some(element => 
+            ['button', 'form', 'input', 'select', 'textarea'].includes(element.type.toLowerCase())
+        );
+        
+        // Check component type
+        const interactiveTypes = ['form', 'modal', 'dialog', 'carousel', 'tabs', 'accordion'];
+        const isInteractiveType = structuredRequest.component_type ? interactiveTypes.some(type => 
+            structuredRequest.component_type!.toLowerCase().includes(type)
+        ) : false;
+        
+        return hasInteractions || hasStates || hasAsync || hasInteractiveElements || isInteractiveType;
     }
 }

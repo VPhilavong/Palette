@@ -1,0 +1,21 @@
+.vscode/**
+.vscode-test/**
+.gitignore
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+**/*.map
+**/*.ts
+!out/main.js.map
+out/test/**
+src/**
+test_repos/**
+copilot-chat-source/**
+CLAUDE.md
+.claude
+node_modules/**
+.env*
+test-standalone.js
+
+# Bundled extension related
+webpack.config.js

@@ -49,7 +49,19 @@ export class EmbeddingGenerator {
     }
 
     private initializeOpenAI(): void {
-        const apiKey = Config.get('openaiApiKey', '');
+        // Try to get API key from multiple sources (for development flexibility)
+        let apiKey = '';
+        
+        // 1. Try VS Code settings first (for end users)
+        const config = vscode.workspace.getConfiguration();
+        apiKey = config.get<string>('palette.openai.apiKey', '');
+        
+        // 2. Fall back to environment variable (for development)
+        if (!apiKey && process.env.OPENAI_API_KEY) {
+            apiKey = process.env.OPENAI_API_KEY;
+            console.log('Palette Embeddings: Using OpenAI API key from environment variable');
+        }
+        
         if (!apiKey) {
             this.logger.warn('OpenAI API key not configured for embeddings');
             return;

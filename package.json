@@ -1,107 +1,181 @@
 {
-  "name": "ui-copilot",
-  "displayName": "UI Copilot",
-  "description": "AI-powered React component generation for your codebase",
-  "version": "0.0.1",
+  "name": "palette-ui-agent",
+  "displayName": "Palette UI/HCI Design Agent",
+  "description": "AI-powered UI/HCI design agent for React + Tailwind development",
+  "version": "0.1.0",
+  "build": "1",
+  "publisher": "Palette",
+  "homepage": "https://github.com/VPhilavong/SAIL_Project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VPhilavong/SAIL_Project.git"
+  },
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.102.0",
+    "npm": ">=9.0.0",
+    "node": ">=18.0.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Machine Learning"
   ],
- "activationEvents": [
-  "onCommand:ui-copilot.openPanel",
-  "onLanguage:javascript",
-  "onLanguage:typescript",
-  "onLanguage:javascriptreact",
-  "onLanguage:typescriptreact"
-],
-  "main": "./out/core/extension.js",
+  "keywords": [
+    "ai",
+    "ui",
+    "ux",
+    "design",
+    "react",
+    "tailwind",
+    "accessibility",
+    "hci",
+    "usability",
+    "components"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguageModelChat:palette",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact"
+  ],
+  "main": "./out/extension/extension.js",
+  "enabledApiProposals": [
+    "chatParticipantAdditions",
+    "chatEditing",
+    "defaultChatParticipant",
+    "chatParticipantPrivate",
+    "chatProvider",
+    "languageModelSystem",
+    "languageModelCapabilities",
+    "embeddings",
+    "findTextInFiles",
+    "findFiles2",
+    "textSearchProvider",
+    "aiRelatedInformation",
+    "codeActionAI",
+    "mappedEditsProvider",
+    "aiTextSearchProvider",
+    "textSearchProvider2",
+    "documentFiltersExclusive"
+  ],
   "contributes": {
+    "views": {
+      "palette-activity": [
+        {
+          "id": "palette.sidebar",
+          "name": "Assistant",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "palette-activity",
+          "title": "Palette",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
     "configuration": {
-      "title": "UI Copilot",
+      "title": "Palette UI Agent",
       "properties": {
-        "ui-copilot.apiProvider": {
-          "type": "string",
-          "default": "openai",
-          "enum": [
-            "openai"
-          ],
-          "description": "AI provider to use for component generation"
-        },
-        "ui-copilot.openaiApiKey": {
+        "palette.openai.apiKey": {
           "type": "string",
           "default": "",
-          "description": "Your OpenAI API key for component generation",
-          "markdownDescription": "Enter your OpenAI API key. Get one at [OpenAI Platform](https://platform.openai.com/api-keys)"
+          "description": "OpenAI API key for code generation and embeddings"
         },
-        "ui-copilot.indexing.enabled": {
+        "palette.openai.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "enum": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4",
+            "gpt-4-turbo"
+          ],
+          "description": "OpenAI model to use for code generation"
+        },
+        "palette.design.heuristics": {
+          "type": "array",
+          "default": [
+            "nielsen",
+            "wcag",
+            "responsive"
+          ],
+          "enum": [
+            "nielsen",
+            "wcag",
+            "responsive",
+            "performance"
+          ],
+          "description": "Design heuristics to apply during analysis"
+        },
+        "palette.design.system": {
+          "type": "string",
+          "default": "tailwindui",
+          "enum": [
+            "tailwindui",
+            "shadcn",
+            "custom"
+          ],
+          "description": "Design system to follow for component generation"
+        },
+        "palette.accessibility.level": {
+          "type": "string",
+          "default": "AA",
+          "enum": [
+            "A",
+            "AA",
+            "AAA"
+          ],
+          "description": "WCAG accessibility compliance level"
+        },
+        "palette.context.maxTokens": {
+          "type": "number",
+          "default": 16000,
+          "description": "Maximum tokens to use for context"
+        },
+        "palette.indexing.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable automatic workspace indexing for codebase awareness"
+          "description": "Enable automatic workspace indexing for design patterns"
         },
-        "ui-copilot.indexing.maxFileSize": {
-          "type": "number",
-          "default": 102400,
-          "description": "Maximum file size to index (in bytes)"
-        },
-        "ui-copilot.indexing.excludePatterns": {
+        "palette.indexing.excludePatterns": {
           "type": "array",
           "default": [
             "node_modules",
             ".git",
             "dist",
             "build",
-            ".next"
+            ".next",
+            "coverage"
           ],
           "description": "Patterns to exclude from indexing"
-        },
-        "ui-copilot.context.maxTokens": {
-          "type": "number",
-          "default": 12000,
-          "description": "Maximum tokens to use for context"
-        },
-        "ui-copilot.context.maxFiles": {
-          "type": "number",
-          "default": 20,
-          "description": "Maximum number of files to include in context"
-        },
-        "ui-copilot.features.autoCompletion": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI-powered code completion"
-        },
-        "ui-copilot.features.codeExplanation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI code explanation features"
-        },
-        "ui-copilot.features.refactoring": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI-powered refactoring suggestions"
-        },
-        "ui-copilot.features.debugging": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI debugging assistance"
         }
       }
     },
     "commands": [
       {
-        "command": "ui-copilot.askToBuild",
-        "title": "Ask to Build",
-        "category": "UI Copilot",
-        "icon": "$(comment-discussion)"
-      },
-      {
-        "command": "ui-copilot.openPanel",
-        "title": "Open UI Copilot Panel",
-        "category": "UI Copilot",
-        "icon": "$(layout-panel)"
+        "command": "palette.focus",
+        "title": "Focus Palette",
+        "category": "Palette",
+        "icon": "$(sparkle)"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "palette.focus",
+          "when": "resourceExtname =~ /\\.(tsx?|jsx?)$/",
+          "group": "palette"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -109,20 +183,20 @@
     "watch": "tsc -watch -p ./",
     "test": "node test-standalone.js",
     "clean": "rm -rf out",
-    "build": "npm run clean && npm run compile"
+    "build": "npm run clean && npm run compile",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.7",
-    "@types/node": "16.x",
-    "@types/vscode": "^1.74.0",
-    "typescript": "^4.9.4"
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.102.0",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
-    "axios": "^1.6.0",
-    "chokidar": "^3.6.0",
-    "openai": "^4.0.0"
+    "dotenv": "^17.2.0",
+    "openai": "^4.104.0"
   }
 }

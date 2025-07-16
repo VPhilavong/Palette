@@ -27,6 +27,8 @@ export interface Framework {
     version?: string;
     detected: boolean;
     confidence: number;
+    // Add this new field
+    variant?: 'app-router' | 'pages-router' | 'standard';
 }
 
 export interface ProjectMetadata {

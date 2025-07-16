@@ -34,7 +34,7 @@ export class CodeValidator {
     
     async validateAndFixGeneratedCode(
         code: string, 
-        workspaceIndex: WorkspaceIndex
+        workspaceIndex: WorkspaceIndex | null
     ): Promise<ValidationResult> {
         const result: ValidationResult = {
             isValid: true,
@@ -44,11 +44,26 @@ export class CodeValidator {
         };
 
         try {
+            // If no workspace index, be very lenient
+            if (!workspaceIndex) {
+                console.log('No workspace index provided. Applying lenient validation...');
+                
+                // Just check for basic syntax issues and return as valid
+                const hasBasicStructure = code.includes('export') && 
+                                         (code.includes('function') || code.includes('const') || code.includes('class'));
+                
+                if (hasBasicStructure) {
+                    result.isValid = true;
+                    result.warnings.push('Validation bypassed due to missing workspace information.');
+                    return result;
+                }
+            }
+            
             // Debug: Log workspace information
             console.log('=== DEPENDENCY VALIDATION DEBUG ===');
-            console.log('Workspace dependencies:', Object.keys(workspaceIndex.project.dependencies));
-            console.log('Workspace devDependencies:', Object.keys(workspaceIndex.project.devDependencies));
-            console.log('Detected frameworks:', workspaceIndex.project.frameworks.map(f => f.name));
+            console.log('Workspace dependencies:', Object.keys(workspaceIndex?.project?.dependencies || {}));
+            console.log('Workspace devDependencies:', Object.keys(workspaceIndex?.project?.devDependencies || {}));
+            console.log('Detected frameworks:', workspaceIndex?.project?.frameworks?.map(f => f.name) || []);
             console.log('===============================');
 
             // Extract imports from the code
@@ -78,15 +93,33 @@ export class CodeValidator {
                         continue;
                     }
                     
+                    // Handle Next.js imports (framework-provided)
+                    if (this.isNextJsImport(importInfo.module, workspaceIndex)) {
+                        console.log(`Skipping Next.js import error: ${importInfo.module}`);
+                        continue;
+                    }
+                    
                     // Handle TanStack Query variations
                     if (this.isTanStackQueryModule(importInfo.module, workspaceIndex)) {
                         console.log('Skipping TanStack Query error - detected in project');
                         continue;
                     }
                     
+                    // Handle TanStack Router imports
+                    if (this.isTanStackRouterModule(importInfo.module, workspaceIndex)) {
+                        console.log('Skipping TanStack Router error - detected in project');
+                        continue;
+                    }
+                    
                     // Handle common packages that are often available but might not be detected
                     if (this.isCommonlyAvailablePackage(importInfo.module)) {
                         console.log(`Skipping common package error: ${importInfo.module}`);
+                        continue;
+                    }
+                    
+                    // Handle relative imports (always valid)
+                    if (importInfo.module.startsWith('.') || importInfo.module.startsWith('/')) {
+                        console.log(`Skipping relative import: ${importInfo.module}`);
                         continue;
                     }
                     
@@ -112,6 +145,9 @@ export class CodeValidator {
             // Fix common React patterns
             result.fixedCode = this.fixReactPatterns(result.fixedCode || code);
             
+            // CRITICAL: Deduplicate imports and declarations to fix LLM duplicate identifier errors
+            result.fixedCode = this.deduplicateCode(result.fixedCode || code);
+            
             // Remove problematic imports
             result.fixedCode = this.removeProblematicImports(result.fixedCode || code, workspaceIndex);
             
@@ -127,10 +163,17 @@ export class CodeValidator {
                 }
             }
             
+            // Check for router conflicts
+            const routerConflicts = this.checkRouterConflicts(imports, workspaceIndex);
+            if (routerConflicts.length > 0) {
+                result.errors.push(...routerConflicts);
+                result.isValid = false;
+            }
+            
             // Additional safety net: if we have very few dependencies detected, 
             // assume this might be a detection issue and be more lenient
-            const totalDepsDetected = Object.keys(workspaceIndex.project.dependencies).length + 
-                                    Object.keys(workspaceIndex.project.devDependencies).length;
+            const totalDepsDetected = Object.keys(workspaceIndex?.project?.dependencies || {}).length + 
+                                    Object.keys(workspaceIndex?.project?.devDependencies || {}).length;
             
             if (totalDepsDetected < 5 && result.errors.length > 0) {
                 console.log(`Warning: Only ${totalDepsDetected} dependencies detected. Workspace detection might be incorrect.`);
@@ -142,6 +185,14 @@ export class CodeValidator {
                     const isCommonPackageError = error.includes('@tanstack/') || 
                                                 error.includes('@types/') ||
                                                 error.includes('@mui/') ||
+                                                error.includes('next/') ||
+                                                error.includes('react-router') ||
+                                                error.includes('styled-components') ||
+                                                error.includes('framer-motion') ||
+                                                error.includes('@emotion/') ||
+                                                error.includes('tailwindcss') ||
+                                                error.includes('@headlessui/') ||
+                                                error.includes('@radix-ui/') ||
                                                 error.includes('react-router') ||
                                                 error.includes('clsx') ||
                                                 error.includes('classnames');
@@ -156,6 +207,22 @@ export class CodeValidator {
                     result.isValid = true;
                 }
             }
+            
+            // Final aggressive fallback: if we still have errors but the code looks syntactically correct,
+            // and we have few dependencies detected, just allow it
+            if (!result.isValid && totalDepsDetected < 3 && result.errors.length > 0) {
+                console.log('Applying aggressive fallback validation due to poor dependency detection...');
+                
+                // Check if the code has basic React component structure
+                const hasReactComponentStructure = code.includes('export') && 
+                                                  (code.includes('function') || code.includes('const') || code.includes('class'));
+                
+                if (hasReactComponentStructure) {
+                    console.log('Code appears to have valid React component structure. Allowing despite dependency errors.');
+                    result.isValid = true;
+                    result.warnings.push('Validation bypassed due to dependency detection issues. Please verify imports manually.');
+                }
+            }
 
         } catch (error) {
             result.errors.push(`Validation error: ${error}`);
@@ -168,7 +235,9 @@ export class CodeValidator {
     /**
      * Comprehensive check to determine if this is a React ecosystem project
      */
-    private isReactEcosystemProject(workspaceIndex: WorkspaceIndex): boolean {
+    private isReactEcosystemProject(workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const frameworks = workspaceIndex.project.frameworks.map(f => f.name.toLowerCase());
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
@@ -230,7 +299,9 @@ export class CodeValidator {
     /**
      * Check if a module is related to TanStack Query and available in the project
      */
-    private isTanStackQueryModule(module: string, workspaceIndex: WorkspaceIndex): boolean {
+    private isTanStackQueryModule(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
         const allDeps = [...dependencies, ...devDependencies];
@@ -255,8 +326,79 @@ export class CodeValidator {
     }
 
     /**
-     * Check if this is a commonly available package that we should assume is present
+     * Check if a module is related to TanStack Router and available in the project
      */
+    private isTanStackRouterModule(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) {
+            return false;
+        }
+
+        const allDeps = [
+            ...Object.keys(workspaceIndex.project.dependencies),
+            ...Object.keys(workspaceIndex.project.devDependencies)
+        ];
+
+        const tanstackRouterModules = [
+            '@tanstack/react-router',
+            '@tanstack/router-core'
+        ];
+
+        // If the module is a TanStack Router module and we have TanStack Router installed
+        if (module.startsWith('@tanstack/react-router') || module.startsWith('@tanstack/router')) {
+            const hasTanStackRouter = tanstackRouterModules.some(dep => allDeps.includes(dep));
+            if (hasTanStackRouter) {
+                console.log(`TanStack Router module ${module} detected as available`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a module is related to Next.js and available in the project
+     */
+    private isNextJsImport(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        // Check if Next.js is in the project
+        if (!workspaceIndex) return false;
+        
+        const hasNextJs = workspaceIndex.project.frameworks.some(f => f.name.toLowerCase().includes('next')) ||
+                         Object.keys(workspaceIndex.project.dependencies).includes('next') ||
+                         Object.keys(workspaceIndex.project.devDependencies).includes('next');
+        
+        if (!hasNextJs) {
+            return false;
+        }
+        
+        // Common Next.js imports that are framework-provided
+        const nextJsImports = [
+            'next/head',
+            'next/router',
+            'next/link',
+            'next/image',
+            'next/script',
+            'next/document',
+            'next/app',
+            'next/server',
+            'next/navigation',
+            'next/font/google',
+            'next/font/local',
+            'next/dynamic',
+            'next/auth',
+            'next/auth/providers',
+            'next/auth/react',
+            'next/headers',
+            'next/cookies',
+            'next/redirect',
+            'next/notFound',
+            'next/cache'
+        ];
+        
+        return nextJsImports.some(nextImport => 
+            module === nextImport || module.startsWith(nextImport + '/')
+        );
+    }
+
     private isCommonlyAvailablePackage(module: string): boolean {
         const commonPackages = [
             // TanStack Query variations
@@ -320,12 +462,17 @@ export class CodeValidator {
 
     private async checkDependency(
         importInfo: {module: string, imports: string[], line: string}, 
-        workspaceIndex: WorkspaceIndex
+        workspaceIndex: WorkspaceIndex | null
     ): Promise<DependencyInfo> {
         const module = importInfo.module;
         
         // Check if it's a relative import
         if (module.startsWith('.') || module.startsWith('@/')) {
+            return { name: module, isInstalled: true, isDevDependency: false };
+        }
+
+        // If no workspace index, assume it's installed
+        if (!workspaceIndex) {
             return { name: module, isInstalled: true, isDevDependency: false };
         }
 
@@ -362,7 +509,9 @@ export class CodeValidator {
         };
     }
 
-    private isFrameworkProvidedDependency(module: string, workspaceIndex: WorkspaceIndex): boolean {
+    private isFrameworkProvidedDependency(module: string, workspaceIndex: WorkspaceIndex | null): boolean {
+        if (!workspaceIndex) return false;
+        
         const frameworks = workspaceIndex.project.frameworks.map(f => f.name.toLowerCase());
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
@@ -470,7 +619,9 @@ export class CodeValidator {
         return false;
     }
 
-    private getSuggestedAlternative(module: string, workspaceIndex: WorkspaceIndex): string | undefined {
+    private getSuggestedAlternative(module: string, workspaceIndex: WorkspaceIndex | null): string | undefined {
+        if (!workspaceIndex) return undefined;
+        
         const dependencies = Object.keys(workspaceIndex.project.dependencies);
         const devDependencies = Object.keys(workspaceIndex.project.devDependencies);
         const allDeps = [...dependencies, ...devDependencies];
@@ -494,8 +645,13 @@ export class CodeValidator {
         return code.replace(regex, `from '${newModule}'`);
     }
 
-    private async fixTypeImports(code: string, workspaceIndex: WorkspaceIndex): Promise<string> {
+    private async fixTypeImports(code: string, workspaceIndex: WorkspaceIndex | null): Promise<string> {
         let fixedCode = code;
+
+        // If no workspace index, don't modify type imports
+        if (!workspaceIndex) {
+            return fixedCode;
+        }
 
         // Check for @/ type imports that don't exist
         const typeImportRegex = /import\s+.*?\s+from\s+['"]@\/types\/([^'"]+)['"];?/g;
@@ -608,7 +764,7 @@ export class CodeValidator {
             fixedCode = "import React from 'react';\n" + fixedCode;
         }
 
-        // Fix useState, useEffect imports
+        // Fix useState, useEffect imports (with deduplication)
         const usedHooks = [];
         if (fixedCode.includes('useState')) usedHooks.push('useState');
         if (fixedCode.includes('useEffect')) usedHooks.push('useEffect');
@@ -617,8 +773,14 @@ export class CodeValidator {
         if (fixedCode.includes('useMemo')) usedHooks.push('useMemo');
         if (fixedCode.includes('useRef')) usedHooks.push('useRef');
         if (fixedCode.includes('useReducer')) usedHooks.push('useReducer');
+        if (fixedCode.includes('useLayoutEffect')) usedHooks.push('useLayoutEffect');
+        if (fixedCode.includes('useDebugValue')) usedHooks.push('useDebugValue');
+        if (fixedCode.includes('useImperativeHandle')) usedHooks.push('useImperativeHandle');
+        
+        // Remove duplicates from hooks array
+        const uniqueHooks = [...new Set(usedHooks)];
 
-        if (usedHooks.length > 0) {
+        if (uniqueHooks.length > 0) {
             const reactImportMatch = fixedCode.match(/import React.*?from 'react';/);
             if (reactImportMatch) {
                 // Update existing React import
@@ -626,21 +788,21 @@ export class CodeValidator {
                 if (existingImport.includes('{')) {
                     // Already has named imports, merge them
                     const existingHooks = existingImport.match(/\{([^}]+)\}/)?.[1]?.split(',').map(s => s.trim()) || [];
-                    const allHooks = [...new Set([...existingHooks, ...usedHooks])];
+                    const allHooks = [...new Set([...existingHooks, ...uniqueHooks])];
                     const newImport = `import React, { ${allHooks.join(', ')} } from 'react';`;
                     fixedCode = fixedCode.replace(existingImport, newImport);
                 } else {
                     // Add named imports
-                    const newImport = `import React, { ${usedHooks.join(', ')} } from 'react';`;
+                    const newImport = `import React, { ${uniqueHooks.join(', ')} } from 'react';`;
                     fixedCode = fixedCode.replace(existingImport, newImport);
                 }
             } else {
                 // Add React import with hooks
                 if (hasReactUsage || !isNextProject) {
-                    fixedCode = `import React, { ${usedHooks.join(', ')} } from 'react';\n` + fixedCode;
+                    fixedCode = `import React, { ${uniqueHooks.join(', ')} } from 'react';\n` + fixedCode;
                 } else {
                     // Next.js 13+ - just import the hooks
-                    fixedCode = `import { ${usedHooks.join(', ')} } from 'react';\n` + fixedCode;
+                    fixedCode = `import { ${uniqueHooks.join(', ')} } from 'react';\n` + fixedCode;
                 }
             }
         }
@@ -648,8 +810,13 @@ export class CodeValidator {
         return fixedCode;
     }
 
-    private removeProblematicImports(code: string, workspaceIndex: WorkspaceIndex): string {
+    private removeProblematicImports(code: string, workspaceIndex: WorkspaceIndex | null): string {
         let fixedCode = code;
+
+        // If no workspace index, don't modify imports
+        if (!workspaceIndex) {
+            return fixedCode;
+        }
 
         // Remove icon imports if the package isn't available
         const iconPackages = ['lucide-react', '@heroicons/react', 'react-icons'];
@@ -668,6 +835,246 @@ export class CodeValidator {
         }
 
         return fixedCode;
+    }
+
+    /**
+     * Check for router conflicts - e.g., using Next.js router in a TanStack Router project
+     */
+    private checkRouterConflicts(imports: any[], workspaceIndex: WorkspaceIndex | null): string[] {
+        const conflicts: string[] = [];
+        
+        if (!workspaceIndex) {
+            return conflicts;
+        }
+        
+        const detectedFrameworks = workspaceIndex.project.frameworks?.map(f => f.name) || [];
+        const hasNextJs = detectedFrameworks.includes('Next.js');
+        const hasTanStackRouter = detectedFrameworks.includes('TanStack Router');
+        const hasReactRouter = detectedFrameworks.includes('React Router');
+        
+        for (const importInfo of imports) {
+            // Check for Next.js router usage in non-Next.js projects
+            if ((importInfo.module === 'next/router' || importInfo.module === 'next/head') && !hasNextJs) {
+                if (hasTanStackRouter) {
+                    conflicts.push(`Import error: Using '${importInfo.module}' in a TanStack Router project. Use '@tanstack/react-router' instead.`);
+                } else if (hasReactRouter) {
+                    conflicts.push(`Import error: Using '${importInfo.module}' in a React Router project. Use 'react-router-dom' instead.`);
+                } else {
+                    conflicts.push(`Import error: Using '${importInfo.module}' but Next.js is not detected in this project.`);
+                }
+            }
+            
+            // Check for React Router usage in Next.js projects
+            if (importInfo.module === 'react-router-dom' && hasNextJs) {
+                conflicts.push(`Import error: Using 'react-router-dom' in a Next.js project. Use 'next/router' or 'next/navigation' instead.`);
+            }
+            
+            // Check for TanStack Router usage in Next.js projects
+            if (importInfo.module.startsWith('@tanstack/react-router') && hasNextJs) {
+                conflicts.push(`Import error: Using TanStack Router in a Next.js project. Use Next.js built-in routing instead.`);
+            }
+        }
+        
+        return conflicts;
+    }
+
+    /**
+     * CRITICAL: Comprehensive deduplication to fix common LLM duplicate identifier errors
+     * This addresses ts(2300) "Duplicate identifier" errors for useState, useEffect, etc.
+     */
+    private deduplicateCode(code: string): string {
+        let deduplicatedCode = code;
+        
+        try {
+            // Step 1: Deduplicate imports (most critical)
+            deduplicatedCode = this.deduplicateImports(deduplicatedCode);
+            
+            // Step 2: Deduplicate variable declarations
+            deduplicatedCode = this.deduplicateVariableDeclarations(deduplicatedCode);
+            
+            // Step 3: Remove duplicate lines (catches other LLM repetitions)
+            deduplicatedCode = this.removeDuplicateLines(deduplicatedCode);
+            
+            // Step 4: Clean up extra whitespace created by deduplication
+            deduplicatedCode = this.cleanupWhitespace(deduplicatedCode);
+            
+        } catch (error) {
+            console.error('Error during code deduplication:', error);
+            // Return original code if deduplication fails
+            return code;
+        }
+        
+        return deduplicatedCode;
+    }
+
+    /**
+     * Remove duplicate import statements - fixes ts(2300) for useState, useEffect, etc.
+     */
+    private deduplicateImports(code: string): string {
+        const lines = code.split('\n');
+        const importMap = new Map<string, Set<string>>();
+        const nonImportLines: string[] = [];
+        const importLineIndices: number[] = [];
+        
+        // Parse all imports
+        lines.forEach((line, index) => {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('import ') && trimmedLine.includes(' from ')) {
+                importLineIndices.push(index);
+                
+                // Extract module name and imports
+                const fromMatch = trimmedLine.match(/from\s+['"]([^'"]+)['"]/);
+                const module = fromMatch ? fromMatch[1] : '';
+                
+                if (module) {
+                    if (!importMap.has(module)) {
+                        importMap.set(module, new Set());
+                    }
+                    
+                    // Extract named imports
+                    const namedImportsMatch = trimmedLine.match(/import\s+\{([^}]+)\}/);
+                    if (namedImportsMatch) {
+                        const namedImports = namedImportsMatch[1]
+                            .split(',')
+                            .map(imp => imp.trim())
+                            .filter(imp => imp.length > 0);
+                        
+                        namedImports.forEach(imp => importMap.get(module)!.add(imp));
+                    }
+                    
+                    // Extract default imports
+                    const defaultImportMatch = trimmedLine.match(/import\s+(\w+)(?:\s*,|\s+from)/);
+                    if (defaultImportMatch && !trimmedLine.includes('{')) {
+                        importMap.get(module)!.add(`default:${defaultImportMatch[1]}`);
+                    }
+                    
+                    // Handle mixed imports (default + named)
+                    const mixedMatch = trimmedLine.match(/import\s+(\w+)\s*,\s*\{([^}]+)\}/);
+                    if (mixedMatch) {
+                        importMap.get(module)!.add(`default:${mixedMatch[1]}`);
+                        const namedImports = mixedMatch[2]
+                            .split(',')
+                            .map(imp => imp.trim())
+                            .filter(imp => imp.length > 0);
+                        namedImports.forEach(imp => importMap.get(module)!.add(imp));
+                    }
+                }
+            } else {
+                nonImportLines.push(line);
+            }
+        });
+        
+        // Rebuild deduplicated imports
+        const deduplicatedImports: string[] = [];
+        
+        importMap.forEach((imports, module) => {
+            const namedImports = Array.from(imports).filter(imp => !imp.startsWith('default:'));
+            const defaultImports = Array.from(imports).filter(imp => imp.startsWith('default:')).map(imp => imp.replace('default:', ''));
+            
+            if (defaultImports.length > 0 && namedImports.length > 0) {
+                // Mixed import
+                deduplicatedImports.push(`import ${defaultImports[0]}, { ${namedImports.join(', ')} } from '${module}';`);
+            } else if (defaultImports.length > 0) {
+                // Default import only
+                deduplicatedImports.push(`import ${defaultImports[0]} from '${module}';`);
+            } else if (namedImports.length > 0) {
+                // Named imports only
+                deduplicatedImports.push(`import { ${namedImports.join(', ')} } from '${module}';`);
+            }
+        });
+        
+        // Combine deduplicated imports with non-import lines
+        return [...deduplicatedImports, '', ...nonImportLines].join('\n');
+    }
+
+    /**
+     * Remove duplicate variable declarations (const, let, var)
+     */
+    private deduplicateVariableDeclarations(code: string): string {
+        const lines = code.split('\n');
+        const seenDeclarations = new Set<string>();
+        const filteredLines: string[] = [];
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Check for variable declarations
+            const varMatch = trimmedLine.match(/^(const|let|var)\s+(\w+)/);
+            if (varMatch) {
+                const declarationType = varMatch[1];
+                const variableName = varMatch[2];
+                const declarationKey = `${declarationType}:${variableName}`;
+                
+                if (seenDeclarations.has(declarationKey)) {
+                    // Skip duplicate declaration
+                    continue;
+                }
+                seenDeclarations.add(declarationKey);
+            }
+            
+            // Check for function declarations
+            const funcMatch = trimmedLine.match(/^(function\s+(\w+)|const\s+(\w+)\s*=\s*(?:\([^)]*\)\s*=>|\([^)]*\)\s*:\s*[^=]+=\s*))/);
+            if (funcMatch) {
+                const functionName = funcMatch[2] || funcMatch[3];
+                if (functionName) {
+                    const declarationKey = `function:${functionName}`;
+                    
+                    if (seenDeclarations.has(declarationKey)) {
+                        // Skip duplicate function declaration
+                        continue;
+                    }
+                    seenDeclarations.add(declarationKey);
+                }
+            }
+            
+            filteredLines.push(line);
+        }
+        
+        return filteredLines.join('\n');
+    }
+
+    /**
+     * Remove duplicate lines (catches other LLM repetitions)
+     */
+    private removeDuplicateLines(code: string): string {
+        const lines = code.split('\n');
+        const seenLines = new Set<string>();
+        const filteredLines: string[] = [];
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Always keep empty lines and comments
+            if (trimmedLine === '' || trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
+                filteredLines.push(line);
+                continue;
+            }
+            
+            // Check for duplicate non-empty lines
+            if (seenLines.has(trimmedLine)) {
+                // Skip duplicate line
+                continue;
+            }
+            
+            seenLines.add(trimmedLine);
+            filteredLines.push(line);
+        }
+        
+        return filteredLines.join('\n');
+    }
+
+    /**
+     * Clean up extra whitespace created by deduplication
+     */
+    private cleanupWhitespace(code: string): string {
+        return code
+            // Remove multiple consecutive empty lines
+            .replace(/\n\s*\n\s*\n/g, '\n\n')
+            // Remove trailing whitespace
+            .replace(/[ \t]+$/gm, '')
+            // Ensure file ends with single newline
+            .replace(/\n*$/, '\n');
     }
 
     getValidationSummary(result: ValidationResult): string {

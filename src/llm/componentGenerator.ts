@@ -15,11 +15,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { WorkspaceIndex, ComponentInfo, Framework } from '../types';
+import { WorkspaceIndex, ComponentInfo } from '../types';
 import { PromptBuilder } from './promptBuilder';
 import { ModelClient, ModelClientFactory } from './modelClient';
 import { CodebaseAnalyzer, CodebasePatterns } from '../codebase/codebaseAnalyzer';
 import { CodeValidator } from './codeValidator';
+import { CodebaseAnalysisTool, IntentAnalysis, StructuredRequest } from '../extension/tools/node/codebaseAnalysisTool';
+import { ILogService } from '../platform/log/common/logService';
+import { ConsoleLogService } from '../platform/log/node/consoleLogService';
 
 /**
  * Removes legacy / disallowed patterns from generated output.
@@ -41,14 +44,192 @@ export class ComponentGenerator {
     private modelClient: ModelClient;
     private codebaseAnalyzer: CodebaseAnalyzer;
     private codeValidator: CodeValidator;
+    private codebaseAnalysisTool: CodebaseAnalysisTool;
+    private logService: ILogService;
 
     constructor() {
+        this.logService = new ConsoleLogService();
         this.promptBuilder = new PromptBuilder();
         this.modelClient = ModelClientFactory.createClient();
         this.codebaseAnalyzer = new CodebaseAnalyzer();
         this.codeValidator = new CodeValidator();
+        this.codebaseAnalysisTool = new CodebaseAnalysisTool(this.logService);
     }
 
+    /**
+     * NEW: "Ask-to-Build" workflow with NLU intent parsing and clarification
+     */
+    async askToBuild(
+        userPrompt: string,
+        workspaceIndex?: WorkspaceIndex | null
+    ): Promise<{ 
+        success: boolean; 
+        needsClarification?: boolean; 
+        questions?: string[]; 
+        files?: { path: string; content: string; }[];
+        structuredRequest?: StructuredRequest;
+    }> {
+        try {
+            if (!workspaceIndex) {
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: ['Please analyze the project first to enable context-aware generation.']
+                };
+            }
+
+            this.logService.info('ComponentGenerator: Starting ask-to-build workflow', { prompt: userPrompt.substring(0, 100) });
+
+            // Step 1: Parse natural language into structured request using NLU
+            vscode.window.showInformationMessage('🧠 Understanding your request...');
+            const structuredRequest = await this.codebaseAnalysisTool.parseStructuredRequest(userPrompt);
+            
+            this.logService.info('ComponentGenerator: Parsed structured request', { 
+                intent: structuredRequest.intent,
+                component_name: structuredRequest.component_name,
+                confidence: structuredRequest.confidence
+            });
+
+            // Step 2: Check if clarification is needed
+            const clarificationCheck = await this.codebaseAnalysisTool.needsClarification(structuredRequest);
+            
+            if (clarificationCheck.needs) {
+                this.logService.info('ComponentGenerator: Clarification needed', { questions: clarificationCheck.questions });
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: clarificationCheck.questions,
+                    structuredRequest
+                };
+            }
+
+            // Step 3: Generate component with structured data
+            vscode.window.showInformationMessage(`🎯 Building ${structuredRequest.component_name} (${structuredRequest.component_type})...`);
+            
+            const files = await this.generateFromStructuredRequest(structuredRequest, workspaceIndex);
+
+            if (files && files.length > 0) {
+                // Step 4: Create files on disk
+                for (const file of files) {
+                    await this.ensureDirectoryExists(path.dirname(file.path));
+                    await this.writeFileWithConfirmation(file.path, file.content);
+                }
+
+                vscode.window.showInformationMessage(
+                    `✅ Created ${structuredRequest.component_name} with ${files.length} file(s)`,
+                    'Open Files'
+                ).then(selection => {
+                    if (selection === 'Open Files' && files.length > 0) {
+                        this.openGeneratedFile(files[0].path);
+                    }
+                });
+
+                return {
+                    success: true,
+                    files,
+                    structuredRequest
+                };
+            } else {
+                return {
+                    success: false,
+                    needsClarification: true,
+                    questions: ['I couldn\'t generate the component. Could you provide more specific details?'],
+                    structuredRequest
+                };
+            }
+
+        } catch (error) {
+            this.logService.error('Ask-to-build workflow failed', error);
+            return {
+                success: false,
+                needsClarification: true,
+                questions: ['Something went wrong. Could you rephrase your request?']
+            };
+        }
+    }
+
+    /**
+     * Generates component files from structured NLU request
+     */
+    private async generateFromStructuredRequest(
+        structuredRequest: StructuredRequest,
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+
+        try {
+            // Analyze codebase patterns for context
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
+            
+            // Find similar components for context
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(
+                `${structuredRequest.component_type} ${structuredRequest.component_name}`, 
+                workspaceIndex.components
+            );
+            
+            // Build context information
+            const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
+            
+            // Build system prompt
+            const systemPrompt = this.buildSystemPrompt(workspaceIndex, patterns);
+            
+            // Use the new structured prompt builder
+            const fullPrompt = this.promptBuilder.buildStructuredComponentPrompt(
+                structuredRequest,
+                similarComponents,
+                workspaceIndex.project,
+                patterns,
+                contextInfo
+            );
+
+            // Generate component code
+            const generatedCode = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${fullPrompt}`);
+
+            if (!generatedCode) {
+                this.logService.error('No code generated from model');
+                return [];
+            }
+
+            // Sanitize and validate the generated code
+            const sanitizedCode = sanitize(generatedCode);
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(sanitizedCode, workspaceIndex);
+
+            if (!validationResult.isValid) {
+                this.logService.error('Generated code validation failed', { errors: validationResult.errors });
+                return [];
+            }
+
+            const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
+            
+            // Determine file placement using intent analysis
+            const intent = await this.codebaseAnalysisTool.analyzeIntent(
+                `${structuredRequest.intent} ${structuredRequest.component_type} ${structuredRequest.component_name}`
+            );
+
+            const componentPath = path.join(intent.suggestedPath, intent.fileName);
+            files.push({ path: componentPath, content: finalCode });
+
+            // Generate additional files if needed
+            if (structuredRequest.styling?.approach === 'css-modules') {
+                const styleFile = await this.generateStyleFile(
+                    `${structuredRequest.component_type} with ${structuredRequest.styling?.classes?.join(', ') || 'default styling'}`, 
+                    intent, 
+                    finalCode
+                );
+                if (styleFile) files.push(styleFile);
+            }
+
+            return files;
+
+        } catch (error) {
+            this.logService.error('Structured generation failed', error);
+            return [];
+        }
+    }
+
+    /**
+     * Generate code **only** (does not write a file).
+     */
     async generateComponentCode(
         userPrompt: string, 
         workspaceIndex?: WorkspaceIndex | null
@@ -108,6 +289,53 @@ export class ComponentGenerator {
         }
     }
 
+    /**
+     * Enhanced generation flow with multi-file support and intelligent file placement.
+     */
+    async generateComponentWithAnalysis(
+        userPrompt: string,
+        workspaceIndex?: WorkspaceIndex | null
+    ): Promise<{ files: { path: string; content: string; }[]; intent: IntentAnalysis } | undefined> {
+        try {
+            if (!workspaceIndex) {
+                vscode.window.showWarningMessage('Please analyze project first for better context-aware generation');
+                return;
+            }
+
+            // Analyze intent and determine file placement
+            const intent = await this.codebaseAnalysisTool.analyzeIntent(userPrompt);
+            
+            vscode.window.showInformationMessage(`🎯 Detected intent: ${intent.type} - ${intent.rationale}`);
+
+            // Analyze codebase patterns
+            const patterns = await this.codebaseAnalyzer.analyzeWorkspace(workspaceIndex);
+            const similarComponents = await this.codebaseAnalyzer.findSimilarComponents(userPrompt, workspaceIndex.components);
+            
+            // Generate files based on intent
+            const files = await this.generateMultipleFiles(userPrompt, intent, patterns, similarComponents, workspaceIndex);
+            
+            if (files.length === 0) {
+                vscode.window.showErrorMessage('Failed to generate any files');
+                return;
+            }
+
+            // Create all files
+            for (const file of files) {
+                await this.ensureDirectoryExists(path.dirname(file.path));
+                await this.writeFileWithConfirmation(file.path, file.content);
+            }
+
+            return { files, intent };
+
+        } catch (error) {
+            console.error('Enhanced component generation failed:', error);
+            vscode.window.showErrorMessage(`Generation failed: ${error}`);
+        }
+    }
+
+    /**
+     * Full generation flow – creates files on disk.
+     */
     async generateComponent(
         userPrompt: string,
         workspaceIndex?: WorkspaceIndex | null
@@ -432,8 +660,6 @@ Generate only the CSS code:`;
         
         // Remove markdown code blocks if present
         cleanCode = cleanCode.replace(/```[\w]*\n/, '').replace(/\n```$/, '');
-        
-        // ⚠️ Do NOT auto-insert React import anymore – bundler handles it.
 
         // Add export default if missing
         if (!cleanCode.includes('export default') && !cleanCode.includes('export {')) {
@@ -505,6 +731,392 @@ Generate only the CSS code:`;
         } catch (error) {
             console.error('Failed to open generated file:', error);
         }
+    }
+
+    private async generateMultipleFiles(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        patterns: CodebasePatterns,
+        similarComponents: ComponentInfo[],
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+        
+        // Build context for generation
+        const contextInfo = this.codebaseAnalyzer.buildContextFromSimilar(similarComponents, patterns);
+        const systemPrompt = this.buildSystemPrompt(workspaceIndex, patterns);
+        
+        switch (intent.type) {
+            case 'component':
+                const componentFiles = await this.generateComponentFiles(userPrompt, intent, patterns, contextInfo, systemPrompt, workspaceIndex);
+                files.push(...componentFiles);
+                break;
+                
+            case 'feature':
+                const featureFiles = await this.generateFeatureFiles(userPrompt, intent, patterns, contextInfo, systemPrompt, workspaceIndex);
+                files.push(...featureFiles);
+                break;
+                
+            case 'page':
+                const pageFiles = await this.generatePageFiles(userPrompt, intent, patterns, contextInfo, systemPrompt, workspaceIndex);
+                files.push(...pageFiles);
+                break;
+                
+            default:
+                // Single file generation
+                const singleFile = await this.generateSingleFile(userPrompt, intent, patterns, contextInfo, systemPrompt, workspaceIndex);
+                if (singleFile) files.push(singleFile);
+        }
+        
+        return files;
+    }
+
+    private async generateComponentFiles(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        patterns: CodebasePatterns,
+        contextInfo: any,
+        systemPrompt: string,
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+        
+        // Generate main component
+        const componentPrompt = this.promptBuilder.buildComponentGenerationPrompt(
+            userPrompt,
+            [],
+            {} as any,
+            patterns,
+            contextInfo
+        );
+        
+        const componentCode = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${componentPrompt}`);
+        
+        if (componentCode) {
+            const sanitizedCode = sanitize(componentCode);
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(sanitizedCode, workspaceIndex);
+            
+            if (validationResult.isValid) {
+                const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
+                const componentPath = path.join(intent.suggestedPath, intent.fileName);
+                files.push({ path: componentPath, content: finalCode });
+                
+                // Generate styles if needed
+                if (patterns.stylingApproach === 'css-modules') {
+                    const styleFile = await this.generateStyleFile(userPrompt, intent, finalCode);
+                    if (styleFile) files.push(styleFile);
+                }
+                
+                // Generate stories file if Storybook is detected
+                if (this.shouldGenerateStories(patterns)) {
+                    const storiesFile = await this.generateStoriesFile(userPrompt, intent, finalCode);
+                    if (storiesFile) files.push(storiesFile);
+                }
+                
+                // Generate test file if testing framework is detected
+                if (this.shouldGenerateTests(patterns)) {
+                    const testFile = await this.generateTestFile(userPrompt, intent, finalCode);
+                    if (testFile) files.push(testFile);
+                }
+            }
+        }
+        
+        return files;
+    }
+
+    private async generateFeatureFiles(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        _patterns: CodebasePatterns,
+        _contextInfo: any,
+        systemPrompt: string,
+        _workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+        
+        // Create feature directory
+        const featureName = intent.fileName.replace(/\.(tsx|jsx|ts|js)$/, '');
+        const featureDir = path.join(intent.suggestedPath, featureName);
+        
+        // Generate multiple related files for a feature
+        const featurePrompt = `Generate a complete feature for: ${userPrompt}
+        
+This should include:
+1. Main component file
+2. Types/interfaces file
+3. Hook file (if applicable)
+4. Index file for exports
+
+Follow the existing patterns in the codebase and create a well-structured feature module.`;
+        
+        const featureCode = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${featurePrompt}`);
+        
+        if (featureCode) {
+            // Parse the multi-file response and create individual files
+            const parsedFiles = this.parseMultiFileResponse(featureCode, featureDir);
+            files.push(...parsedFiles);
+        }
+        
+        return files;
+    }
+
+    private async generatePageFiles(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        _patterns: CodebasePatterns,
+        _contextInfo: any,
+        systemPrompt: string,
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; }[]> {
+        const files: { path: string; content: string; }[] = [];
+        
+        const pagePrompt = `Generate a page component for: ${userPrompt}
+        
+This should be a complete page with:
+1. Page metadata (if Next.js)
+2. Layout integration
+3. SEO optimization
+4. Loading states
+5. Error handling
+
+Follow the routing conventions for this project.`;
+        
+        const pageCode = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${pagePrompt}`);
+        
+        if (pageCode) {
+            const sanitizedCode = sanitize(pageCode);
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(sanitizedCode, workspaceIndex);
+            
+            if (validationResult.isValid) {
+                const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
+                const pagePath = path.join(intent.suggestedPath, intent.fileName);
+                files.push({ path: pagePath, content: finalCode });
+            }
+        }
+        
+        return files;
+    }
+
+    private async generateSingleFile(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        patterns: CodebasePatterns,
+        contextInfo: any,
+        systemPrompt: string,
+        workspaceIndex: WorkspaceIndex
+    ): Promise<{ path: string; content: string; } | null> {
+        const prompt = this.promptBuilder.buildComponentGenerationPrompt(
+            userPrompt,
+            [],
+            {} as any,
+            patterns,
+            contextInfo
+        );
+        
+        const code = await this.modelClient.generateCompletion(`${systemPrompt}\n\n${prompt}`);
+        
+        if (code) {
+            const sanitizedCode = sanitize(code);
+            const validationResult = await this.codeValidator.validateAndFixGeneratedCode(sanitizedCode, workspaceIndex);
+            
+            if (validationResult.isValid) {
+                const finalCode = sanitize(validationResult.fixedCode || sanitizedCode);
+                const filePath = path.join(intent.suggestedPath, intent.fileName);
+                return { path: filePath, content: finalCode };
+            }
+        }
+        
+        return null;
+    }
+
+    private async generateStyleFile(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        componentCode: string
+    ): Promise<{ path: string; content: string; } | null> {
+        const styleReferences = this.extractStyleReferences(componentCode);
+        
+        if (styleReferences.length === 0) return null;
+        
+        const cssContent = await this.generateStylesForComponent(userPrompt, styleReferences);
+        const stylePath = path.join(
+            intent.suggestedPath,
+            intent.fileName.replace(/\.(tsx|jsx)$/, '.module.css')
+        );
+        
+        return { path: stylePath, content: cssContent };
+    }
+
+    private async generateStoriesFile(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        componentCode: string
+    ): Promise<{ path: string; content: string; } | null> {
+        const componentName = this.extractComponentName(componentCode);
+        
+        const storiesPrompt = `Generate a Storybook stories file for the ${componentName} component.
+        
+Component description: ${userPrompt}
+
+Include:
+1. Default story
+2. Variant stories with different props
+3. Interactive controls
+4. Documentation
+
+Generate only the stories file code:`;
+        
+        const storiesCode = await this.modelClient.generateCompletion(storiesPrompt);
+        
+        if (storiesCode) {
+            const storiesPath = path.join(
+                intent.suggestedPath,
+                intent.fileName.replace(/\.(tsx|jsx)$/, '.stories.tsx')
+            );
+            
+            return { path: storiesPath, content: storiesCode };
+        }
+        
+        return null;
+    }
+
+    private async generateTestFile(
+        userPrompt: string,
+        intent: IntentAnalysis,
+        componentCode: string
+    ): Promise<{ path: string; content: string; } | null> {
+        const componentName = this.extractComponentName(componentCode);
+        
+        const testPrompt = `Generate a test file for the ${componentName} component.
+        
+Component description: ${userPrompt}
+
+Include:
+1. Render tests
+2. Props testing
+3. User interaction tests
+4. Accessibility tests
+
+Use React Testing Library. Generate only the test file code:`;
+        
+        const testCode = await this.modelClient.generateCompletion(testPrompt);
+        
+        if (testCode) {
+            const testPath = path.join(
+                intent.suggestedPath,
+                intent.fileName.replace(/\.(tsx|jsx)$/, '.test.tsx')
+            );
+            
+            return { path: testPath, content: testCode };
+        }
+        
+        return null;
+    }
+
+    private shouldGenerateStories(_patterns: CodebasePatterns): boolean {
+        // Check if Storybook is configured in the project
+        try {
+            const packageJsonPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'package.json');
+            if (fs.existsSync(packageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+                return deps['@storybook/react'] || deps['@storybook/nextjs'];
+            }
+        } catch (error) {
+            console.error('Error checking for Storybook:', error);
+        }
+        return false;
+    }
+
+    private shouldGenerateTests(_patterns: CodebasePatterns): boolean {
+        // Check if testing framework is configured
+        try {
+            const packageJsonPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'package.json');
+            if (fs.existsSync(packageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+                return deps['@testing-library/react'] || deps['jest'] || deps['vitest'];
+            }
+        } catch (error) {
+            console.error('Error checking for testing framework:', error);
+        }
+        return false;
+    }
+
+    private parseMultiFileResponse(response: string, baseDir: string): { path: string; content: string; }[] {
+        const files: { path: string; content: string; }[] = [];
+        
+        // Simple parser for multi-file responses
+        // This would need to be more sophisticated in a real implementation
+        const fileBlocks = response.split(/```(?:typescript|tsx|jsx|ts|js)\n/);
+        
+        for (let i = 1; i < fileBlocks.length; i++) {
+            const block = fileBlocks[i];
+            const endIndex = block.indexOf('```');
+            if (endIndex !== -1) {
+                const content = block.substring(0, endIndex);
+                const fileName = this.extractFileNameFromContent(content) || `file${i}.tsx`;
+                const filePath = path.join(baseDir, fileName);
+                files.push({ path: filePath, content: content.trim() });
+            }
+        }
+        
+        return files;
+    }
+
+    private extractFileNameFromContent(content: string): string | null {
+        // Try to extract filename from comments or other indicators
+        const fileNameMatch = content.match(/\/\/ (?:File|Filename): (.+)/);
+        if (fileNameMatch) {
+            return fileNameMatch[1];
+        }
+        
+        // Try to extract from export statements
+        const exportMatch = content.match(/export default (\w+)/);
+        if (exportMatch) {
+            return `${exportMatch[1]}.tsx`;
+        }
+        
+        return null;
+    }
+
+    private extractComponentName(code: string): string {
+        const componentNameMatch = code.match(/(?:function|const|class)\s+(\w+)/);
+        return componentNameMatch?.[1] || 'Component';
+    }
+
+    private async ensureDirectoryExists(dirPath: string): Promise<void> {
+        try {
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true });
+            }
+        } catch (error) {
+            console.error('Error creating directory:', error);
+        }
+    }
+
+    private async writeFileWithConfirmation(filePath: string, content: string): Promise<void> {
+        if (fs.existsSync(filePath)) {
+            const choice = await vscode.window.showWarningMessage(
+                `File ${path.basename(filePath)} already exists. What would you like to do?`,
+                'Overwrite',
+                'Create with suffix',
+                'Skip'
+            );
+
+            if (choice === 'Skip') {
+                return;
+            } else if (choice === 'Create with suffix') {
+                const timestamp = Date.now();
+                const ext = path.extname(filePath);
+                const baseName = path.basename(filePath, ext);
+                const dir = path.dirname(filePath);
+                const newFileName = `${baseName}_${timestamp}${ext}`;
+                filePath = path.join(dir, newFileName);
+            }
+        }
+
+        await this.writeFile(filePath, content);
     }
 
     async generateComponentVariation(
