@@ -12,16 +12,21 @@ class FileManager:
             'javascript': '.jsx'
         }
     
-    def save_component(self, component_code: str, output_path: Optional[str], context: Dict) -> str:
-        """Save component to appropriate location"""
+    def save_component(self, component_code: str, output_path: Optional[str], context: Dict, user_prompt: str = "") -> str:
+        """Save component to appropriate location based on intent"""
         
         if output_path:
             # User specified path
             file_path = self._ensure_extension(output_path, context)
         else:
-            # Auto-detect path based on component name and project structure
+            # Auto-detect path based on user intent and component name
             component_name = self._extract_component_name(component_code)
-            file_path = self._auto_generate_path(component_name, context)
+            is_page = self._is_page_request(user_prompt, component_name)
+            
+            if is_page:
+                file_path = self._auto_generate_page_path(component_name, context, user_prompt)
+            else:
+                file_path = self._auto_generate_component_path(component_name, context)
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -53,6 +58,134 @@ class FileManager:
         
         # Fallback to generic name
         return 'Component'
+    
+    def _is_page_request(self, user_prompt: str, component_name: str) -> bool:
+        """Determine if this is a page request vs component request"""
+        
+        page_keywords = [
+            'page', 'screen', 'view', 'route', 'dashboard', 'landing', 
+            'homepage', 'login page', 'profile page', 'settings page',
+            'about page', 'contact page', 'pricing page', 'checkout page'
+        ]
+        
+        component_keywords = [
+            'component', 'widget', 'element', 'button', 'card', 'modal',
+            'dropdown', 'menu', 'form', 'input', 'table', 'list'
+        ]
+        
+        prompt_lower = user_prompt.lower()
+        
+        # Check for explicit page keywords
+        for keyword in page_keywords:
+            if keyword in prompt_lower:
+                return True
+        
+        # Check for explicit component keywords
+        for keyword in component_keywords:
+            if keyword in prompt_lower:
+                return False
+        
+        # Check component name for page indicators
+        name_lower = component_name.lower()
+        if any(keyword in name_lower for keyword in ['page', 'screen', 'view', 'dashboard']):
+            return True
+        
+        # Default to component if unclear
+        return False
+    
+    def _auto_generate_page_path(self, component_name: str, context: Dict, user_prompt: str) -> str:
+        """Auto-generate page path for Next.js App Router"""
+        
+        # Extract page name from prompt or component name
+        page_name = self._extract_page_name(user_prompt, component_name)
+        
+        # Check if this is a Next.js App Router project
+        framework = context.get('framework', '')
+        project_structure = context.get('project_structure', {})
+        
+        if framework == 'next.js' and self._has_app_directory(project_structure):
+            # Next.js App Router: app/[page]/page.tsx
+            return f"app/{page_name}/page.tsx"
+        elif framework == 'next.js':
+            # Next.js Pages Router: pages/[page].tsx
+            return f"pages/{page_name}.tsx"
+        else:
+            # Other frameworks: treat as component
+            return self._auto_generate_component_path(component_name, context)
+    
+    def _auto_generate_component_path(self, component_name: str, context: Dict) -> str:
+        """Auto-generate component path with descriptive naming"""
+        
+        # Get components directory from context
+        components_dir = context.get('project_structure', {}).get('components_dir', 'src/components')
+        
+        # Use descriptive component name (PascalCase)
+        file_name = self._ensure_pascal_case(component_name)
+        
+        # Determine file extension
+        extension = '.tsx' if self._is_typescript_project(context) else '.jsx'
+        
+        # Build full path
+        file_path = os.path.join(components_dir, f"{file_name}{extension}")
+        
+        return file_path
+    
+    def _extract_page_name(self, user_prompt: str, component_name: str) -> str:
+        """Extract page name from prompt or component name"""
+        
+        # Common page name mappings
+        page_mappings = {
+            'login': 'login',
+            'signin': 'login',
+            'signup': 'register',
+            'register': 'register',
+            'profile': 'profile',
+            'dashboard': 'dashboard',
+            'settings': 'settings',
+            'about': 'about',
+            'contact': 'contact',
+            'pricing': 'pricing',
+            'checkout': 'checkout',
+            'cart': 'cart',
+            'home': 'home',
+            'landing': 'home'
+        }
+        
+        prompt_lower = user_prompt.lower()
+        
+        # Check for common page names in prompt
+        for key, value in page_mappings.items():
+            if key in prompt_lower:
+                return value
+        
+        # Extract from component name
+        name_lower = component_name.lower()
+        for key, value in page_mappings.items():
+            if key in name_lower:
+                return value
+        
+        # Default to kebab-case version of component name
+        return self._pascal_to_kebab(component_name)
+    
+    def _has_app_directory(self, project_structure: Dict) -> bool:
+        """Check if project uses Next.js App Router (has app/ directory)"""
+        
+        pages_dir = project_structure.get('pages_dir', '')
+        return 'app' in pages_dir.lower()
+    
+    def _ensure_pascal_case(self, name: str) -> str:
+        """Ensure name is in PascalCase"""
+        
+        # Handle kebab-case and snake_case
+        if '-' in name or '_' in name:
+            parts = name.replace('-', '_').split('_')
+            return ''.join(word.capitalize() for word in parts)
+        
+        # Handle camelCase
+        if name and name[0].islower():
+            return name[0].upper() + name[1:]
+        
+        return name
     
     def _auto_generate_path(self, component_name: str, context: Dict) -> str:
         """Auto-generate file path based on component name and project structure"""

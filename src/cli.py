@@ -43,15 +43,20 @@ def generate(prompt: str, preview: bool, output: Optional[str], model: str):
         generator = UIGenerator(model=model)
         component_code = generator.generate_component(prompt, context)
         
+        console.print("[yellow]Formatting and linting code...[/yellow]")
+        
+        # Format and lint the generated code
+        formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
+        
         if preview:
-            console.print(Panel(component_code, title="Generated Component", border_style="green"))
+            console.print(Panel(formatted_code, title="Generated Component", border_style="green"))
             if not click.confirm("Create this component?"):
                 console.print("[yellow]Component generation cancelled[/yellow]")
                 return
         
         # Save component
         file_manager = FileManager()
-        file_path = file_manager.save_component(component_code, output, context)
+        file_path = file_manager.save_component(formatted_code, output, context, prompt)
         
         console.print(f"[green]✓[/green] Component created at: {file_path}")
         
@@ -102,7 +107,12 @@ def preview(prompt: str):
         generator = UIGenerator()
         component_code = generator.generate_component(prompt, context)
         
-        console.print(Panel(component_code, title="Component Preview", border_style="green"))
+        console.print("[yellow]Formatting and linting code...[/yellow]")
+        
+        # Format and lint the generated code
+        formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
+        
+        console.print(Panel(formatted_code, title="Component Preview", border_style="green"))
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
