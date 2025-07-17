@@ -256,7 +256,7 @@ class FileManager:
 
         # Simple heuristic: if framework is detected and common, assume TypeScript
         framework = context.get("framework", "")
-        if framework in ["next.js", "vite"]:
+        if framework in ["next.js", "vite", "remix"]:
             return True
 
         return False
