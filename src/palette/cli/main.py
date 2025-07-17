@@ -111,7 +111,20 @@ def analyze():
 
         if context.get("design_tokens"):
             tokens = context["design_tokens"]
-            console.print(f"[bold]Colors:[/bold] {', '.join(tokens.get('colors', []))}")
+            
+            # Format colors with values if available
+            if "color_structure" in tokens and tokens["color_structure"]:
+                color_items = []
+                for name, value in list(tokens["color_structure"].items())[:10]:  # Limit to 10 colors
+                    if isinstance(value, str):
+                        color_items.append(f"{name}={value}")
+                    else:
+                        color_items.append(name)
+                colors_display = ", ".join(color_items)
+            else:
+                colors_display = ", ".join(tokens.get('colors', []))
+            
+            console.print(f"[bold]Colors:[/bold] {colors_display}")
             console.print(
                 f"[bold]Spacing:[/bold] {', '.join(tokens.get('spacing', []))}"
             )

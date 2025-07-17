@@ -375,7 +375,9 @@ DESIGN SYSTEM USAGE RULES:
         # Build custom color examples with proper structure
         if colors:
             color_examples.append("CUSTOM COLORS (Use these project colors):")
-            for color in colors[:6]:  # Show more custom colors
+            # Convert colors dict to list and slice
+            color_list = list(colors.keys()) if isinstance(colors, dict) else colors
+            for color in color_list[:6]:  # Show more custom colors
                 # Check if it's a color object (has shades) or single value
                 if color in color_structure and isinstance(
                     color_structure[color], dict
@@ -394,15 +396,20 @@ DESIGN SYSTEM USAGE RULES:
 
         # Determine if we have CSS-parsed semantic colors
         has_css_semantic = len(semantic_colors) > 0
+        
+        # Handle colors as dict or list
+        colors_list = list(colors.keys()) if isinstance(colors, dict) else colors
+        semantic_list = list(semantic_colors.keys()) if isinstance(semantic_colors, dict) else semantic_colors
+        
         primary_color = (
-            semantic_colors[0]
-            if semantic_colors
-            else (colors[0] if colors else "primary")
+            semantic_list[0]
+            if semantic_list
+            else (colors_list[0] if colors_list else "primary")
         )
         secondary_color = (
-            semantic_colors[1]
-            if len(semantic_colors) > 1
-            else (colors[1] if len(colors) > 1 else "secondary")
+            semantic_list[1]
+            if len(semantic_list) > 1
+            else (colors_list[1] if len(colors_list) > 1 else "secondary")
         )
 
         return f"""COLOR PALETTE (MANDATORY - Use ONLY these project colors):
@@ -425,26 +432,47 @@ ABSOLUTELY FORBIDDEN:
 - Do NOT use colors not in the project palette above
 - Do NOT mix semantic and shade-based naming incorrectly"""
 
+    def _safe_token_access(self, tokens, index, default="4"):
+        """Safely access tokens whether they're dict, list, or empty"""
+        if not tokens:
+            return default
+        
+        # Convert to list if it's a dict
+        if isinstance(tokens, dict):
+            token_list = list(tokens.keys())
+        else:
+            token_list = tokens
+        
+        # Return the item at index or default
+        return token_list[index] if len(token_list) > index else default
+
     def _build_spacing_section(self, spacing):
         """Build enhanced spacing section with actual values"""
 
         if not spacing:
             return "SPACING SYSTEM: Using default Tailwind spacing (4, 8, 16, 24, 32)"
 
+        # Convert to list for consistent handling
+        spacing_list = list(spacing.keys()) if isinstance(spacing, dict) else spacing
+        
         spacing_examples = []
-        for space in spacing[:8]:  # Limit to 8 spacing values
+        for space in spacing_list[:8]:  # Limit to 8 spacing values
             spacing_examples.append(
                 f"  - {space}: p-{space}, m-{space}, gap-{space}, space-y-{space}"
             )
+
+        space0 = self._safe_token_access(spacing, 0, '4')
+        space1 = self._safe_token_access(spacing, 1, '6')
+        space2 = self._safe_token_access(spacing, 2, '8')
 
         return f"""SPACING SYSTEM (Use these project spacing values):
 {chr(10).join(spacing_examples)}
 
 USAGE EXAMPLES:
-- Component padding: p-{spacing[0] if spacing else '4'}, px-{spacing[1] if len(spacing) > 1 else '6'}, py-{spacing[0] if spacing else '4'}
-- Component margins: m-{spacing[1] if len(spacing) > 1 else '4'}, mb-{spacing[2] if len(spacing) > 2 else '8'}
-- Grid gaps: gap-{spacing[1] if len(spacing) > 1 else '4'}, gap-x-{spacing[0] if spacing else '4'}, gap-y-{spacing[1] if len(spacing) > 1 else '6'}
-- Stack spacing: space-y-{spacing[1] if len(spacing) > 1 else '4'}, space-x-{spacing[0] if spacing else '4'}"""
+- Component padding: p-{space0}, px-{space1}, py-{space0}
+- Component margins: m-{space1}, mb-{space2}
+- Grid gaps: gap-{space1}, gap-x-{space0}, gap-y-{space1}
+- Stack spacing: space-y-{space1}, space-x-{space0}"""
 
     def _build_typography_section(self, typography):
         """Build enhanced typography section with actual scale"""
@@ -452,32 +480,52 @@ USAGE EXAMPLES:
         if not typography:
             return "TYPOGRAPHY SCALE: Using default Tailwind typography (sm, base, lg, xl, 2xl)"
 
+        # Convert to list for consistent handling
+        typography_list = list(typography.keys()) if isinstance(typography, dict) else typography
+
         typography_examples = []
-        for typo in typography[:6]:  # Limit to 6 typography values
+        for typo in typography_list[:6]:  # Limit to 6 typography values
             typography_examples.append(f"  - {typo}: text-{typo}")
+
+        # Safe access for typography tokens
+        typo_large = self._safe_token_access(typography, -1, '2xl')
+        typo_medium = self._safe_token_access(typography, -2, 'xl') if len(typography_list) > 1 else 'xl'
+        typo_base = self._safe_token_access(typography, 1, 'base') if len(typography_list) > 1 else 'base'
+        typo_small = self._safe_token_access(typography, 0, 'sm')
 
         return f"""TYPOGRAPHY SCALE (Use these project text sizes):
 {chr(10).join(typography_examples)}
 
 USAGE EXAMPLES:
-- Headings: text-{typography[-1] if typography else '2xl'} font-bold, text-{typography[-2] if len(typography) > 1 else 'xl'} font-semibold
-- Body text: text-{typography[1] if len(typography) > 1 else 'base'}, text-{typography[0] if typography else 'sm'} text-gray-600
-- Small text: text-{typography[0] if typography else 'sm'} text-gray-500"""
+- Headings: text-{typo_large} font-bold, text-{typo_medium} font-semibold
+- Body text: text-{typo_base}, text-{typo_small} text-gray-600
+- Small text: text-{typo_small} text-gray-500"""
 
     def _build_effects_section(self, shadows, border_radius):
         """Build enhanced effects section with actual values"""
 
-        shadow_list = ", ".join(shadows[:4]) if shadows else "sm, md, lg"
-        radius_list = ", ".join(border_radius[:4]) if border_radius else "sm, md, lg"
+        shadows_list = list(shadows.keys()) if isinstance(shadows, dict) else (shadows if shadows else [])
+        radius_list = list(border_radius.keys()) if isinstance(border_radius, dict) else (border_radius if border_radius else [])
+
+        shadow_list = ", ".join(shadows_list[:4]) if shadows_list else "sm, md, lg"
+        radius_display = ", ".join(radius_list[:4]) if radius_list else "sm, md, lg"
+
+        # Safe access for effects
+        shadow0 = self._safe_token_access(shadows, 0, 'sm')
+        shadow1 = self._safe_token_access(shadows, 1, 'md')
+        shadow_last = self._safe_token_access(shadows, -1, 'lg')
+        radius0 = self._safe_token_access(border_radius, 0, 'sm')
+        radius1 = self._safe_token_access(border_radius, 1, 'md')
+        radius_last = self._safe_token_access(border_radius, -1, 'lg')
 
         return f"""VISUAL EFFECTS:
 - Shadows: {shadow_list}
-- Border Radius: {radius_list}
+- Border Radius: {radius_display}
 
 USAGE EXAMPLES:
-- Cards: shadow-{shadows[0] if shadows else 'sm'} rounded-{border_radius[1] if len(border_radius) > 1 else 'md'}
-- Buttons: shadow-{shadows[0] if shadows else 'sm'} rounded-{border_radius[0] if border_radius else 'sm'} hover:shadow-{shadows[1] if len(shadows) > 1 else 'md'}
-- Modals: shadow-{shadows[-1] if shadows else 'lg'} rounded-{border_radius[-1] if border_radius else 'lg'}"""
+- Cards: shadow-{shadow0} rounded-{radius1}
+- Buttons: shadow-{shadow0} rounded-{radius0} hover:shadow-{shadow1}
+- Modals: shadow-{shadow_last} rounded-{radius_last}"""
 
     def add_keyword_specific_instructions(self, prompt, user_request):
         """Add specific instructions based on keywords in user request"""

@@ -13,15 +13,26 @@ class ProjectAnalyzer:
     def __init__(self):
         self.supported_frameworks = {
             "next.js": ["next.config.js", "next.config.ts", "app/", "pages/"],
+            "remix": ["remix.config.js", "remix.config.ts", "app/routes/", "app/root.tsx"],
             "react": ["src/", "public/", "package.json"],
-            "vite": ["vite.config.js", "vite.config.ts"],
+            "vite": ["vite.config.js", "vite.config.ts", "frontend/vite.config.js", "frontend/vite.config.ts"],
+            "monorepo": ["turbo.json", "yarn.lock", "workspaces", "apps/", "packages/"],
+            "fullstack": ["frontend/", "backend/", "docker-compose.yml"],
         }
 
         self.component_libraries = {
             "shadcn/ui": ["components/ui/", "@radix-ui", "class-variance-authority"],
-            "chakra-ui": ["@chakra-ui"],
+            "calcom": ["@calcom/ui", "class-variance-authority", "packages/ui"],
+            "chakra-ui": ["@chakra-ui/react", "chakra-ui"],
             "material-ui": ["@mui/material", "@material-ui"],
             "ant-design": ["antd"],
+        }
+
+        self.monorepo_patterns = {
+            "calcom": ["@calcom/", "turbo.json", "packages/config/tailwind-preset.js"],
+            "nx": ["nx.json", "workspace.json"],
+            "lerna": ["lerna.json"],
+            "rush": ["rush.json"],
         }
 
         # Store the main CSS file path for debugging/info purposes
@@ -46,32 +57,99 @@ class ProjectAnalyzer:
     def _detect_framework(self, project_path: str) -> str:
         """Detect the React framework being used"""
 
+        # First check for monorepo patterns
+        monorepo_type = self._detect_monorepo_type(project_path)
+        if monorepo_type:
+            return f"monorepo-{monorepo_type}"
+
+        # Check for full-stack structure
+        fullstack_type = self._detect_fullstack_structure(project_path)
+        if fullstack_type:
+            return fullstack_type
+
+        # Check main package.json
         package_json_path = os.path.join(project_path, "package.json")
         if os.path.exists(package_json_path):
-            try:
-                with open(package_json_path, "r") as f:
-                    package_data = json.load(f)
-                    dependencies = {
-                        **package_data.get("dependencies", {}),
-                        **package_data.get("devDependencies", {}),
-                    }
-
-                    if "next" in dependencies:
-                        return "next.js"
-                    elif "vite" in dependencies:
-                        return "vite"
-                    elif "react" in dependencies:
-                        return "react"
-            except json.JSONDecodeError:
-                pass
+            framework = self._analyze_package_json(package_json_path)
+            if framework != "unknown":
+                return framework
 
         # Check for framework-specific files
         for framework, indicators in self.supported_frameworks.items():
+            if framework in ["monorepo", "fullstack"]:  # Skip here, handled above
+                continue
             for indicator in indicators:
                 if os.path.exists(os.path.join(project_path, indicator)):
                     return framework
 
         return "unknown"
+
+    def _detect_fullstack_structure(self, project_path: str) -> Optional[str]:
+        """Detect full-stack project structure (frontend/backend separation)"""
+        
+        frontend_path = os.path.join(project_path, "frontend")
+        backend_path = os.path.join(project_path, "backend")
+        
+        if os.path.exists(frontend_path) and os.path.exists(backend_path):
+            # This is a full-stack project, analyze the frontend
+            frontend_package_json = os.path.join(frontend_path, "package.json")
+            if os.path.exists(frontend_package_json):
+                frontend_framework = self._analyze_package_json(frontend_package_json)
+                if frontend_framework != "unknown":
+                    return f"fullstack-{frontend_framework}"
+            return "fullstack"
+        
+        return None
+
+    def _analyze_package_json(self, package_json_path: str) -> str:
+        """Analyze a package.json file to determine framework"""
+        
+        try:
+            with open(package_json_path, "r") as f:
+                package_data = json.load(f)
+                dependencies = {
+                    **package_data.get("dependencies", {}),
+                    **package_data.get("devDependencies", {}),
+                }
+
+                # Check for Remix first (before Vite, as Remix uses Vite under the hood)
+                if "@remix-run/dev" in dependencies or "@remix-run/node" in dependencies or "@remix-run/serve" in dependencies:
+                    return "remix"
+                elif "next" in dependencies:
+                    return "next.js"
+                elif "vite" in dependencies:
+                    return "vite"
+                elif "react" in dependencies:
+                    return "react"
+        except json.JSONDecodeError:
+            pass
+        
+        return "unknown"
+
+    def _detect_monorepo_type(self, project_path: str) -> Optional[str]:
+        """Detect monorepo type and return the specific type"""
+        
+        for monorepo_type, indicators in self.monorepo_patterns.items():
+            matches = 0
+            for indicator in indicators:
+                if os.path.exists(os.path.join(project_path, indicator)):
+                    matches += 1
+            
+            # Require at least 2 matches for confidence
+            if matches >= 2:
+                return monorepo_type
+        
+        # Generic monorepo detection
+        monorepo_files = ["turbo.json", "yarn.lock", "lerna.json", "nx.json"]
+        monorepo_dirs = ["apps/", "packages/", "libs/"]
+        
+        has_config = any(os.path.exists(os.path.join(project_path, f)) for f in monorepo_files)
+        has_structure = any(os.path.exists(os.path.join(project_path, d)) for d in monorepo_dirs)
+        
+        if has_config and has_structure:
+            return "generic"
+        
+        return None
 
     def _detect_styling_system(self, project_path: str) -> str:
         """Detect the styling system (Tailwind, CSS modules, etc.)"""
@@ -107,37 +185,45 @@ class ProjectAnalyzer:
     def _detect_component_library(self, project_path: str) -> str:
         """Detect component library being used with proper validation"""
 
-        package_json_path = os.path.join(project_path, "package.json")
-        if not os.path.exists(package_json_path):
-            return "none"
+        # Check main package.json first
+        package_json_paths = [os.path.join(project_path, "package.json")]
+        
+        # Also check frontend/package.json for full-stack projects
+        frontend_package_path = os.path.join(project_path, "frontend", "package.json")
+        if os.path.exists(frontend_package_path):
+            package_json_paths.append(frontend_package_path)
 
-        try:
-            with open(package_json_path, "r") as f:
-                package_data = json.load(f)
-                dependencies = {
-                    **package_data.get("dependencies", {}),
-                    **package_data.get("devDependencies", {}),
-                }
+        for package_json_path in package_json_paths:
+            if not os.path.exists(package_json_path):
+                continue
 
-                # Check for shadcn/ui with proper validation
-                if self._is_shadcn_ui_project(project_path, dependencies):
-                    return "shadcn/ui"
+            try:
+                with open(package_json_path, "r") as f:
+                    package_data = json.load(f)
+                    dependencies = {
+                        **package_data.get("dependencies", {}),
+                        **package_data.get("devDependencies", {}),
+                    }
 
-                # Check other component libraries
-                for library, indicators in self.component_libraries.items():
-                    if library == "shadcn/ui":
-                        continue  # Already checked above
+                    # Check for shadcn/ui with proper validation
+                    if self._is_shadcn_ui_project(os.path.dirname(package_json_path), dependencies):
+                        return "shadcn/ui"
 
-                    for indicator in indicators:
-                        if indicator in dependencies:
-                            return library
-                        # Check for directory structure indicators
-                        if indicator.endswith("/") and os.path.exists(
-                            os.path.join(project_path, indicator)
-                        ):
-                            return library
-        except json.JSONDecodeError:
-            pass
+                    # Check other component libraries
+                    for library, indicators in self.component_libraries.items():
+                        if library == "shadcn/ui":
+                            continue  # Already checked above
+
+                        for indicator in indicators:
+                            if indicator in dependencies:
+                                return library
+                            # Check for directory structure indicators
+                            if indicator.endswith("/") and os.path.exists(
+                                os.path.join(os.path.dirname(package_json_path), indicator)
+                            ):
+                                return library
+            except json.JSONDecodeError:
+                pass
 
         return "none"
 
@@ -178,6 +264,11 @@ class ProjectAnalyzer:
     def _extract_design_tokens(self, project_path: str) -> Dict:
         """Extract design tokens from Tailwind config and existing components"""
 
+        # Check if this is a monorepo and handle accordingly
+        monorepo_type = self._detect_monorepo_type(project_path)
+        if monorepo_type:
+            return self._extract_monorepo_design_tokens(project_path, monorepo_type)
+
         # First, try to get tokens from tailwind.config.js
         tailwind_config = self._parse_tailwind_config(project_path)
 
@@ -198,6 +289,240 @@ class ProjectAnalyzer:
 
         return tokens
 
+    def _extract_monorepo_design_tokens(self, project_path: str, monorepo_type: str) -> Dict:
+        """Extract design tokens from monorepo structure"""
+        
+        tokens = {
+            "colors": {},
+            "semantic_colors": {},
+            "color_structure": {},
+            "spacing": {},
+            "typography": {},
+            "shadows": {},
+            "border_radius": {},
+            "css_variables": {},
+        }
+        
+        if monorepo_type == "calcom":
+            return self._extract_calcom_design_tokens(project_path)
+        
+        # Generic monorepo handling
+        return self._extract_generic_monorepo_tokens(project_path)
+
+    def _extract_calcom_design_tokens(self, project_path: str) -> Dict:
+        """Extract design tokens specifically from Cal.com architecture"""
+        
+        # Look for the main Tailwind preset
+        preset_path = os.path.join(project_path, "packages/config/tailwind-preset.js")
+        
+        tokens = {
+            "colors": {},
+            "semantic_colors": {},
+            "color_structure": {},
+            "spacing": {},
+            "typography": {},
+            "shadows": {},
+            "border_radius": {},
+            "css_variables": {},
+        }
+        
+        if os.path.exists(preset_path):
+            # Parse the preset file for CSS variables and color structure
+            preset_config = self._parse_calcom_preset(preset_path)
+            tokens.update(preset_config)
+        
+        # Extract from UI components
+        ui_package_path = os.path.join(project_path, "packages/ui")
+        if os.path.exists(ui_package_path):
+            component_tokens = self._extract_ui_component_tokens(ui_package_path)
+            tokens["component_patterns"] = component_tokens
+        
+        # Extract CSS variables from theme files
+        theme_path = os.path.join(project_path, "packages/config/theme")
+        if os.path.exists(theme_path):
+            css_vars = self._extract_css_variables(theme_path)
+            tokens["css_variables"] = css_vars
+        
+        return tokens
+
+    def _parse_calcom_preset(self, preset_path: str) -> Dict:
+        """Parse Cal.com's Tailwind preset file"""
+        
+        tokens = {
+            "colors": {},
+            "spacing": {},
+            "border_radius": {},
+            "css_variables": {},
+        }
+        
+        try:
+            with open(preset_path, 'r') as f:
+                content = f.read()
+                
+            # Extract CSS variable references
+            css_var_pattern = r'var\(--cal-([^)]+)\)'
+            css_vars = re.findall(css_var_pattern, content)
+            
+            for var in css_vars:
+                var_name = var.replace('_', '.')  # Convert underscore to dot notation
+                tokens["css_variables"][var_name] = f"var(--cal-{var})"
+            
+            # Extract color definitions
+            color_pattern = r'(\w+):\s*{\s*default:\s*["\']var\(--cal-([^)]+)\)["\']'
+            colors = re.findall(color_pattern, content)
+            
+            for color_name, css_var in colors:
+                tokens["colors"][color_name] = f"var(--cal-{css_var})"
+            
+        except Exception as e:
+            print(f"Warning: Error parsing Cal.com preset: {e}")
+        
+        return tokens
+
+    def _extract_ui_component_tokens(self, ui_path: str) -> Dict:
+        """Extract design patterns from UI components"""
+        
+        patterns = {
+            "component_variants": {},
+            "common_classes": [],
+            "sizing_patterns": {},
+        }
+        
+        try:
+            # Look for component files
+            for root, dirs, files in os.walk(ui_path):
+                for file in files:
+                    if file.endswith(('.tsx', '.ts')):
+                        file_path = os.path.join(root, file)
+                        component_patterns = self._analyze_component_file(file_path)
+                        if component_patterns:
+                            component_name = os.path.basename(root)
+                            patterns["component_variants"][component_name] = component_patterns
+                            
+        except Exception as e:
+            print(f"Warning: Error extracting UI component tokens: {e}")
+        
+        return patterns
+
+    def _analyze_component_file(self, file_path: str) -> Dict:
+        """Analyze a single component file for patterns"""
+        
+        patterns = {
+            "variants": [],
+            "base_classes": [],
+            "color_usage": [],
+        }
+        
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+            
+            # Look for class-variance-authority patterns
+            cva_pattern = r'cva\(\s*["\']([^"\']+)["\']'
+            base_classes = re.findall(cva_pattern, content)
+            if base_classes:
+                patterns["base_classes"] = base_classes[0].split()
+            
+            # Look for variant definitions
+            variant_pattern = r'(\w+):\s*\[([^\]]+)\]'
+            variants = re.findall(variant_pattern, content)
+            patterns["variants"] = variants
+            
+            # Extract color usage
+            color_pattern = r'(bg-|text-|border-|ring-)(\w+[-\w]*)'
+            colors = re.findall(color_pattern, content)
+            patterns["color_usage"] = [f"{prefix}{color}" for prefix, color in colors]
+            
+        except Exception as e:
+            print(f"Warning: Error analyzing component file {file_path}: {e}")
+        
+        return patterns
+
+    def _extract_css_variables(self, theme_path: str) -> Dict:
+        """Extract CSS custom properties from theme files"""
+        
+        css_vars = {}
+        
+        try:
+            for root, dirs, files in os.walk(theme_path):
+                for file in files:
+                    if file.endswith('.css'):
+                        file_path = os.path.join(root, file)
+                        vars_from_file = self._parse_css_variables_from_file(file_path)
+                        css_vars.update(vars_from_file)
+                        
+        except Exception as e:
+            print(f"Warning: Error extracting CSS variables: {e}")
+        
+        return css_vars
+
+    def _parse_css_variables_from_file(self, file_path: str) -> Dict:
+        """Parse CSS variables from a single CSS file"""
+        
+        css_vars = {}
+        
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+            
+            # Extract CSS custom properties
+            var_pattern = r'--cal-([^:]+):\s*([^;]+);'
+            variables = re.findall(var_pattern, content)
+            
+            for var_name, var_value in variables:
+                css_vars[var_name.replace('_', '.')] = var_value.strip()
+                
+        except Exception as e:
+            print(f"Warning: Error parsing CSS file {file_path}: {e}")
+        
+        return css_vars
+
+    def _extract_generic_monorepo_tokens(self, project_path: str) -> Dict:
+        """Extract design tokens from generic monorepo structure"""
+        
+        tokens = {
+            "colors": {},
+            "semantic_colors": {},
+            "spacing": {},
+            "typography": {},
+        }
+        
+        # Look in common monorepo locations
+        search_paths = [
+            "packages/design-system",
+            "packages/ui",
+            "packages/tokens",
+            "apps/web",
+            "apps/*/",
+        ]
+        
+        for search_path in search_paths:
+            full_path = os.path.join(project_path, search_path)
+            if os.path.exists(full_path):
+                config = self._parse_tailwind_config_in_path(full_path)
+                if config:
+                    color_data = self._extract_colors_from_config(config, full_path)
+                    tokens["colors"].update(color_data["custom"])
+                    tokens["semantic_colors"].update(color_data["semantic"])
+        
+        return tokens
+
+    def _parse_tailwind_config_in_path(self, path: str) -> Dict:
+        """Parse Tailwind config in a specific path"""
+        
+        config_files = [
+            "tailwind.config.js",
+            "tailwind.config.ts",
+            "tailwind.config.mjs",
+        ]
+        
+        for config_file in config_files:
+            config_path = os.path.join(path, config_file)
+            if os.path.exists(config_path):
+                return self._parse_js_config(config_path, path)
+        
+        return {}
+
     def _parse_tailwind_config(self, project_path: str) -> Dict:
         """Parse tailwind.config.js using Node.js helper script or CSS parsing"""
 
@@ -216,15 +541,18 @@ class ProjectAnalyzer:
                 break
 
         if config_path:
+            # Show which config file was found
+            config_name = os.path.basename(config_path)
+            print(f"Info: Found Tailwind config: {config_name}")
             # Use Node.js parser for JS config files
             return self._parse_js_config(config_path, project_path)
         else:
             # Fallback to CSS parsing mode
-            print("Info: tailwind.config.js not found, trying CSS parsing mode...")
+            print("Info: No tailwind config found, trying CSS parsing mode...")
             return self._parse_css_for_theme(project_path)
 
     def _parse_js_config(self, config_path: str, project_path: str) -> Dict:
-        """Parse JavaScript config file using Node.js helper script"""
+        """Parse JavaScript/TypeScript config file using Node.js helper script"""
 
         try:
             # Get the path to our Node.js helper script
@@ -340,6 +668,7 @@ class ProjectAnalyzer:
             "src/styles.css",
             "src/style.css",
             "src/globals.css",
+            "src/app/globals.css",
             "styles/globals.css",
             "styles/style.css",
             "app/globals.css",
@@ -523,14 +852,14 @@ class ProjectAnalyzer:
         return aggregated_content
 
     def extract_theme_blocks(self, css_content: str) -> str:
-        """Extract content from @theme { ... } blocks using improved regex for Tailwind v4"""
+        """Extract content from @theme { ... } blocks and :root { ... } blocks"""
 
         if not css_content:
             print("Info: No CSS content to extract theme blocks from")
             return ""
 
         # Multiple patterns to match different @theme block formats
-        patterns = [
+        theme_patterns = [
             # Standard @theme { ... } blocks
             r"@theme\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
             # Tailwind v4 style with potential nested structures
@@ -539,14 +868,30 @@ class ProjectAnalyzer:
             r"@theme\s*\{((?:[^{}]|\{[^{}]*\})*)\}",
         ]
 
+        # Patterns to match :root blocks with CSS custom properties
+        root_patterns = [
+            # Standard :root { ... } blocks
+            r":root\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+            # More permissive :root pattern
+            r":root\s*\{([\s\S]*?)\}(?=\s*(?:\.|#|:|@|$))",
+        ]
+
         all_theme_matches = []
 
-        # Try each pattern
-        for i, pattern in enumerate(patterns):
+        # Try @theme patterns first
+        for i, pattern in enumerate(theme_patterns):
             theme_matches = re.findall(pattern, css_content, re.DOTALL | re.MULTILINE)
             if theme_matches:
-                print(f"Info: Pattern {i+1} found {len(theme_matches)} @theme blocks")
+                print(f"Info: @theme pattern {i+1} found {len(theme_matches)} @theme blocks")
                 all_theme_matches.extend(theme_matches)
+                break  # Use the first pattern that finds matches
+
+        # Try :root patterns
+        for i, pattern in enumerate(root_patterns):
+            root_matches = re.findall(pattern, css_content, re.DOTALL | re.MULTILINE)
+            if root_matches:
+                print(f"Info: :root pattern {i+1} found {len(root_matches)} :root blocks")
+                all_theme_matches.extend(root_matches)
                 break  # Use the first pattern that finds matches
 
         # If no patterns worked, try a more aggressive approach
@@ -557,12 +902,12 @@ class ProjectAnalyzer:
                 all_theme_matches.extend(theme_blocks)
 
         if not all_theme_matches:
-            print("Info: No @theme blocks found in CSS content")
+            print("Info: No @theme or :root blocks found in CSS content")
             print("Debug: First 500 characters of CSS content:")
             print(css_content[:500])
             return ""
 
-        print(f"Info: Found {len(all_theme_matches)} @theme blocks total")
+        print(f"Info: Found {len(all_theme_matches)} theme/root blocks total")
 
         # Combine all theme block contents
         combined_theme_content = []
@@ -669,14 +1014,32 @@ class ProjectAnalyzer:
                 or "#" in value
                 or "rgb" in value
                 or "hsl" in value
+                or re.match(r"^\d+\s+\d+%\s+\d+%", value)  # HSL without hsl() wrapper
                 or name.lower()
                 in [
-                    "primary",
-                    "secondary",
-                    "accent",
-                    "background",
-                    "foreground",
-                    "muted",
+                    "--primary",
+                    "--secondary", 
+                    "--accent",
+                    "--background",
+                    "--foreground",
+                    "--muted",
+                    "--card",
+                    "--popover",
+                    "--destructive",
+                    "--border",
+                    "--input",
+                    "--ring",
+                    "--chart-1",
+                    "--chart-2", 
+                    "--chart-3",
+                    "--chart-4",
+                    "--chart-5",
+                    "--sidebar-background",
+                    "--sidebar-foreground",
+                    "--sidebar-primary",
+                    "--sidebar-accent",
+                    "--sidebar-border",
+                    "--sidebar-ring",
                 ]
             ):
                 tokens["colors"][clean_name] = value
@@ -695,13 +1058,14 @@ class ProjectAnalyzer:
             ):
                 tokens["fonts"][clean_name] = value
             # Spacing classification
-            elif "spacing" in name.lower() or (
+            elif "spacing" in name.lower() or "radius" in name.lower() or (
                 ("rem" in value or "px" in value or "em" in value)
                 and (
                     "spacing" in name.lower()
                     or "gap" in name.lower()
                     or "margin" in name.lower()
                     or "padding" in name.lower()
+                    or "radius" in name.lower()
                 )
             ):
                 tokens["spacing"][clean_name] = value
@@ -1272,10 +1636,16 @@ class ProjectAnalyzer:
 
         spacing = []
 
-        # Get spacing from config
-        if "spacing" in tailwind_config and tailwind_config["spacing"]:
-            config_spacing = tailwind_config["spacing"]
+        # Check if this is CSS parsing results (has spacing dict with named keys)
+        if "spacing" in tailwind_config and isinstance(tailwind_config["spacing"], dict):
+            css_spacing = tailwind_config["spacing"]
+            # Include named spacing tokens (like radius, margin, padding)
+            for spacing_key, spacing_value in css_spacing.items():
+                spacing.append(f"{spacing_key}={spacing_value}")
 
+        # Get numeric spacing from traditional tailwind config
+        if "spacing" in tailwind_config and isinstance(tailwind_config["spacing"], dict):
+            config_spacing = tailwind_config["spacing"]
             # Extract numeric spacing values
             for spacing_key in config_spacing.keys():
                 if spacing_key.isdigit():
