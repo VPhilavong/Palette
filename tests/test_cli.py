@@ -7,17 +7,17 @@ Run this to test the basic functionality without installing the package
 import sys
 import os
 
-# Add src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Add src directory to Python path (go up one level from tests/ to root, then into src/)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def test_imports():
     """Test that all modules can be imported"""
     try:
-        from cli import main
-        from context import ProjectAnalyzer
-        from generator import UIGenerator
-        from prompts import UIPromptBuilder
-        from file_manager import FileManager
+        from palette.cli import main
+        from palette.analysis.context import ProjectAnalyzer
+        from palette.generation.generator import UIGenerator
+        from palette.generation.prompts import UIPromptBuilder
+        from palette.utils.file_manager import FileManager
         print("✓ All modules imported successfully")
         return True
     except ImportError as e:
@@ -27,7 +27,7 @@ def test_imports():
 def test_project_analysis():
     """Test project analysis functionality"""
     try:
-        from context import ProjectAnalyzer
+        from palette.analysis.context import ProjectAnalyzer
         
         analyzer = ProjectAnalyzer()
         context = analyzer.analyze_project('.')
@@ -45,7 +45,7 @@ def test_project_analysis():
 def test_prompt_building():
     """Test prompt building functionality"""
     try:
-        from prompts import UIPromptBuilder
+        from palette.generation.prompts import UIPromptBuilder
         
         builder = UIPromptBuilder()
         
@@ -76,7 +76,7 @@ def test_prompt_building():
 def test_file_management():
     """Test file management functionality"""
     try:
-        from file_manager import FileManager
+        from palette.utils.file_manager import FileManager
         
         manager = FileManager()
         
