@@ -6,6 +6,15 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Import TreeSitter analyzer
+try:
+    from .treesitter_analyzer import TreeSitterAnalyzer as ASTAnalyzer
+    AST_ANALYZER_TYPE = "tree-sitter"
+except ImportError:
+    print("Warning: TreeSitter analyzer not available")
+    ASTAnalyzer = None
+    AST_ANALYZER_TYPE = "none"
+
 
 class ProjectAnalyzer:
     """Analyzes project structure to extract design patterns and context"""
@@ -37,6 +46,17 @@ class ProjectAnalyzer:
 
         # Store the main CSS file path for debugging/info purposes
         self.main_css_file_path = None
+        
+        # Initialize AST analyzer
+        if ASTAnalyzer:
+            try:
+                self.ast_analyzer = ASTAnalyzer()
+                print(f"Info: AST analysis initialized using {AST_ANALYZER_TYPE} backend")
+            except Exception as e:
+                print(f"Warning: AST analysis initialization failed: {e}")
+                self.ast_analyzer = None
+        else:
+            self.ast_analyzer = None
 
     def analyze_project(self, project_path: str) -> Dict:
         """Extract design patterns for UI generation"""
@@ -51,6 +71,21 @@ class ProjectAnalyzer:
             "available_imports": self.get_available_imports(project_path),
             "main_css_file": self.main_css_file_path,
         }
+
+        # Add AST analysis if available
+        if self.ast_analyzer:
+            try:
+                print("Info: Running AST analysis...")
+                ast_analysis = self.ast_analyzer.analyze_project(project_path)
+                context["ast_analysis"] = ast_analysis
+                
+                # AST analysis includes component patterns
+                if "components" in ast_analysis:
+                    print(f"Info: Found {len(ast_analysis['components'])} components")
+                    
+            except Exception as e:
+                print(f"Warning: AST analysis failed: {e}")
+                context["ast_analysis"] = {"error": str(e)}
 
         return context
 

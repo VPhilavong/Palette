@@ -29,13 +29,11 @@ fi
 
 # Make scripts executable
 echo "🔧 Making scripts executable..."
-chmod +x palette.py
-chmod +x scripts/quick-clean.sh
-chmod +x scripts/sanitize.py
+chmod +x scripts/lint.sh
 
 # Test basic functionality
 echo "🧪 Testing basic functionality..."
-if python3 palette.py --help > /dev/null 2>&1; then
+if python3 -m palette.cli.main --help > /dev/null 2>&1; then
     echo "✅ CLI working"
 else
     echo "❌ CLI test failed"
@@ -46,5 +44,5 @@ echo "🎉 Setup complete!"
 echo ""
 echo "📋 Next steps:"
 echo "1. Add your API keys to .env file"
-echo "2. Test with: python3 palette.py analyze"
+echo "2. Test with: python3 -m palette.cli.main analyze"
 echo "3. See docs/ for more information"
