@@ -559,20 +559,34 @@ class ProjectAnalyzer:
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             parser_script = os.path.join(script_dir, "utils", "tailwind_parser.js")
 
+            # Convert config_path to absolute path for subprocess
+            abs_config_path = os.path.abspath(config_path)
+            
             # Run the Node.js script to parse the config
             result = subprocess.run(
-                ["node", parser_script, config_path],
+                ["node", parser_script, abs_config_path],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=15,  # Increased timeout for resolveConfig
             )
 
             if result.returncode == 0:
                 try:
                     parsed_config = json.loads(result.stdout)
-                    return parsed_config
-                except json.JSONDecodeError:
-                    print(f"Warning: Failed to parse JSON from tailwind parser")
+                    
+                    # Check if we got a fully resolved config
+                    if parsed_config.get('_resolved', False):
+                        print(f"Info: Successfully resolved full Tailwind theme with defaults")
+                        # Process resolved theme
+                        return self._process_resolved_theme(parsed_config, project_path)
+                    else:
+                        print(f"Info: Using basic Tailwind config parsing (no resolveConfig)")
+                        return parsed_config
+                        
+                except json.JSONDecodeError as e:
+                    print(f"Warning: Failed to parse JSON from tailwind parser: {e}")
+                    print(f"Raw stdout: {result.stdout[:500]}")
+                    print(f"Raw stderr: {result.stderr[:500]}")
                     return {}
             else:
                 print(f"Warning: Tailwind parser failed: {result.stderr}")
@@ -589,6 +603,96 @@ class ProjectAnalyzer:
         except Exception as e:
             print(f"Warning: Error parsing Tailwind config: {e}")
             return {}
+
+    def _process_resolved_theme(self, resolved_config: Dict, project_path: str) -> Dict:
+        """Process a fully resolved Tailwind theme"""
+        
+        # Extract and clean resolved theme data
+        processed_config = {
+            'colors': self._process_resolved_colors(resolved_config.get('colors', {})),
+            'spacing': self._process_resolved_spacing(resolved_config.get('spacing', {})),
+            'fontSize': self._process_resolved_font_sizes(resolved_config.get('fontSize', {})),
+            'fontFamily': self._process_resolved_font_families(resolved_config.get('fontFamily', {})),
+            'fontWeight': resolved_config.get('fontWeight', {}),
+            'borderRadius': resolved_config.get('borderRadius', {}),
+            'boxShadow': resolved_config.get('boxShadow', {}),
+            'screens': resolved_config.get('screens', {}),
+            'lineHeight': resolved_config.get('lineHeight', {}),
+            'letterSpacing': resolved_config.get('letterSpacing', {}),
+            'opacity': resolved_config.get('opacity', {}),
+            'zIndex': resolved_config.get('zIndex', {}),
+            'extend': resolved_config.get('extend', {}),
+            '_resolved': True
+        }
+        
+        print(f"Info: Processed resolved theme with {len(processed_config['colors'])} colors, "
+              f"{len(processed_config['spacing'])} spacing values, "
+              f"{len(processed_config['fontSize'])} font sizes")
+        
+        return processed_config
+
+    def _process_resolved_colors(self, colors: Dict) -> Dict:
+        """Process resolved color values, handling nested structures"""
+        
+        processed_colors = {}
+        
+        for color_name, color_value in colors.items():
+            if isinstance(color_value, dict):
+                # Handle color scales like blue: { 50: '#...', 100: '#...' }
+                processed_colors[color_name] = color_value
+            elif isinstance(color_value, str):
+                # Handle single color values
+                processed_colors[color_name] = color_value
+            else:
+                # Handle functions or other complex values
+                processed_colors[color_name] = str(color_value)
+        
+        return processed_colors
+
+    def _process_resolved_spacing(self, spacing: Dict) -> Dict:
+        """Process resolved spacing values"""
+        
+        processed_spacing = {}
+        
+        for spacing_key, spacing_value in spacing.items():
+            if isinstance(spacing_value, str):
+                processed_spacing[spacing_key] = spacing_value
+            else:
+                processed_spacing[spacing_key] = str(spacing_value)
+        
+        return processed_spacing
+
+    def _process_resolved_font_sizes(self, font_sizes: Dict) -> Dict:
+        """Process resolved font size values"""
+        
+        processed_font_sizes = {}
+        
+        for size_name, size_value in font_sizes.items():
+            if isinstance(size_value, list):
+                # Handle [fontSize, lineHeight] format
+                processed_font_sizes[size_name] = size_value[0] if size_value else size_name
+            elif isinstance(size_value, str):
+                processed_font_sizes[size_name] = size_value
+            else:
+                processed_font_sizes[size_name] = str(size_value)
+        
+        return processed_font_sizes
+
+    def _process_resolved_font_families(self, font_families: Dict) -> Dict:
+        """Process resolved font family values"""
+        
+        processed_font_families = {}
+        
+        for family_name, family_value in font_families.items():
+            if isinstance(family_value, list):
+                # Handle font stack arrays
+                processed_font_families[family_name] = ', '.join(family_value)
+            elif isinstance(family_value, str):
+                processed_font_families[family_name] = family_value
+            else:
+                processed_font_families[family_name] = str(family_value)
+        
+        return processed_font_families
 
     def _parse_css_for_theme(self, project_path: str) -> Dict:
         """Parse CSS files for @theme and @import statements using new pipeline"""
@@ -1471,6 +1575,9 @@ class ProjectAnalyzer:
             "structure": {},  # Full color structure for reference
         }
 
+        # Check if this is a resolved config with full Tailwind defaults
+        is_resolved = tailwind_config.get('_resolved', False)
+
         # First, try to get colors from new structured config
         if "colors" in tailwind_config and tailwind_config["colors"]:
             config_colors = tailwind_config["colors"]
@@ -1481,9 +1588,24 @@ class ProjectAnalyzer:
                 if isinstance(color_value, dict) or isinstance(color_value, str):
                     colors["custom"].append(color_name)
 
-                # All CSS-parsed colors are semantic (single values)
-                if isinstance(color_value, str):
-                    colors["semantic"].append(color_name)
+                # For resolved configs, distinguish between default Tailwind colors and custom ones
+                if is_resolved:
+                    # Common Tailwind default colors
+                    default_colors = {
+                        'inherit', 'current', 'transparent', 'black', 'white',
+                        'slate', 'gray', 'zinc', 'neutral', 'stone',
+                        'red', 'orange', 'amber', 'yellow', 'lime', 'green',
+                        'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo',
+                        'violet', 'purple', 'fuchsia', 'pink', 'rose'
+                    }
+                    
+                    # Only add to semantic if it's not a default Tailwind color
+                    if color_name not in default_colors:
+                        colors["semantic"].append(color_name)
+                else:
+                    # All CSS-parsed colors are semantic (single values)
+                    if isinstance(color_value, str):
+                        colors["semantic"].append(color_name)
 
         # Get extended colors (most important for custom themes)
         if "extend" in tailwind_config and "colors" in tailwind_config["extend"]:
@@ -1494,16 +1616,27 @@ class ProjectAnalyzer:
                 if color_name not in colors["custom"]:
                     colors["custom"].append(color_name)
 
-                # All CSS-parsed colors are semantic (single values)
-                if isinstance(color_value, str):
+                # Extended colors are usually custom semantic colors
+                if color_name not in colors["semantic"]:
                     colors["semantic"].append(color_name)
 
-        # Debug: Print what we found in the structured config (remove in production)
-        # print(f"Debug: tailwind_config keys: {list(tailwind_config.keys())}")
-        # if 'colors' in tailwind_config:
-        #     print(f"Debug: colors in config: {tailwind_config['colors']}")
-        # if 'extend' in tailwind_config and 'colors' in tailwind_config['extend']:
-        #     print(f"Debug: extended colors: {tailwind_config['extend']['colors']}")
+        # For resolved configs, extract the most commonly used colors
+        if is_resolved and len(colors["custom"]) > 20:
+            # Filter to most useful colors for UI generation
+            priority_colors = []
+            
+            # Add semantic colors first
+            priority_colors.extend(colors["semantic"][:10])
+            
+            # Add common color scales
+            common_scales = ['blue', 'gray', 'green', 'red', 'yellow', 'purple', 'indigo']
+            for scale in common_scales:
+                if scale in colors["custom"] and scale not in priority_colors:
+                    priority_colors.append(scale)
+                    if len(priority_colors) >= 15:
+                        break
+            
+            colors["custom"] = priority_colors
 
         # Fallback to component-based extraction if no colors found
         if not colors["custom"]:
@@ -1521,6 +1654,7 @@ class ProjectAnalyzer:
 
         print(
             f"Info: Found {len(colors['custom'])} custom colors, {len(colors['semantic'])} semantic colors"
+            f" (resolved: {is_resolved})"
         )
 
         return colors
