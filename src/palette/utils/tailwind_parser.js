@@ -14,6 +14,35 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Function to try importing resolveConfig from different locations
+function tryImportResolveConfig(configPath) {
+    // Try from the config's directory first
+    const configDir = path.dirname(path.resolve(configPath));
+    const projectPaths = [
+        // Try from project's node_modules
+        path.join(configDir, 'node_modules', 'tailwindcss', 'resolveConfig'),
+        // Try from parent directories (in case config is in subdirectory)
+        path.join(configDir, '..', 'node_modules', 'tailwindcss', 'resolveConfig'),
+        // Try relative to current working directory
+        path.join(process.cwd(), 'node_modules', 'tailwindcss', 'resolveConfig'),
+        // Try global
+        'tailwindcss/resolveConfig',
+    ];
+    
+    for (const modulePath of projectPaths) {
+        try {
+            const resolveConfig = require(modulePath);
+            console.error(`Info: Found resolveConfig at ${modulePath}`);
+            return resolveConfig;
+        } catch (e) {
+            // Continue to next path
+        }
+    }
+    
+    console.error('Warning: Could not find tailwindcss/resolveConfig in any location');
+    return null;
+}
+
 async function parseConfig(configPath) {
     try {
         // Check if config file exists
@@ -39,10 +68,48 @@ async function parseConfig(configPath) {
             config = config.default;
         }
         
-        // Extract theme from config
+        // Try to get resolveConfig for this specific project
+        const resolveConfig = tryImportResolveConfig(configPath);
+        
+        // If we have tailwindcss available, resolve the full config with defaults
+        if (resolveConfig && config) {
+            try {
+                const resolvedConfig = resolveConfig(config);
+                const resolvedTheme = resolvedConfig.theme || {};
+                
+                return {
+                    colors: resolvedTheme.colors || {},
+                    spacing: resolvedTheme.spacing || {},
+                    fontSize: resolvedTheme.fontSize || {},
+                    fontFamily: resolvedTheme.fontFamily || {},
+                    fontWeight: resolvedTheme.fontWeight || {},
+                    borderRadius: resolvedTheme.borderRadius || {},
+                    boxShadow: resolvedTheme.boxShadow || {},
+                    screens: resolvedTheme.screens || {},
+                    extend: config.theme?.extend || {},
+                    // Add some additional useful theme properties
+                    lineHeight: resolvedTheme.lineHeight || {},
+                    letterSpacing: resolvedTheme.letterSpacing || {},
+                    maxWidth: resolvedTheme.maxWidth || {},
+                    minWidth: resolvedTheme.minWidth || {},
+                    zIndex: resolvedTheme.zIndex || {},
+                    opacity: resolvedTheme.opacity || {},
+                    scale: resolvedTheme.scale || {},
+                    rotate: resolvedTheme.rotate || {},
+                    translate: resolvedTheme.translate || {},
+                    // Flag to indicate this was fully resolved
+                    _resolved: true
+                };
+            } catch (resolveError) {
+                console.error('Warning: Could not resolve full Tailwind config:', resolveError.message);
+                // Fall back to basic extraction
+            }
+        }
+        
+        // Fallback: Extract theme from config without full resolution
         const theme = config.theme || {};
         
-        // Return the theme object with default Tailwind values merged
+        // Return the theme object with basic structure
         return {
             colors: theme.colors || {},
             spacing: theme.spacing || {},
@@ -52,7 +119,8 @@ async function parseConfig(configPath) {
             borderRadius: theme.borderRadius || {},
             boxShadow: theme.boxShadow || {},
             screens: theme.screens || {},
-            extend: theme.extend || {}
+            extend: theme.extend || {},
+            _resolved: false
         };
         
     } catch (error) {
@@ -67,7 +135,8 @@ async function parseConfig(configPath) {
             borderRadius: {},
             boxShadow: {},
             screens: {},
-            extend: {}
+            extend: {},
+            _resolved: false
         };
     }
 }
@@ -191,7 +260,8 @@ async function main() {
             borderRadius: {},
             boxShadow: {},
             screens: {},
-            extend: {}
+            extend: {},
+            _resolved: false
         }));
     }
 }
