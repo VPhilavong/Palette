@@ -31,7 +31,10 @@ def main():
 @click.option(
     "--model", default=None, help="LLM model to use (defaults to OPENAI_MODEL env var)"
 )
-def generate(prompt: str, preview: bool, output: Optional[str], model: str):
+@click.option(
+    "--enhanced/--basic", default=True, help="Use enhanced prompt engineering with project analysis"
+)
+def generate(prompt: str, preview: bool, output: Optional[str], model: str, enhanced: bool):
     """Generate a React component from a natural language prompt"""
 
     console.print(
@@ -51,8 +54,8 @@ def generate(prompt: str, preview: bool, output: Optional[str], model: str):
             f"[green]✓[/green] Detected {context['framework']} project with {context['styling']}"
         )
 
-        # Generate component
-        generator = UIGenerator(model=model)
+        # Generate component with enhanced or basic mode
+        generator = UIGenerator(model=model, project_path=os.getcwd(), enhanced_mode=enhanced)
         component_code = generator.generate_component(prompt, context)
 
         console.print("[yellow]Formatting and linting code...[/yellow]")

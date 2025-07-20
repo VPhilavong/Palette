@@ -7,15 +7,27 @@ import anthropic
 from openai import OpenAI
 
 from .prompts import UIPromptBuilder
+from .enhanced_prompts import EnhancedPromptBuilder
 
 
 class UIGenerator:
     """Core UI generation logic using LLM APIs"""
 
-    def __init__(self, model: str = None):
+    def __init__(self, model: str = None, project_path: str = None, enhanced_mode: bool = True):
         # Use environment variable or provided model or fallback
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.prompt_builder = UIPromptBuilder()
+        
+        # Initialize prompt builder (enhanced or basic)
+        if enhanced_mode and project_path:
+            try:
+                self.prompt_builder = EnhancedPromptBuilder()
+                self.prompt_builder.initialize_project_analysis(project_path)
+                print("✅ Enhanced prompt engineering enabled with project analysis")
+            except Exception as e:
+                print(f"⚠️ Enhanced mode failed, falling back to basic: {e}")
+                self.prompt_builder = UIPromptBuilder()
+        else:
+            self.prompt_builder = UIPromptBuilder()
 
         # Initialize API clients
         self.openai_client = None
@@ -32,9 +44,15 @@ class UIGenerator:
     def generate_component(self, prompt: str, context: Dict) -> str:
         """Generate a React component from a prompt and project context"""
 
-        # Build UI-focused system prompt
-        system_prompt = self.prompt_builder.build_ui_system_prompt(context)
-        user_prompt = self.prompt_builder.build_user_prompt(prompt, context)
+        # Build prompts using enhanced or basic builder
+        if isinstance(self.prompt_builder, EnhancedPromptBuilder):
+            # Use enhanced prompts with few-shot learning and RAG
+            system_prompt = self.prompt_builder.build_enhanced_system_prompt(context, prompt)
+            user_prompt = self.prompt_builder.build_rag_enhanced_user_prompt(prompt, context)
+        else:
+            # Use basic prompts
+            system_prompt = self.prompt_builder.build_ui_system_prompt(context)
+            user_prompt = self.prompt_builder.build_user_prompt(prompt, context)
 
         # Choose API based on model
         if self.model.startswith("gpt"):
