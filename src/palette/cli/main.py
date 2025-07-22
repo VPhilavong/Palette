@@ -34,7 +34,10 @@ def main():
 @click.option(
     "--enhanced/--basic", default=True, help="Use enhanced prompt engineering with project analysis"
 )
-def generate(prompt: str, preview: bool, output: Optional[str], model: str, enhanced: bool):
+@click.option(
+    "--qa/--no-qa", default=True, help="Enable quality assurance with auto-fixing"
+)
+def generate(prompt: str, preview: bool, output: Optional[str], model: str, enhanced: bool, qa: bool):
     """Generate a React component from a natural language prompt"""
 
     console.print(
@@ -54,14 +57,33 @@ def generate(prompt: str, preview: bool, output: Optional[str], model: str, enha
             f"[green]✓[/green] Detected {context['framework']} project with {context['styling']}"
         )
 
-        # Generate component with enhanced or basic mode
-        generator = UIGenerator(model=model, project_path=os.getcwd(), enhanced_mode=enhanced)
-        component_code = generator.generate_component(prompt, context)
-
-        console.print("[yellow]Formatting and linting code...[/yellow]")
-
-        # Format and lint the generated code
-        formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
+        # Generate component with enhanced mode and QA
+        generator = UIGenerator(
+            model=model, 
+            project_path=os.getcwd(), 
+            enhanced_mode=enhanced,
+            quality_assurance=qa
+        )
+        
+        if qa:
+            # Use QA-enabled generation
+            component_code, quality_report = generator.generate_component_with_qa(prompt, context)
+            
+            # QA includes formatting, so use the refined code directly
+            formatted_code = component_code
+            
+            # Show quality summary
+            if quality_report.score < 85:
+                console.print(f"[yellow]⚠️ Quality score: {quality_report.score:.1f}/100 (below 85)[/yellow]")
+            else:
+                console.print(f"[green]✅ Quality score: {quality_report.score:.1f}/100[/green]")
+        else:
+            # Use basic generation without QA
+            component_code = generator.generate_component(prompt, context)
+            
+            console.print("[yellow]Formatting and linting code...[/yellow]")
+            # Format and lint the generated code
+            formatted_code = generator.format_and_lint_code(component_code, os.getcwd())
 
         if preview:
             console.print(

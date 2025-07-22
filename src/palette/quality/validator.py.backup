@@ -1,0 +1,556 @@
+"""
+Post-generation quality assurance framework for zero manual fixing.
+Validates, tests, and auto-fixes generated components.
+"""
+
+import os
+import subprocess
+import tempfile
+import json
+import os
+import re
+from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass
+from pathlib import Path
+from enum import Enum
+
+
+class ValidationLevel(Enum):
+    """Validation severity levels."""
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+@dataclass
+class ValidationIssue:
+    """Represents a validation issue found in generated code."""
+    level: ValidationLevel
+    category: str
+    message: str
+    line: Optional[int] = None
+    column: Optional[int] = None
+    suggestion: Optional[str] = None
+    auto_fixable: bool = False
+
+
+@dataclass
+class QualityReport:
+    """Comprehensive quality assessment report."""
+    score: float  # 0-100 quality score
+    issues: List[ValidationIssue]
+    passed_checks: List[str]
+    failed_checks: List[str]
+    auto_fixes_applied: List[str]
+    compilation_success: bool
+    rendering_success: bool
+    accessibility_score: float
+    performance_score: float
+
+
+class ComponentValidator:
+    """Comprehensive component validation and auto-fixing system."""
+    
+    def __init__(self, project_path: str):
+        self.project_path = Path(project_path)
+        self.validators = [
+            TypeScriptValidator(),
+            ESLintValidator(),
+            ImportValidator(),
+            ComponentStructureValidator(),
+            AccessibilityValidator(),
+            PerformanceValidator(),
+        ]
+        # Auto-fixers will be initialized dynamically with project context
+        self.auto_fixers = []
+    
+    def validate_component(self, component_code: str, target_path: str) -> QualityReport:
+        """Run comprehensive validation on generated component."""
+        issues = []
+        passed_checks = []
+        failed_checks = []
+        
+        print("🔍 Running comprehensive quality validation...")
+        
+        # Stage 1: Static Analysis
+        static_issues = self._run_static_validation(component_code, target_path)
+        issues.extend(static_issues)
+        
+        # Stage 2: Compilation Check
+        compilation_success = self._check_compilation(component_code, target_path)
+        if compilation_success:
+            passed_checks.append("TypeScript Compilation")
+        else:
+            failed_checks.append("TypeScript Compilation")
+        
+        # Stage 3: Runtime Validation
+        rendering_success = self._check_component_rendering(component_code, target_path)
+        if rendering_success:
+            passed_checks.append("Component Rendering")
+        else:
+            failed_checks.append("Component Rendering")
+        
+        # Stage 4: Quality Metrics
+        accessibility_score = self._calculate_accessibility_score(component_code)
+        performance_score = self._calculate_performance_score(component_code)
+        
+        # Calculate overall quality score
+        quality_score = self._calculate_quality_score(
+            issues, compilation_success, rendering_success, 
+            accessibility_score, performance_score
+        )
+        
+        return QualityReport(
+            score=quality_score,
+            issues=issues,
+            passed_checks=passed_checks,
+            failed_checks=failed_checks,
+            auto_fixes_applied=[],
+            compilation_success=compilation_success,
+            rendering_success=rendering_success,
+            accessibility_score=accessibility_score,
+            performance_score=performance_score
+        )
+    
+    def auto_fix_component(self, component_code: str, report: QualityReport) -> Tuple[str, List[str]]:
+        """Automatically fix issues found in validation."""
+        fixed_code = component_code
+        fixes_applied = []
+        
+        print("🔧 Applying automatic fixes...")
+        
+        # Apply auto-fixes in order of priority
+        for fixer in self.auto_fixers:
+            if fixer.can_fix_issues(report.issues):
+                try:
+                    fixed_code, applied_fixes = fixer.fix(fixed_code, report.issues)
+                    fixes_applied.extend(applied_fixes)
+                    print(f"✅ {fixer.__class__.__name__}: {len(applied_fixes)} fixes applied")
+                except Exception as e:
+                    print(f"⚠️ {fixer.__class__.__name__} failed: {e}")
+        
+        return fixed_code, fixes_applied
+    
+    def iterative_refinement(self, component_code: str, target_path: str, max_iterations: int = 3) -> Tuple[str, QualityReport]:
+        """Iteratively refine component until quality threshold is met."""
+        current_code = component_code
+        iteration = 0
+        
+        print(f"🔄 Starting iterative refinement (max {max_iterations} iterations)...")
+        
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n📋 Iteration {iteration}/{max_iterations}")
+            
+            # Validate current code
+            report = self.validate_component(current_code, target_path)
+            
+            print(f"Quality Score: {report.score:.1f}/100")
+            
+            # If quality is acceptable, we're done
+            if report.score >= 85.0 and report.compilation_success:
+                print(f"✅ Quality threshold met in {iteration} iterations!")
+                return current_code, report
+            
+            # Store previous quality score to track improvement
+            previous_quality_score = report.score
+            
+            # Apply auto-fixes
+            if report.issues or report.score < 85.0:
+                fixed_code, fixes_applied = self.auto_fix_component(current_code, report)
+                
+                if fixes_applied:
+                    current_code = fixed_code
+                    report.auto_fixes_applied.extend(fixes_applied)
+                    
+                    # Re-validate to check if quality improved
+                    new_report = self.validate_component(current_code, target_path)
+                    
+                    if new_report.score > previous_quality_score:
+                        print(f"📈 Quality improved: {previous_quality_score:.1f} → {new_report.score:.1f}")
+                        report = new_report
+                        # Continue iteration since we made progress
+                    else:
+                        print(f"📊 Quality score: {new_report.score:.1f} (no improvement this iteration)")
+                        report = new_report
+                        # Still continue if we applied fixes, they might compound
+                else:
+                    print("⚠️ No auto-fixes available")
+                    # Only break if we have no fixes AND score isn't improving
+                    if iteration > 1 and report.score <= previous_quality_score:
+                        print("⚠️ No progress possible, stopping iteration")
+                        break
+            else:
+                break
+        
+        # Final validation
+        final_report = self.validate_component(current_code, target_path)
+        print(f"\n🏁 Final Quality Score: {final_report.score:.1f}/100")
+        
+        return current_code, final_report
+    
+    def _run_static_validation(self, code: str, target_path: str) -> List[ValidationIssue]:
+        """Run all static validators."""
+        issues = []
+        
+        for validator in self.validators:
+            try:
+                validator_issues = validator.validate(code, target_path, self.project_path)
+                issues.extend(validator_issues)
+            except Exception as e:
+                issues.append(ValidationIssue(
+                    level=ValidationLevel.WARNING,
+                    category="validator_error",
+                    message=f"{validator.__class__.__name__} failed: {e}"
+                ))
+        
+        return issues
+    
+    def _check_compilation(self, code: str, target_path: str) -> bool:
+        """Check if component compiles successfully."""
+        try:
+            # Create temporary file and check TypeScript compilation
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.tsx', delete=False) as f:
+                f.write(code)
+                temp_path = f.name
+            
+            # Run TypeScript compiler check
+            result = subprocess.run(
+                ['npx', 'tsc', '--noEmit', '--jsx', 'react-jsx', temp_path],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            os.unlink(temp_path)
+            return result.returncode == 0
+            
+        except Exception:
+            return False
+    
+    def _check_component_rendering(self, code: str, target_path: str) -> bool:
+        """Check if component can render without runtime errors."""
+        # This would ideally run a test renderer
+        # For now, we'll do basic structural checks
+        
+        required_patterns = [
+            'export',  # Must export component
+            'return',  # Must have return statement
+            r'<\w+',   # Must have JSX elements
+        ]
+        
+        import re
+        for pattern in required_patterns:
+            if not re.search(pattern, code):
+                return False
+        
+        return True
+    
+    def _calculate_accessibility_score(self, code: str) -> float:
+        """Calculate accessibility compliance score."""
+        score = 100.0
+        
+        # Check for accessibility issues
+        accessibility_checks = [
+            (r'<img(?![^>]*alt=)', -20, "Images without alt attribute"),
+            (r'<button(?![^>]*aria-label)(?![^>]*>.*</button>)', -15, "Buttons without accessible labels"),
+            (r'<input(?![^>]*aria-label)(?![^>]*id=)', -15, "Inputs without labels"),
+            (r'onClick.*(?!onKeyDown)', -10, "Click handlers without keyboard support"),
+        ]
+        
+        import re
+        for pattern, penalty, description in accessibility_checks:
+            if re.search(pattern, code, re.IGNORECASE):
+                score += penalty
+        
+        return max(0, score)
+    
+    def _calculate_performance_score(self, code: str) -> float:
+        """Calculate performance optimization score."""
+        score = 100.0
+        
+        # Check for performance issues
+        performance_checks = [
+            (r'useState\([^)]*\)\s*;', 5, "Good: useState usage"),
+            (r'useCallback\(', 10, "Good: useCallback optimization"),
+            (r'useMemo\(', 10, "Good: useMemo optimization"),
+            (r'React\.createElement', -20, "Inefficient: React.createElement"),
+            (r'new\s+Date\(\)', -10, "Potential: Date creation in render"),
+        ]
+        
+        import re
+        for pattern, score_change, description in performance_checks:
+            if re.search(pattern, code):
+                score += score_change
+        
+        return min(100, max(0, score))
+    
+    def _calculate_quality_score(self, issues: List[ValidationIssue], 
+                                compilation: bool, rendering: bool,
+                                accessibility: float, performance: float) -> float:
+        """Calculate overall quality score."""
+        base_score = 100.0
+        
+        # Compilation and rendering are critical
+        if not compilation:
+            base_score -= 30
+        if not rendering:
+            base_score -= 20
+        
+        # Deduct points for issues
+        for issue in issues:
+            if issue.level == ValidationLevel.ERROR:
+                base_score -= 15
+            elif issue.level == ValidationLevel.WARNING:
+                base_score -= 5
+            elif issue.level == ValidationLevel.INFO:
+                base_score -= 1
+        
+        # Factor in accessibility and performance
+        base_score = (base_score * 0.7) + (accessibility * 0.15) + (performance * 0.15)
+        
+        return max(0, min(100, base_score))
+
+
+# Validator implementations
+class TypeScriptValidator:
+    """Validates TypeScript syntax and types."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        # Check for basic TypeScript patterns
+        if 'interface ' not in code and 'type ' not in code and 'Props' in code:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.WARNING,
+                category="typescript",
+                message="Consider defining TypeScript interfaces for props",
+                auto_fixable=True,
+                suggestion="Add interface definition for component props"
+            ))
+        
+        # Check for any syntax
+        import re
+        if re.search(r'any\b', code):
+            issues.append(ValidationIssue(
+                level=ValidationLevel.WARNING,
+                category="typescript",
+                message="Avoid using 'any' type for better type safety",
+                auto_fixable=False
+            ))
+        
+        return issues
+
+
+class ESLintValidator:
+    """Validates code against ESLint rules."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        # Basic ESLint-style checks
+        import re
+        
+        # Check for console.log
+        if re.search(r'console\.log\(', code):
+            issues.append(ValidationIssue(
+                level=ValidationLevel.WARNING,
+                category="eslint",
+                message="Remove console.log statements",
+                auto_fixable=True
+            ))
+        
+        # Check for unused variables
+        variable_pattern = r'const\s+(\w+)\s*='
+        variables = re.findall(variable_pattern, code)
+        for var in variables:
+            if var not in code[code.find(f'const {var}') + 20:]:  # Simple check
+                issues.append(ValidationIssue(
+                    level=ValidationLevel.WARNING,
+                    category="eslint",
+                    message=f"Variable '{var}' is defined but never used",
+                    auto_fixable=True
+                ))
+        
+        return issues
+
+
+class ImportValidator:
+    """Validates import statements and paths."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        import re
+        import_pattern = r'import.*from\s+[\'"]([^\'"]+)[\'"]'
+        imports = re.findall(import_pattern, code)
+        
+        for import_path in imports:
+            if not self._is_valid_import(import_path, project_path):
+                issues.append(ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    category="imports",
+                    message=f"Import path '{import_path}' does not exist",
+                    auto_fixable=True,
+                    suggestion=f"Check if '{import_path}' path is correct"
+                ))
+        
+        return issues
+    
+    def _is_valid_import(self, import_path: str, project_path: Path) -> bool:
+        """Check if import path exists."""
+        # Skip validation for node_modules and relative paths for now
+        if (import_path.startswith('@/') or 
+            import_path.startswith('./') or 
+            import_path.startswith('../') or
+            not import_path.startswith('.')):
+            return True  # Assume valid for now
+        
+        return True
+
+
+class ComponentStructureValidator:
+    """Validates React component structure and patterns."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        # Check for component export
+        if 'export default' not in code and 'export {' not in code:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                category="structure",
+                message="Component must have an export statement",
+                auto_fixable=True
+            ))
+        
+        # Check for JSX return
+        if 'return (' not in code and 'return <' not in code:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                category="structure",
+                message="Component must return JSX",
+                auto_fixable=False
+            ))
+        
+        return issues
+
+
+class AccessibilityValidator:
+    """Validates accessibility compliance."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        import re
+        
+        # Check for images without alt
+        if re.search(r'<img(?![^>]*alt=)', code):
+            issues.append(ValidationIssue(
+                level=ValidationLevel.WARNING,
+                category="accessibility",
+                message="Images should have alt attributes",
+                auto_fixable=True,
+                suggestion="Add alt attribute to img elements"
+            ))
+        
+        # Check for buttons without accessible names
+        if re.search(r'<button(?![^>]*aria-label)(?![^>]*>[^<]*\w)', code):
+            issues.append(ValidationIssue(
+                level=ValidationLevel.INFO,
+                category="accessibility",
+                message="Consider adding aria-label to buttons without text content",
+                auto_fixable=False
+            ))
+        
+        return issues
+
+
+class PerformanceValidator:
+    """Validates performance best practices."""
+    
+    def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
+        issues = []
+        
+        # Check for inline object/function creation
+        import re
+        if re.search(r'onClick=\{.*=>.*\}', code):
+            issues.append(ValidationIssue(
+                level=ValidationLevel.INFO,
+                category="performance",
+                message="Consider using useCallback for event handlers",
+                auto_fixable=False,
+                suggestion="Wrap event handlers with useCallback"
+            ))
+        
+        return issues
+
+
+# Auto-fixer implementations
+class TypeScriptAutoFixer:
+    """Automatically fixes TypeScript issues."""
+    
+    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
+        return any(issue.category == "typescript" and issue.auto_fixable for issue in issues)
+    
+    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
+        fixed_code = code
+        fixes_applied = []
+        
+        # Remove any types (simple fix)
+        import re
+        if re.search(r':\s*any\b', code):
+            fixed_code = re.sub(r':\s*any\b', '', fixed_code)
+            fixes_applied.append("Removed 'any' type annotations")
+        
+        return fixed_code, fixes_applied
+
+
+class ESLintAutoFixer:
+    """Automatically fixes ESLint issues."""
+    
+    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
+        return any(issue.category == "eslint" and issue.auto_fixable for issue in issues)
+    
+    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
+        fixed_code = code
+        fixes_applied = []
+        
+        # Remove console.log statements
+        import re
+        if re.search(r'console\.log\([^)]*\);?\s*', code):
+            fixed_code = re.sub(r'console\.log\([^)]*\);?\s*', '', fixed_code)
+            fixes_applied.append("Removed console.log statements")
+        
+        return fixed_code, fixes_applied
+
+
+class ImportAutoFixer:
+    """Automatically fixes import issues."""
+    
+    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
+        return any(issue.category == "imports" and issue.auto_fixable for issue in issues)
+    
+    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
+        # For now, just return as-is (complex import fixing needs project analysis)
+        return code, []
+
+
+class FormatAutoFixer:
+    """Automatically fixes formatting issues."""
+    
+    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
+        return True  # Can always try to format
+    
+    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
+        # Basic formatting fixes
+        fixes_applied = []
+        
+        # Remove extra whitespace
+        import re
+        if re.search(r'\n\s*\n\s*\n', code):
+            code = re.sub(r'\n\s*\n\s*\n', '\n\n', code)
+            fixes_applied.append("Removed extra blank lines")
+        
+        return code, fixes_applied

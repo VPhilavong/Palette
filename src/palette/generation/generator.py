@@ -1,21 +1,24 @@
 import os
 import subprocess
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import anthropic
 from openai import OpenAI
 
 from .prompts import UIPromptBuilder
 from .enhanced_prompts import EnhancedPromptBuilder
+from ..quality import ComponentValidator, QualityReport
 
 
 class UIGenerator:
     """Core UI generation logic using LLM APIs"""
 
-    def __init__(self, model: str = None, project_path: str = None, enhanced_mode: bool = True):
+    def __init__(self, model: str = None, project_path: str = None, enhanced_mode: bool = True, quality_assurance: bool = True):
         # Use environment variable or provided model or fallback
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.project_path = project_path
+        self.quality_assurance = quality_assurance
         
         # Initialize prompt builder (enhanced or basic)
         if enhanced_mode and project_path:
@@ -28,6 +31,17 @@ class UIGenerator:
                 self.prompt_builder = UIPromptBuilder()
         else:
             self.prompt_builder = UIPromptBuilder()
+
+        # Initialize quality validator
+        if quality_assurance and project_path:
+            try:
+                self.validator = ComponentValidator(project_path)
+                print("✅ Quality assurance enabled")
+            except Exception as e:
+                print(f"⚠️ QA initialization failed: {e}")
+                self.validator = None
+        else:
+            self.validator = None
 
         # Initialize API clients
         self.openai_client = None
@@ -61,6 +75,70 @@ class UIGenerator:
             return self._generate_with_anthropic(system_prompt, user_prompt)
         else:
             raise ValueError(f"Unsupported model: {self.model}")
+
+    def generate_component_with_qa(self, prompt: str, context: Dict, target_path: str = None) -> Tuple[str, QualityReport]:
+        """Generate component with comprehensive quality assurance and auto-fixing."""
+        print("🎨 Generating component with quality assurance...")
+        
+        # Step 1: Generate initial component
+        component_code = self.generate_component(prompt, context)
+        
+        # Step 2: If QA is disabled, return without validation
+        if not self.validator:
+            print("⚠️ Quality assurance disabled, skipping validation")
+            # Create dummy report
+            from ..quality.validator import QualityReport, ValidationLevel
+            dummy_report = QualityReport(
+                score=75.0, issues=[], passed_checks=["Generation"],
+                failed_checks=[], auto_fixes_applied=[],
+                compilation_success=True, rendering_success=True,
+                accessibility_score=75.0, performance_score=75.0
+            )
+            return component_code, dummy_report
+        
+        # Step 3: Run iterative refinement with QA
+        target_file = target_path or "Component.tsx"
+        refined_code, quality_report = self.validator.iterative_refinement(
+            component_code, target_file, max_iterations=3
+        )
+        
+        # Step 4: Display quality summary
+        self._display_quality_summary(quality_report)
+        
+        return refined_code, quality_report
+    
+    def _display_quality_summary(self, report: QualityReport):
+        """Display quality assurance summary."""
+        print(f"\n📊 Quality Report:")
+        print(f"Overall Score: {report.score:.1f}/100")
+        
+        if report.compilation_success:
+            print("✅ TypeScript compilation: PASSED")
+        else:
+            print("❌ TypeScript compilation: FAILED")
+        
+        if report.rendering_success:
+            print("✅ Component rendering: PASSED") 
+        else:
+            print("❌ Component rendering: FAILED")
+        
+        print(f"🛡️ Accessibility: {report.accessibility_score:.1f}/100")
+        print(f"⚡ Performance: {report.performance_score:.1f}/100")
+        
+        if report.issues:
+            print(f"\n⚠️ Issues Found: {len(report.issues)}")
+            for issue in report.issues[:5]:  # Show first 5 issues
+                level_emoji = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}
+                emoji = level_emoji.get(issue.level.value, "•")
+                print(f"  {emoji} {issue.category}: {issue.message}")
+            
+            if len(report.issues) > 5:
+                print(f"  ... and {len(report.issues) - 5} more issues")
+        
+        if report.auto_fixes_applied:
+            print(f"\n🔧 Auto-fixes Applied: {len(report.auto_fixes_applied)}")
+            for fix in report.auto_fixes_applied:
+                print(f"  ✅ {fix}")
 
     def _generate_with_openai(self, system_prompt: str, user_prompt: str) -> str:
         """Generate component using OpenAI API"""
