@@ -1,589 +1,787 @@
-from typing import Dict
+# Complete UI/UX AI Copilot System
+# This is a comprehensive system for prompt-to-production UI/UX code generation
+
+from typing import Dict, List, Tuple, Optional, Union
+import re
+from dataclasses import dataclass
+from enum import Enum
 
 
-class UIPromptBuilder:
-    """Builds UI-focused system prompts for LLM generation"""
+class FrameworkType(Enum):
+    """Supported frontend frameworks"""
+    REACT = "react"
+    NEXTJS = "next.js"
+    REMIX = "remix"
+    VITE_REACT = "vite"
 
-    def build_ui_system_prompt(self, context: Dict) -> str:
-        """Build comprehensive UI-focused system prompt with dynamic content"""
 
-        framework = context.get("framework", "react")
-        styling = context.get("styling", "tailwind")
-        component_library = context.get("component_library", "none")
+class StylingLibrary(Enum):
+    """Supported styling libraries"""
+    TAILWIND = "tailwind"
+    STYLED_COMPONENTS = "styled-components"
+    EMOTION = "emotion"
+    CSS_MODULES = "css-modules"
+    SASS = "sass"
+    VANILLA_CSS = "css"
+    STITCHES = "stitches"
+    PANDA_CSS = "panda-css"
+    UNO_CSS = "uno-css"
+
+
+class ComponentLibrary(Enum):
+    """Supported component libraries"""
+    SHADCN_UI = "shadcn/ui"
+    MATERIAL_UI = "material-ui"
+    CHAKRA_UI = "chakra-ui"
+    ANT_DESIGN = "ant-design"
+    HEADLESS_UI = "headless-ui"
+    RADIX_UI = "radix-ui"
+    MANTINE = "mantine"
+    NONE = "none"
+
+
+class GenerationType(Enum):
+    """Types of generation modes"""
+    SINGLE_COMPONENT = "single"
+    MULTI_FILE_COMPONENT = "multi"
+    PAGE = "page"
+    FULL_FEATURE = "feature"
+    EDIT_FILE = "edit"
+    UTILS = "utils"
+    HOOKS = "hooks"
+    CONTEXT = "context"
+    STORE = "store"
+
+
+@dataclass
+class GenerationRequest:
+    """Represents a UI/UX generation request"""
+    prompt: str
+    generation_type: GenerationType
+    framework: FrameworkType
+    styling: StylingLibrary
+    component_library: ComponentLibrary
+    target_files: Optional[List[str]] = None
+    edit_mode: Optional[str] = None  # 'add', 'modify', 'refactor', 'enhance'
+    include_tests: bool = True
+    include_storybook: bool = False
+    responsive: bool = True
+    accessibility_level: str = "aa"  # 'a', 'aa', 'aaa'
+
+
+class UIUXCopilotPromptBuilder:
+    """Advanced prompt builder for comprehensive UI/UX code generation"""
+    
+    def __init__(self):
+        self.styling_patterns = self._load_styling_patterns()
+        self.framework_patterns = self._load_framework_patterns()
+        self.utility_patterns = self._load_utility_patterns()
+    
+    def build_generation_prompt(self, request: GenerationRequest, context: Dict) -> str:
+        """Build a comprehensive prompt based on the generation request"""
+        
+        # Extract design tokens and project info
         design_tokens = context.get("design_tokens", {})
-
-        # Enhanced design token extraction
-        colors = design_tokens.get("colors", ["blue", "gray", "green"])
-        semantic_colors = design_tokens.get("semantic_colors", [])
-        color_structure = design_tokens.get("color_structure", {})
-        spacing = design_tokens.get("spacing", ["4", "8", "16"])
-        typography = design_tokens.get("typography", ["sm", "base", "lg"])
-        shadows = design_tokens.get("shadows", ["sm", "md", "lg"])
-        border_radius = design_tokens.get("border_radius", ["sm", "md", "lg"])
-
-        # Build enhanced design system section
-        design_system_section = self._build_design_system_section(
-            framework,
-            styling,
-            component_library,
-            colors,
-            semantic_colors,
-            color_structure,
-            spacing,
-            typography,
-            shadows,
-            border_radius,
-        )
-
-        # Get available imports for validation
+        project_structure = context.get("project_structure", {})
         available_imports = context.get("available_imports", {})
-        import_rules = self._build_import_rules(available_imports)
+        ast_analysis = context.get("ast_analysis", {})
+        
+        # Build the base system prompt
+        base_prompt = self._build_base_prompt(request, design_tokens)
+        
+        # Add framework-specific instructions
+        framework_prompt = self._build_framework_instructions(request.framework, project_structure)
+        
+        # Add styling-specific instructions
+        styling_prompt = self._build_styling_instructions(request.styling, design_tokens)
+        
+        # Add component library instructions
+        library_prompt = self._build_library_instructions(request.component_library, available_imports)
+        
+        # Add generation type specific instructions
+        generation_prompt = self._build_generation_instructions(request.generation_type, request)
+        
+        # Add utility instructions
+        utility_prompt = self._build_utility_instructions(request)
+        
+        # Combine all prompts
+        full_prompt = f"""{base_prompt}
 
-        prompt = f"""You are a UI/UX expert specializing in React + Tailwind CSS component generation.
+{framework_prompt}
 
-{design_system_section}
+{styling_prompt}
 
-{import_rules}
+{library_prompt}
 
-UI GENERATION REQUIREMENTS:
-1. Create modern, responsive React components using TypeScript
-2. Use advanced Tailwind patterns (group-hover, peer, arbitrary values, modern utilities)
-3. Mobile-first responsive design (sm:, md:, lg:, xl:, 2xl:)
-4. Include proper TypeScript interfaces with variant systems
-5. Add hover states, focus states, and micro-interactions
-6. Follow accessibility best practices (ARIA labels, proper contrast, keyboard navigation)
-7. Match existing design patterns from this project
-8. Include proper error and loading states where applicable
-9. Use semantic HTML elements
-10. Implement proper component composition patterns
+{generation_prompt}
 
-DESIGN TRENDS TO IMPLEMENT:
-- Modern glassmorphism effects (backdrop-blur, bg-opacity)
-- Subtle animations and transitions using Tailwind
-- Clean visual hierarchy with proper spacing
-- Modern shadow and border radius usage
-- Gradient backgrounds where appropriate
-- Card-based layouts with proper elevation
-- Interactive elements with clear feedback
-- Clean typography with proper line height and spacing
+{utility_prompt}
 
-TAILWIND PATTERNS TO USE:
-- Advanced selectors: group-hover:, peer-focus:, has-[:checked]:
-- Modern spacing: space-y-*, gap-*, divide-*
-- Responsive utilities: hidden md:block, md:w-1/2 lg:w-1/3
-- Animation classes: transition-all, hover:scale-105, animate-pulse
-- Grid layouts: grid-cols-1 md:grid-cols-2 lg:grid-cols-3
-- Flexbox patterns: flex items-center justify-between
-- Modern color utilities: text-slate-600, bg-gray-50/50
+PROJECT CONTEXT:
+{self._format_project_context(context, ast_analysis)}
 
-COMPONENT STRUCTURE:
-- Always include TypeScript interfaces for props
-- Use modern React patterns (functional components, hooks)
-- Include JSDoc comments for complex props
-- Export component as default
-- Include variant systems using union types
-- Add proper error boundaries where needed
+USER REQUEST: {request.prompt}
+
+CRITICAL REQUIREMENTS:
+1. Generate ONLY production-ready code that needs ZERO manual fixes
+2. Follow ALL project conventions and patterns detected
+3. Include ALL necessary imports and type definitions
+4. Ensure full compatibility with the project's tech stack
+5. Generate complete files, not fragments
+
+OUTPUT RULES:
+- For single files: Return complete, runnable code
+- For multiple files: Use the === FILE: path/to/file.ext === format
+- Include all necessary configuration updates
+- Provide clear file paths following project structure"""
+        
+        return full_prompt
+    
+    def _build_base_prompt(self, request: GenerationRequest, design_tokens: Dict) -> str:
+        """Build the base system prompt"""
+        return f"""You are an expert UI/UX AI Copilot that generates production-ready frontend code.
+
+CORE CAPABILITIES:
+- Generate complete, working components with ZERO manual fixes needed
+- Support multiple frameworks: React, Next.js, Remix, Vite
+- Support multiple styling solutions: Tailwind, Styled Components, Emotion, CSS Modules, etc.
+- Create accessible, responsive, performant UI components
+- Follow established design patterns and best practices
+- Generate multi-file architectures when appropriate
+
+DESIGN SYSTEM:
+{self._format_design_tokens(design_tokens)}
+
+QUALITY STANDARDS:
+- TypeScript by default with comprehensive type safety
+- {request.accessibility_level.upper()}-level WCAG accessibility compliance
+- Mobile-first responsive design
+- Performance optimized (lazy loading, memoization where appropriate)
+- SEO-friendly markup when applicable
+- Comprehensive error handling
+- Loading and empty states"""
+    
+    def _build_framework_instructions(self, framework: FrameworkType, structure: Dict) -> str:
+        """Build framework-specific instructions"""
+        
+        instructions = {
+            FrameworkType.NEXTJS: """
+NEXT.JS 14+ APP ROUTER REQUIREMENTS:
+- Use App Router patterns (not Pages Router)
+- Server Components by default, 'use client' only when needed
+- Proper data fetching patterns (server-side when possible)
+- Dynamic imports for code splitting
+- Image optimization with next/image
+- Font optimization with next/font
+- Metadata API for SEO
+- Proper error.tsx and loading.tsx patterns
+- Parallel routes and intercepting routes when beneficial
+
+File Structure:
+- app/ directory for pages and layouts
+- components/ for reusable components
+- lib/ or utils/ for utilities
+- hooks/ for custom hooks
+- types/ for TypeScript definitions""",
+            
+            FrameworkType.REACT: """
+REACT 18+ REQUIREMENTS:
+- Use latest React features (Suspense, concurrent features)
+- Proper hook usage and rules
+- Component composition patterns
+- Error boundaries for error handling
+- React.memo for performance where beneficial
+- useCallback/useMemo for expensive operations
+- Portals for modals/tooltips
+- Context API for state management when needed""",
+            
+            FrameworkType.REMIX: """
+REMIX REQUIREMENTS:
+- Use Remix data loading patterns (loader/action)
+- Proper form handling with Form component
+- Progressive enhancement approach
+- Nested routing patterns
+- Error and catch boundaries
+- Meta exports for SEO
+- Optimistic UI patterns
+- Resource routes when needed""",
+            
+            FrameworkType.VITE_REACT: """
+VITE + REACT REQUIREMENTS:
+- Fast HMR compatible code
+- Proper module imports
+- Environment variable handling
+- Code splitting with React.lazy
+- Vite-specific optimizations
+- CSS modules or PostCSS setup
+- Proper build optimization patterns"""
+        }
+        
+        return f"""FRAMEWORK: {framework.value.upper()}
+{instructions.get(framework, "Use modern React patterns and best practices")}
+
+Project Structure Detected:
+- Components: {structure.get('components_dir', 'src/components')}
+- Pages/Routes: {structure.get('pages_dir', 'src/pages')}
+- Utilities: {structure.get('utils_dir', 'src/utils')}"""
+    
+    def _build_styling_instructions(self, styling: StylingLibrary, tokens: Dict) -> str:
+        """Build styling-specific instructions"""
+        
+        instructions = {
+            StylingLibrary.TAILWIND: f"""
+TAILWIND CSS REQUIREMENTS:
+- Use utility-first approach
+- Follow project's color palette: {', '.join(tokens.get('colors', [])[:5])}
+- Use spacing scale: {', '.join(tokens.get('spacing', [])[:5])}
+- Typography scale: {', '.join(tokens.get('typography', [])[:5])}
+- Responsive modifiers: sm:, md:, lg:, xl:, 2xl:
+- Dark mode with dark: modifier if enabled
+- Custom utilities via @apply sparingly
+- Component variants with cn() or clsx()
+- Avoid arbitrary values when possible""",
+            
+            StylingLibrary.STYLED_COMPONENTS: """
+STYLED COMPONENTS REQUIREMENTS:
+- Use styled-components v5+ patterns
+- Theme provider integration
+- Proper TypeScript types for theme
+- Use css prop when beneficial
+- Transient props ($prop) for non-DOM props
+- Global styles setup
+- Server-side rendering compatibility
+- Animation with keyframes helper""",
+            
+            StylingLibrary.EMOTION: """
+EMOTION REQUIREMENTS:
+- Use @emotion/react and @emotion/styled
+- css prop for inline styles
+- styled API for component styles
+- Theme integration with ThemeProvider
+- Proper TypeScript setup
+- Server-side rendering with extractCritical
+- Use composition patterns""",
+            
+            StylingLibrary.CSS_MODULES: """
+CSS MODULES REQUIREMENTS:
+- Use .module.css or .module.scss files
+- camelCase class names
+- Composition with composes
+- Global styles with :global()
+- Proper TypeScript declarations
+- PostCSS integration if available
+- BEM-like naming for clarity""",
+            
+            StylingLibrary.PANDA_CSS: """
+PANDA CSS REQUIREMENTS:
+- Use Panda's css() function
+- Recipe patterns for variants
+- Slot recipes for compound components
+- Token-based design system
+- Proper layer organization
+- Pattern functions
+- Responsive arrays and objects"""
+        }
+        
+        return f"""STYLING: {styling.value.upper()}
+{instructions.get(styling, "Use appropriate styling patterns for the library")}"""
+    
+    def _build_library_instructions(self, library: ComponentLibrary, imports: Dict) -> str:
+        """Build component library instructions"""
+        
+        if library == ComponentLibrary.NONE:
+            return """
+COMPONENT APPROACH:
+- Build custom components from scratch
+- Use semantic HTML elements
+- Implement proper ARIA attributes
+- Create reusable, composable components
+- Follow atomic design principles where appropriate"""
+        
+        available_components = imports.get("ui_components", {}).get(library.value, [])
+        
+        instructions = {
+            ComponentLibrary.SHADCN_UI: f"""
+SHADCN/UI INTEGRATION:
+Available components: {', '.join(available_components[:10])}
+- Import from @/components/ui/
+- Use cn() utility from @/lib/utils
+- Extend with custom variants
+- Follow shadcn/ui patterns
+- Compose primitives for complex components
+- Use Radix UI primitives underneath""",
+            
+            ComponentLibrary.MATERIAL_UI: """
+MUI INTEGRATION:
+- Use MUI v5 components and sx prop
+- Theme integration with createTheme
+- Proper TypeScript augmentation
+- Use MUI system props
+- Icon integration with @mui/icons-material
+- Follow Material Design principles""",
+            
+            ComponentLibrary.CHAKRA_UI: """
+CHAKRA UI INTEGRATION:
+- Use Chakra component primitives
+- Theme integration and customization
+- Responsive array/object syntax
+- Use style props system
+- Compose with Box, Flex, Grid
+- Color mode support""",
+        }
+        
+        return instructions.get(library, f"Use {library.value} components appropriately")
+    
+    def _build_generation_instructions(self, gen_type: GenerationType, request: GenerationRequest) -> str:
+        """Build generation type specific instructions"""
+        
+        if gen_type == GenerationType.MULTI_FILE_COMPONENT:
+            return self._build_multifile_component_instructions(request)
+        elif gen_type == GenerationType.PAGE:
+            return self._build_page_generation_instructions(request)
+        elif gen_type == GenerationType.FULL_FEATURE:
+            return self._build_feature_generation_instructions(request)
+        elif gen_type == GenerationType.EDIT_FILE:
+            return self._build_edit_instructions(request)
+        elif gen_type == GenerationType.UTILS:
+            return self._build_utils_instructions()
+        elif gen_type == GenerationType.HOOKS:
+            return self._build_hooks_instructions()
+        elif gen_type == GenerationType.CONTEXT:
+            return self._build_context_instructions()
+        elif gen_type == GenerationType.STORE:
+            return self._build_store_instructions()
+        else:
+            return self._build_single_component_instructions()
+    
+    def _build_multifile_component_instructions(self, request: GenerationRequest) -> str:
+        """Instructions for multi-file component generation"""
+        files = ["index.ts", "Component.tsx", "Component.types.ts"]
+        
+        if request.include_tests:
+            files.append("Component.test.tsx")
+        if request.include_storybook:
+            files.append("Component.stories.tsx")
+        if request.styling == StylingLibrary.CSS_MODULES:
+            files.append("Component.module.css")
+        
+        return f"""
+MULTI-FILE COMPONENT GENERATION:
+Generate a complete component package with proper separation of concerns.
+
+REQUIRED FILES:
+{chr(10).join(f"- {file}" for file in files)}
+
+STRUCTURE EXAMPLE:
+```
+components/
+  └── ComponentName/
+      ├── index.ts              # Barrel export
+      ├── ComponentName.tsx     # Main component
+      ├── ComponentName.types.ts # TypeScript types
+      ├── ComponentName.test.tsx # Unit tests
+      ├── ComponentName.stories.tsx # Storybook stories
+      └── ComponentName.module.css # Styles (if CSS modules)
+```
+
+ARCHITECTURAL PATTERNS:
+- Separate types into dedicated file
+- Use barrel exports for clean imports
+- Colocate tests with components
+- Extract complex logic to hooks
+- Create sub-components in same directory
+- Use composition for flexibility"""
+    
+    def _build_feature_generation_instructions(self, request: GenerationRequest) -> str:
+        """Instructions for full feature generation"""
+        return """
+FULL FEATURE GENERATION:
+Generate a complete feature with all necessary files and infrastructure.
+
+FEATURE STRUCTURE:
+```
+features/
+  └── FeatureName/
+      ├── index.ts              # Public API
+      ├── components/           # Feature-specific components
+      │   ├── FeatureMain/
+      │   └── FeatureItem/
+      ├── hooks/                # Feature-specific hooks
+      │   ├── useFeatureData.ts
+      │   └── useFeatureLogic.ts
+      ├── utils/                # Feature utilities
+      │   └── featureHelpers.ts
+      ├── types/                # Feature types
+      │   └── feature.types.ts
+      ├── services/             # API/data services
+      │   └── featureService.ts
+      ├── store/                # Feature state (if needed)
+      │   └── featureStore.ts
+      └── __tests__/            # Feature tests
+```
+
+PATTERNS:
+- Feature-first architecture
+- Encapsulation of feature logic
+- Clear public API via index.ts
+- Dependency injection where appropriate
+- Feature-level error boundaries
+- Lazy loading for performance"""
+    
+    def _build_page_generation_instructions(self, request: GenerationRequest) -> str:
+        """Page generation instructions based on framework"""
+        if request.framework == FrameworkType.NEXTJS:
+            return """
+NEXT.JS PAGE GENERATION:
+Create complete page with proper App Router patterns.
+
+REQUIRED FILES:
+- app/[route]/page.tsx       # Main page component
+- app/[route]/layout.tsx     # Layout (if custom needed)
+- app/[route]/loading.tsx    # Loading state
+- app/[route]/error.tsx      # Error boundary
+- app/[route]/metadata.ts    # SEO metadata
+
+PAGE PATTERNS:
+1. Server Components for data fetching
+2. Streaming with Suspense boundaries
+3. Parallel data fetching
+4. Proper cache directives
+5. generateStaticParams for SSG
+6. generateMetadata for dynamic SEO
+
+EXAMPLE STRUCTURE:
+```tsx
+// page.tsx
+export default async function PageName({ params, searchParams }) {
+  const data = await fetchData();
+  return <PageComponent data={data} />;
+}
+
+// loading.tsx
+export default function Loading() {
+  return <PageSkeleton />;
+}
+
+// error.tsx
+'use client';
+export default function Error({ error, reset }) {
+  return <ErrorComponent error={error} reset={reset} />;
+}
+```"""
+        else:
+            return """
+PAGE GENERATION:
+Create complete page component with routing integration."""
+    
+    def _build_edit_instructions(self, request: GenerationRequest) -> str:
+        """Instructions for editing existing files"""
+        edit_modes = {
+            'add': 'Add new functionality while preserving existing code',
+            'modify': 'Modify existing functionality with minimal changes',
+            'refactor': 'Improve code quality without changing functionality',
+            'enhance': 'Add improvements and new features'
+        }
+        
+        return f"""
+FILE EDITING MODE: {request.edit_mode}
+{edit_modes.get(request.edit_mode, 'Modify the file as requested')}
+
+EDITING RULES:
+1. Preserve ALL existing functionality unless explicitly asked to change
+2. Maintain consistent code style
+3. Update all affected imports
+4. Update types/interfaces as needed
+5. Add proper documentation for changes
+6. Ensure backward compatibility
+7. Run through the same quality checks as new code
+
+TARGET FILES:
+{chr(10).join(request.target_files or ['No specific files targeted'])}
 
 OUTPUT FORMAT:
-Return ONLY the complete component code, no explanations or markdown blocks.
-Include imports, interfaces, component definition, and export.
-Ensure the code is production-ready and follows React best practices."""
+Show the COMPLETE updated file(s), not just the changes."""
+    
+    def _build_utils_instructions(self) -> str:
+        """Instructions for utility generation"""
+        return """
+UTILITY GENERATION:
+Create well-organized, reusable utility functions.
 
-        # Add component library specific instructions
-        if component_library == "shadcn/ui":
-            prompt += """
+UTILITY PATTERNS:
+- Pure functions when possible
+- Proper TypeScript generics
+- Comprehensive JSDoc comments
+- Unit tests for each utility
+- Group related utilities
+- Export from index file
 
-SHADCN/UI INTEGRATION:
-- Use cn() utility for className merging
-- Follow shadcn/ui variant patterns with class-variance-authority
-- Import from @/components/ui/ when using existing components
-- Use shadcn/ui design tokens and patterns"""
+EXAMPLE STRUCTURE:
+```
+utils/
+  ├── index.ts          # Public exports
+  ├── string.ts         # String utilities
+  ├── array.ts          # Array utilities
+  ├── date.ts           # Date utilities
+  ├── validation.ts     # Validation utilities
+  └── __tests__/        # Utility tests
+```"""
+    
+    def _build_hooks_instructions(self) -> str:
+        """Instructions for custom hooks generation"""
+        return """
+CUSTOM HOOKS GENERATION:
+Create reusable React hooks following best practices.
 
-        elif component_library != "none":
-            prompt += f"""
+HOOK PATTERNS:
+- Start with 'use' prefix
+- Return consistent value types
+- Handle cleanup properly
+- Memoize expensive operations
+- Support SSR when needed
+- Comprehensive TypeScript types
+- Include usage examples
 
-{component_library.upper()} INTEGRATION:
-- Follow {component_library} design patterns and component APIs
-- Use {component_library} components where appropriate
-- Maintain consistency with {component_library} design system"""
+COMMON PATTERNS:
+- Data fetching hooks
+- State management hooks
+- Event listener hooks
+- Animation hooks
+- Form handling hooks
+- LocalStorage/SessionStorage hooks"""
+    
+    def _build_context_instructions(self) -> str:
+        """Instructions for React Context generation"""
+        return """
+CONTEXT GENERATION:
+Create properly structured React Context with TypeScript.
 
-        return prompt
+CONTEXT STRUCTURE:
+```
+contexts/
+  └── FeatureContext/
+      ├── index.tsx              # Main context file
+      ├── FeatureContext.types.ts # Types
+      ├── FeatureProvider.tsx     # Provider component
+      ├── useFeature.ts          # Hook for consuming
+      └── __tests__/             # Context tests
+```
 
-    def _build_import_rules(self, available_imports):
-        """Build import validation rules based on available imports"""
+PATTERNS:
+- Separate Provider component
+- Custom hook for consumption
+- Proper TypeScript types
+- Default values
+- Error handling for missing provider
+- Performance optimization
+- Split contexts when needed"""
+    
+    def _build_store_instructions(self) -> str:
+        """Instructions for state management generation"""
+        return """
+STATE MANAGEMENT GENERATION:
+Create state management solution (Zustand/Redux Toolkit/Jotai/Valtio).
 
-        ui_components = available_imports.get("ui_components", {})
-        utilities = available_imports.get("utilities", {})
-        icons = available_imports.get("icons", [])
+STORE PATTERNS:
+- Modular store structure
+- TypeScript types for state
+- Async actions support
+- Devtools integration
+- Persistence when needed
+- Proper selectors
+- Performance optimizations
 
-        rules = ["IMPORT VALIDATION RULES (CRITICAL - Follow exactly):"]
-
-        # shadcn/ui components
-        if ui_components.get("shadcn_ui"):
-            available_components = ", ".join(ui_components["shadcn_ui"])
-            rules.append(f"✅ AVAILABLE shadcn/ui components: {available_components}")
-            rules.append("✅ Import shadcn/ui components from: @/components/ui")
-        else:
-            rules.append(
-                "❌ NO shadcn/ui components available - DO NOT import from @/components/ui"
-            )
-
-        # cn utility
-        if utilities.get("cn"):
-            rules.append("✅ cn utility available - Import from: @/lib/utils")
-        else:
-            rules.append(
-                "❌ NO cn utility available - DO NOT import cn from @/lib/utils"
-            )
-
-        # Other utilities
-        if utilities.get("clsx"):
-            rules.append("✅ clsx available - Import from: clsx")
-        if utilities.get("classnames"):
-            rules.append("✅ classnames available - Import from: classnames")
-
-        # Icons
-        if icons:
-            icon_libs = ", ".join(icons)
-            rules.append(f"✅ Icon libraries available: {icon_libs}")
-        else:
-            rules.append(
-                "❌ NO icon libraries detected - Use standard HTML elements or emojis"
-            )
-
-        # Custom components
-        if ui_components.get("custom"):
-            custom_components = ", ".join(ui_components["custom"][:5])  # Limit to 5
-            rules.append(f"✅ Custom components available: {custom_components}")
-
-        # Fallback rules
-        rules.append("")
-        rules.append("FALLBACK BEHAVIOR:")
-        rules.append(
-            "- If shadcn/ui not available: Create self-contained components with standard Tailwind"
-        )
-        rules.append(
-            "- If cn() not available: Use template literals or clsx for className composition"
-        )
-        rules.append("- If components not available: Build from basic HTML elements")
-        rules.append("- NEVER import from paths that don't exist")
-
-        return "\n".join(rules)
-
-    def build_user_prompt(self, user_request: str, context: Dict) -> str:
-        """Build user prompt with context and keyword-specific instructions"""
-
-        framework = context.get("framework", "react")
-        styling = context.get("styling", "tailwind")
-        design_tokens = context.get("design_tokens", {})
-
-        # Get actual project tokens for the prompt
-        colors = design_tokens.get("colors", [])
-        spacing = design_tokens.get("spacing", [])
-        typography = design_tokens.get("typography", [])
-
-        # Build base prompt
-        prompt = f"""Create a {framework} component using {styling}: {user_request}
+Choose the most appropriate based on project needs."""
+    
+    def _build_single_component_instructions(self) -> str:
+        """Default single component instructions"""
+        return """
+SINGLE COMPONENT GENERATION:
+Create a complete, self-contained React component.
 
 REQUIREMENTS:
-- Make it responsive and accessible
-- Use modern design patterns
-- Include proper TypeScript types
-- Add appropriate animations and interactions
-- Follow the project's design system (colors, spacing, typography)
-- Ensure it works well on mobile and desktop
-- Include proper error handling if applicable
-
-PROJECT-SPECIFIC REQUIREMENTS:
-- Use ONLY the project's color palette: {', '.join(colors) if colors else 'default Tailwind colors'}
-- Use ONLY the project's spacing scale: {', '.join(spacing) if spacing else 'default Tailwind spacing'}
-- Use ONLY the project's typography scale: {', '.join(typography) if typography else 'default Tailwind typography'}
-
-Component request: {user_request}"""
-
-        # Add keyword-specific instructions
-        prompt = self.add_keyword_specific_instructions(prompt, user_request)
-
-        return prompt
-
-    def get_component_examples(self, component_type: str) -> str:
-        """Get example patterns for specific component types"""
-
-        examples = {
-            "button": """
-interface ButtonProps {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
-  disabled?: boolean;
-  children: React.ReactNode;
-  onClick?: () => void;
-}
-
-const Button = ({ variant = 'primary', size = 'md', disabled, children, onClick }: ButtonProps) => {
-  const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
-  
-  const variants = {
-    primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-    secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-    outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-    ghost: 'hover:bg-accent hover:text-accent-foreground'
-  };
-  
-  const sizes = {
-    sm: 'h-9 rounded-md px-3 text-sm',
-    md: 'h-10 px-4 py-2',
-    lg: 'h-11 rounded-md px-8 text-lg'
-  };
-  
-  return (
-    <button
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]}`}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-};""",
-            "card": """
-interface CardProps {
-  children: React.ReactNode;
-  className?: string;
-  hover?: boolean;
-}
-
-const Card = ({ children, className = '', hover = false }: CardProps) => {
-  return (
-    <div
-      className={`
-        rounded-lg border bg-card text-card-foreground shadow-sm
-        ${hover ? 'transition-all hover:shadow-md hover:-translate-y-1' : ''}
-        ${className}
-      `}
-    >
-      {children}
-    </div>
-  );
-};""",
+- Full TypeScript interfaces
+- Proper prop validation
+- Error boundaries if needed
+- Loading/error states
+- Responsive design
+- Accessibility features
+- Performance optimizations
+- Clean, maintainable code"""
+    
+    def _build_utility_instructions(self, request: GenerationRequest) -> str:
+        """Build utility-specific instructions"""
+        utilities = []
+        
+        if request.responsive:
+            utilities.append("""
+RESPONSIVE DESIGN:
+- Mobile-first approach
+- Breakpoints: 640px (sm), 768px (md), 1024px (lg), 1280px (xl)
+- Fluid typography and spacing
+- Touch-friendly interactive elements
+- Proper viewport handling""")
+        
+        if request.accessibility_level:
+            utilities.append(f"""
+ACCESSIBILITY ({request.accessibility_level.upper()}-level):
+- Semantic HTML elements
+- ARIA labels and descriptions
+- Keyboard navigation support
+- Focus management
+- Screen reader compatibility
+- Color contrast compliance
+- Error announcements
+- Loading state announcements""")
+        
+        return "\n\n".join(utilities)
+    
+    def _format_design_tokens(self, tokens: Dict) -> str:
+        """Format design tokens for the prompt"""
+        sections = []
+        
+        if tokens.get('colors'):
+            colors = tokens['colors']
+            if isinstance(colors, dict):
+                color_list = list(colors.keys())[:8]
+            else:
+                color_list = colors[:8]
+            sections.append(f"Colors: {', '.join(color_list)}")
+        
+        if tokens.get('spacing'):
+            spacing_list = tokens['spacing'][:8] if isinstance(tokens['spacing'], list) else list(tokens['spacing'].keys())[:8]
+            sections.append(f"Spacing: {', '.join(str(s) for s in spacing_list)}")
+        
+        if tokens.get('typography'):
+            type_list = tokens['typography'][:6] if isinstance(tokens['typography'], list) else list(tokens['typography'].keys())[:6]
+            sections.append(f"Typography: {', '.join(str(t) for t in type_list)}")
+        
+        return "\n".join(sections) if sections else "No specific design tokens detected"
+    
+    def _format_project_context(self, context: Dict, ast_analysis: Dict) -> str:
+        """Format project context for the prompt"""
+        sections = []
+        
+        # Add detected patterns
+        if ast_analysis and 'common_patterns' in ast_analysis:
+            patterns = ast_analysis['common_patterns']
+            if patterns.get('common_props'):
+                sections.append(f"Common props: {', '.join(list(patterns['common_props'].keys())[:5])}")
+            if patterns.get('common_imports'):
+                sections.append(f"Common imports: {', '.join(list(patterns['common_imports'].keys())[:5])}")
+        
+        # Add project structure
+        structure = context.get('project_structure', {})
+        if structure:
+            sections.append(f"Component directory: {structure.get('components_dir', 'unknown')}")
+        
+        return "\n".join(sections) if sections else "Standard React project structure"
+    
+    def _load_styling_patterns(self) -> Dict:
+        """Load styling-specific patterns"""
+        return {
+            StylingLibrary.TAILWIND: {
+                'utility_examples': ['flex items-center justify-between', 'grid grid-cols-1 md:grid-cols-2'],
+                'responsive_pattern': 'sm:px-6 md:px-8 lg:px-10',
+                'state_pattern': 'hover:bg-blue-600 focus:ring-2 active:scale-95'
+            },
+            StylingLibrary.STYLED_COMPONENTS: {
+                'component_pattern': 'const Button = styled.button`...`',
+                'props_pattern': '${props => props.primary && css`...`}',
+                'theme_pattern': '${({ theme }) => theme.colors.primary}'
+            }
+        }
+    
+    def _load_framework_patterns(self) -> Dict:
+        """Load framework-specific patterns"""
+        return {
+            FrameworkType.NEXTJS: {
+                'data_fetching': 'async function with fetch',
+                'routing': 'file-based with app directory',
+                'api_routes': 'route.ts files'
+            },
+            FrameworkType.REACT: {
+                'routing': 'react-router-dom',
+                'state': 'useState, useReducer, Context',
+                'data_fetching': 'useEffect, react-query, SWR'
+            }
+        }
+    
+    def _load_utility_patterns(self) -> Dict:
+        """Load utility patterns"""
+        return {
+            'form_validation': {
+                'libraries': ['react-hook-form', 'formik', 'react-final-form'],
+                'patterns': ['yup', 'zod', 'joi']
+            },
+            'animation': {
+                'libraries': ['framer-motion', 'react-spring', 'auto-animate'],
+                'css': ['transitions', 'animations', 'transforms']
+            },
+            'data_fetching': {
+                'libraries': ['swr', 'react-query', 'apollo-client'],
+                'patterns': ['suspense', 'error boundaries', 'loading states']
+            }
         }
 
-        return examples.get(component_type, "")
 
-    def get_layout_patterns(self) -> str:
-        """Get common layout patterns"""
-
-        return """
-COMMON LAYOUT PATTERNS:
-
-1. Container with centered content:
-<div className="container mx-auto px-4 py-8 max-w-6xl">
-
-2. Responsive grid:
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-3. Flex layout with spacing:
-<div className="flex flex-col md:flex-row items-center justify-between gap-4">
-
-4. Card grid with proper spacing:
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-
-5. Sidebar layout:
-<div className="flex h-screen">
-  <aside className="w-64 bg-gray-50 hidden md:block">
-  <main className="flex-1 overflow-auto">
-</div>"""
-
-    def _build_design_system_section(
-        self,
-        framework,
-        styling,
-        component_library,
-        colors,
-        semantic_colors,
-        color_structure,
-        spacing,
-        typography,
-        shadows,
-        border_radius,
-    ):
-        """Build enhanced design system section with actual project tokens"""
-
-        # Enhanced color palette with usage examples
-        color_section = self._build_color_section(
-            colors, semantic_colors, color_structure
-        )
-
-        # Enhanced spacing system with actual values
-        spacing_section = self._build_spacing_section(spacing)
-
-        # Enhanced typography with actual scale
-        typography_section = self._build_typography_section(typography)
-
-        # Enhanced shadows and border radius
-        effects_section = self._build_effects_section(shadows, border_radius)
-
-        return f"""PROJECT DESIGN SYSTEM:
-- Framework: {framework}
-- Styling: {styling}
-- Component Library: {component_library}
-
-{color_section}
-
-{spacing_section}
-
-{typography_section}
-
-{effects_section}
-
-DESIGN SYSTEM USAGE RULES:
-- ALWAYS use the project's color palette (listed above) instead of generic colors
-- ALWAYS use the project's spacing scale (listed above) for consistent spacing
-- ALWAYS use the project's typography scale (listed above) for text sizing
-- ALWAYS use the project's shadow and border radius values (listed above)
-- When in doubt, prefer the project's design tokens over Tailwind defaults"""
-
-    def _build_color_section(self, colors, semantic_colors, color_structure):
-        """Build enhanced color section with proper semantic usage examples"""
-
-        if not colors and not semantic_colors:
-            return "COLOR PALETTE: Using default Tailwind colors (blue, gray, green, red, yellow)"
-
-        color_examples = []
-
-        # Prioritize semantic colors from CSS @theme blocks
-        if semantic_colors:
-            color_examples.append("SEMANTIC COLORS (Use these for consistent theming):")
-            for color in semantic_colors[:6]:  # Show more semantic colors
-                color_examples.append(
-                    f"  - {color}: bg-{color}, text-{color}, border-{color}"
-                )
-
-            # Add specific usage examples for common semantic colors
-            if "primary" in semantic_colors:
-                color_examples.append(
-                    "  Example: bg-primary text-white (primary buttons)"
-                )
-            if "background" in semantic_colors:
-                color_examples.append(
-                    "  Example: bg-background text-foreground (page backgrounds)"
-                )
-            if "foreground" in semantic_colors:
-                color_examples.append("  Example: text-foreground (main text)")
-            if "muted" in semantic_colors:
-                color_examples.append("  Example: text-muted (secondary text)")
-
-        # Build custom color examples with proper structure
-        if colors:
-            color_examples.append("CUSTOM COLORS (Use these project colors):")
-            # Convert colors dict to list and slice
-            color_list = list(colors.keys()) if isinstance(colors, dict) else colors
-            for color in color_list[:6]:  # Show more custom colors
-                # Check if it's a color object (has shades) or single value
-                if color in color_structure and isinstance(
-                    color_structure[color], dict
-                ):
-                    # Color with shades (e.g., primary: { 50: '#f0f9ff', 500: '#0ea5e9' })
-                    color_examples.append(
-                        f"  - {color}: bg-{color}-500, text-{color}-600, border-{color}-200"
-                    )
-                else:
-                    # Single color value (e.g., accent: '#f59e0b')
-                    color_examples.append(
-                        f"  - {color}: bg-{color}, text-{color}, border-{color}"
-                    )
-
-        examples_text = "\n".join(color_examples)
-
-        # Determine if we have CSS-parsed semantic colors
-        has_css_semantic = len(semantic_colors) > 0
-        
-        # Handle colors as dict or list
-        colors_list = list(colors.keys()) if isinstance(colors, dict) else colors
-        semantic_list = list(semantic_colors.keys()) if isinstance(semantic_colors, dict) else semantic_colors
-        
-        primary_color = (
-            semantic_list[0]
-            if semantic_list
-            else (colors_list[0] if colors_list else "primary")
-        )
-        secondary_color = (
-            semantic_list[1]
-            if len(semantic_list) > 1
-            else (colors_list[1] if len(colors_list) > 1 else "secondary")
-        )
-
-        return f"""COLOR PALETTE (MANDATORY - Use ONLY these project colors):
-{examples_text}
-
-CRITICAL COLOR USAGE RULES:
-- NEVER use hardcoded colors like bg-blue-500, text-red-600, etc.
-- ALWAYS use colors from the project palette above
-- {'FOR SEMANTIC COLORS: Use bg-primary, text-foreground (no shade numbers)' if has_css_semantic else 'FOR CUSTOM COLORS: Use appropriate shade numbers'}
-- {'This project uses @theme blocks with semantic color names' if has_css_semantic else 'This project uses tailwind.config.js with custom colors'}
-
-USAGE EXAMPLES:
-- Primary buttons: bg-{primary_color} text-white
-- Secondary buttons: bg-{secondary_color}
-- Text: text-{primary_color if has_css_semantic else primary_color + '-600'}
-- Backgrounds: bg-{'background' if 'background' in semantic_colors else secondary_color}
-
-ABSOLUTELY FORBIDDEN:
-- Do NOT use generic colors like bg-blue-500, text-red-600, bg-green-400
-- Do NOT use colors not in the project palette above
-- Do NOT mix semantic and shade-based naming incorrectly"""
-
-    def _safe_token_access(self, tokens, index, default="4"):
-        """Safely access tokens whether they're dict, list, or empty"""
-        if not tokens:
-            return default
-        
-        # Convert to list if it's a dict
-        if isinstance(tokens, dict):
-            token_list = list(tokens.keys())
-        else:
-            token_list = tokens
-        
-        # Return the item at index or default
-        return token_list[index] if len(token_list) > index else default
-
-    def _build_spacing_section(self, spacing):
-        """Build enhanced spacing section with actual values"""
-
-        if not spacing:
-            return "SPACING SYSTEM: Using default Tailwind spacing (4, 8, 16, 24, 32)"
-
-        # Convert to list for consistent handling
-        spacing_list = list(spacing.keys()) if isinstance(spacing, dict) else spacing
-        
-        spacing_examples = []
-        for space in spacing_list[:8]:  # Limit to 8 spacing values
-            spacing_examples.append(
-                f"  - {space}: p-{space}, m-{space}, gap-{space}, space-y-{space}"
-            )
-
-        space0 = self._safe_token_access(spacing, 0, '4')
-        space1 = self._safe_token_access(spacing, 1, '6')
-        space2 = self._safe_token_access(spacing, 2, '8')
-
-        return f"""SPACING SYSTEM (Use these project spacing values):
-{chr(10).join(spacing_examples)}
-
-USAGE EXAMPLES:
-- Component padding: p-{space0}, px-{space1}, py-{space0}
-- Component margins: m-{space1}, mb-{space2}
-- Grid gaps: gap-{space1}, gap-x-{space0}, gap-y-{space1}
-- Stack spacing: space-y-{space1}, space-x-{space0}"""
-
-    def _build_typography_section(self, typography):
-        """Build enhanced typography section with actual scale"""
-
-        if not typography:
-            return "TYPOGRAPHY SCALE: Using default Tailwind typography (sm, base, lg, xl, 2xl)"
-
-        # Convert to list for consistent handling
-        typography_list = list(typography.keys()) if isinstance(typography, dict) else typography
-
-        typography_examples = []
-        for typo in typography_list[:6]:  # Limit to 6 typography values
-            typography_examples.append(f"  - {typo}: text-{typo}")
-
-        # Safe access for typography tokens
-        typo_large = self._safe_token_access(typography, -1, '2xl')
-        typo_medium = self._safe_token_access(typography, -2, 'xl') if len(typography_list) > 1 else 'xl'
-        typo_base = self._safe_token_access(typography, 1, 'base') if len(typography_list) > 1 else 'base'
-        typo_small = self._safe_token_access(typography, 0, 'sm')
-
-        return f"""TYPOGRAPHY SCALE (Use these project text sizes):
-{chr(10).join(typography_examples)}
-
-USAGE EXAMPLES:
-- Headings: text-{typo_large} font-bold, text-{typo_medium} font-semibold
-- Body text: text-{typo_base}, text-{typo_small} text-gray-600
-- Small text: text-{typo_small} text-gray-500"""
-
-    def _build_effects_section(self, shadows, border_radius):
-        """Build enhanced effects section with actual values"""
-
-        shadows_list = list(shadows.keys()) if isinstance(shadows, dict) else (shadows if shadows else [])
-        radius_list = list(border_radius.keys()) if isinstance(border_radius, dict) else (border_radius if border_radius else [])
-
-        shadow_list = ", ".join(shadows_list[:4]) if shadows_list else "sm, md, lg"
-        radius_display = ", ".join(radius_list[:4]) if radius_list else "sm, md, lg"
-
-        # Safe access for effects
-        shadow0 = self._safe_token_access(shadows, 0, 'sm')
-        shadow1 = self._safe_token_access(shadows, 1, 'md')
-        shadow_last = self._safe_token_access(shadows, -1, 'lg')
-        radius0 = self._safe_token_access(border_radius, 0, 'sm')
-        radius1 = self._safe_token_access(border_radius, 1, 'md')
-        radius_last = self._safe_token_access(border_radius, -1, 'lg')
-
-        return f"""VISUAL EFFECTS:
-- Shadows: {shadow_list}
-- Border Radius: {radius_display}
-
-USAGE EXAMPLES:
-- Cards: shadow-{shadow0} rounded-{radius1}
-- Buttons: shadow-{shadow0} rounded-{radius0} hover:shadow-{shadow1}
-- Modals: shadow-{shadow_last} rounded-{radius_last}"""
-
-    def add_keyword_specific_instructions(self, prompt, user_request):
-        """Add specific instructions based on keywords in user request"""
-
-        keyword_instructions = {
-            "form": """
-FORM-SPECIFIC REQUIREMENTS:
-- Include proper form validation with error states
-- Use semantic form elements (label, input, fieldset)
-- Add proper ARIA labels and descriptions
-- Include loading states for form submission
-- Use proper input types (email, password, tel, etc.)
-- Add proper focus management and keyboard navigation""",
-            "modal": """
-MODAL-SPECIFIC REQUIREMENTS:
-- Include proper focus management (trap focus, return focus)
-- Add proper ARIA attributes (role="dialog", aria-labelledby, aria-describedby)
-- Include backdrop click to close and escape key handling
-- Add proper z-index layering
-- Include smooth open/close animations
-- Add proper scrolling behavior for long content""",
-            "navigation": """
-NAVIGATION-SPECIFIC REQUIREMENTS:
-- Include proper keyboard navigation (arrow keys, tab, enter)
-- Add proper ARIA attributes (role="navigation", aria-current)
-- Include mobile-responsive behavior (hamburger menu)
-- Add proper active and hover states
-- Include proper semantic HTML structure
-- Add proper focus indicators""",
-            "table": """
-TABLE-SPECIFIC REQUIREMENTS:
-- Use proper semantic table elements (thead, tbody, tfoot, th, td)
-- Include proper ARIA attributes (role="table", aria-sort)
-- Add proper responsive behavior (horizontal scroll, stacked layout)
-- Include sorting, filtering, and pagination if needed
-- Add proper hover and selection states
-- Include proper loading and empty states""",
-            "card": """
-CARD-SPECIFIC REQUIREMENTS:
-- Include proper hover effects and interactions
-- Add proper semantic structure (article, section, header, footer)
-- Include proper spacing and visual hierarchy
-- Add proper action areas (buttons, links)
-- Include proper image handling and aspect ratios
-- Add proper responsive behavior""",
-            "button": """
-BUTTON-SPECIFIC REQUIREMENTS:
-- Include proper variant system (primary, secondary, outline, ghost)
-- Add proper size variants (sm, md, lg)
-- Include proper disabled and loading states
-- Add proper hover, focus, and active states
-- Include proper ARIA attributes when needed
-- Add proper icon support and positioning""",
-        }
-
-        # Add keyword-specific instructions
-        for keyword, instructions in keyword_instructions.items():
-            if keyword in user_request.lower():
-                prompt += instructions
-
-        return prompt
+# Example usage function
+def create_generation_request(
+    prompt: str,
+    framework: str = "next.js",
+    styling: str = "tailwind",
+    component_library: str = "shadcn/ui",
+    generation_type: str = "single"
+) -> GenerationRequest:
+    """Helper function to create a generation request"""
+    
+    # Map strings to enums
+    framework_map = {
+        "react": FrameworkType.REACT,
+        "next.js": FrameworkType.NEXTJS,
+        "remix": FrameworkType.REMIX,
+        "vite": FrameworkType.VITE_REACT
+    }
+    
+    styling_map = {
+        "tailwind": StylingLibrary.TAILWIND,
+        "styled-components": StylingLibrary.STYLED_COMPONENTS,
+        "emotion": StylingLibrary.EMOTION,
+        "css-modules": StylingLibrary.CSS_MODULES,
+        "sass": StylingLibrary.SASS,
+        "css": StylingLibrary.VANILLA_CSS,
+        "panda-css": StylingLibrary.PANDA_CSS
+    }
+    
+    library_map = {
+        "shadcn/ui": ComponentLibrary.SHADCN_UI,
+        "material-ui": ComponentLibrary.MATERIAL_UI,
+        "chakra-ui": ComponentLibrary.CHAKRA_UI,
+        "ant-design": ComponentLibrary.ANT_DESIGN,
+        "headless-ui": ComponentLibrary.HEADLESS_UI,
+        "none": ComponentLibrary.NONE
+    }
+    
+    type_map = {
+        "single": GenerationType.SINGLE_COMPONENT,
+        "multi": GenerationType.MULTI_FILE_COMPONENT,
+        "page": GenerationType.PAGE,
+        "feature": GenerationType.FULL_FEATURE,
+        "edit": GenerationType.EDIT_FILE,
+        "utils": GenerationType.UTILS,
+        "hooks": GenerationType.HOOKS,
+        "context": GenerationType.CONTEXT,
+        "store": GenerationType.STORE
+    }
+    
+    return GenerationRequest(
+        prompt=prompt,
+        generation_type=type_map.get(generation_type, GenerationType.SINGLE_COMPONENT),
+        framework=framework_map.get(framework, FrameworkType.REACT),
+        styling=styling_map.get(styling, StylingLibrary.TAILWIND),
+        component_library=library_map.get(component_library, ComponentLibrary.NONE),
+        include_tests=True,
+        include_storybook=False,
+        responsive=True,
+        accessibility_level="aa"
+    )

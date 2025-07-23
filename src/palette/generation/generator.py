@@ -76,12 +76,18 @@ class UIGenerator:
         else:
             raise ValueError(f"Unsupported model: {self.model}")
 
+    # Add this to your generator.py in the generate_component_with_qa method
+    # Replace the existing method with this improved version:
+
     def generate_component_with_qa(self, prompt: str, context: Dict, target_path: str = None) -> Tuple[str, QualityReport]:
         """Generate component with comprehensive quality assurance and auto-fixing."""
         print("🎨 Generating component with quality assurance...")
         
         # Step 1: Generate initial component
         component_code = self.generate_component(prompt, context)
+        
+        # Clean the response first
+        component_code = self.clean_response(component_code)
         
         # Step 2: If QA is disabled, return without validation
         if not self.validator:
@@ -105,7 +111,11 @@ class UIGenerator:
         # Step 4: Display quality summary
         self._display_quality_summary(quality_report)
         
-        return refined_code, quality_report
+        # Step 5: Final formatting (after all fixes)
+        print("🎨 Final formatting pass...")
+        formatted_code = self.format_and_lint_code(refined_code, self.project_path or os.getcwd())
+        
+        return formatted_code, quality_report
     
     def _display_quality_summary(self, report: QualityReport):
         """Display quality assurance summary."""
