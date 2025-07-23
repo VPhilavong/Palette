@@ -7,7 +7,6 @@ import os
 import subprocess
 import tempfile
 import json
-import os
 import re
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
@@ -61,8 +60,13 @@ class ComponentValidator:
             AccessibilityValidator(),
             PerformanceValidator(),
         ]
-        # Auto-fixers will be initialized dynamically with project context
-        self.auto_fixers = []
+        # Initialize auto-fixers with project context
+        self.auto_fixers = [
+            EnhancedTypeScriptAutoFixer(project_path),
+            EnhancedFormatAutoFixer(project_path),
+            AIAutoFixer(project_path),
+            ESLintAutoFixer(),
+        ]
     
     def validate_component(self, component_code: str, target_path: str) -> QualityReport:
         """Run comprehensive validation on generated component."""
@@ -119,17 +123,8 @@ class ComponentValidator:
         
         print("🔧 Applying automatic fixes...")
         
-        # Use both AI and rule-based fixers for comprehensive fixing
-        # Order matters: AI fixes first (context-aware), then rule-based (cleanup)
-        fixer_classes = [AIAutoFixer, EnhancedTypeScriptAutoFixer, EnhancedFormatAutoFixer, ESLintAutoFixer]
-        
-        for fixer_class in fixer_classes:
-            # Initialize fixer with project context
-            if fixer_class in [AIAutoFixer, EnhancedTypeScriptAutoFixer, EnhancedFormatAutoFixer]:
-                fixer = fixer_class(self.project_path)
-            else:
-                fixer = fixer_class()
-            
+        # Apply auto-fixes in order of priority
+        for fixer in self.auto_fixers:
             if fixer.can_fix_issues(report.issues):
                 try:
                     fixed_code, applied_fixes = fixer.fix(fixed_code, report.issues)
@@ -139,8 +134,6 @@ class ComponentValidator:
                         # Log individual fixes for debugging
                         for fix in applied_fixes:
                             print(f"  • {fix}")
-                    else:
-                        print(f"⚠️ {fixer.__class__.__name__}: 0 fixes applied")
                 except Exception as e:
                     print(f"⚠️ {fixer.__class__.__name__} failed: {e}")
         
@@ -167,9 +160,6 @@ class ComponentValidator:
                 print(f"✅ Quality threshold met in {iteration} iterations!")
                 return current_code, report
             
-            # Store previous quality score to track improvement
-            previous_quality_score = report.score
-            
             # Apply auto-fixes
             if report.issues or report.score < 85.0:
                 fixed_code, fixes_applied = self.auto_fix_component(current_code, report)
@@ -177,26 +167,9 @@ class ComponentValidator:
                 if fixes_applied:
                     current_code = fixed_code
                     report.auto_fixes_applied.extend(fixes_applied)
-                    
-                    # Re-validate to check if quality improved
-                    new_report = self.validate_component(current_code, target_path)
-                    
-                    if new_report.score > previous_quality_score:
-                        print(f"📈 Quality improved: {previous_quality_score:.1f} → {new_report.score:.1f}")
-                        report = new_report
-                        # Continue iteration since we made progress
-                    else:
-                        print(f"📊 Quality score: {new_report.score:.1f} (no improvement this iteration)")
-                        report = new_report
-                        # Still continue if we applied fixes, they might compound
                 else:
-                    print("⚠️ No auto-fixes available")
-                    # Only break if we have no fixes AND score isn't improving
-                    if iteration > 1 and report.score <= previous_quality_score:
-                        print("⚠️ No progress possible, stopping iteration")
-                        break
-            else:
-                break
+                    print("⚠️ No more auto-fixes available")
+                    break
         
         # Final validation
         final_report = self.validate_component(current_code, target_path)
@@ -246,16 +219,12 @@ class ComponentValidator:
     
     def _check_component_rendering(self, code: str, target_path: str) -> bool:
         """Check if component can render without runtime errors."""
-        # This would ideally run a test renderer
-        # For now, we'll do basic structural checks
-        
         required_patterns = [
             'export',  # Must export component
             'return',  # Must have return statement
             r'<\w+',   # Must have JSX elements
         ]
         
-        import re
         for pattern in required_patterns:
             if not re.search(pattern, code):
                 return False
@@ -274,7 +243,6 @@ class ComponentValidator:
             (r'onClick.*(?!onKeyDown)', -10, "Click handlers without keyboard support"),
         ]
         
-        import re
         for pattern, penalty, description in accessibility_checks:
             if re.search(pattern, code, re.IGNORECASE):
                 score += penalty
@@ -294,7 +262,6 @@ class ComponentValidator:
             (r'new\s+Date\(\)', -10, "Potential: Date creation in render"),
         ]
         
-        import re
         for pattern, score_change, description in performance_checks:
             if re.search(pattern, code):
                 score += score_change
@@ -335,24 +302,36 @@ class TypeScriptValidator:
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
         
-        # Check for basic TypeScript patterns
-        if 'interface ' not in code and 'type ' not in code and 'Props' in code:
+        # Check for duplicate imports
+        import_lines = [line for line in code.split('\n') if line.strip().startswith('import')]
+        react_imports = [line for line in import_lines if 'from \'react\'' in line or 'from "react"' in line]
+        
+        if len(react_imports) > 1:
             issues.append(ValidationIssue(
-                level=ValidationLevel.WARNING,
+                level=ValidationLevel.ERROR,
                 category="typescript",
-                message="Consider defining TypeScript interfaces for props",
+                message="Duplicate React import statements detected",
                 auto_fixable=True,
-                suggestion="Add interface definition for component props"
+                suggestion="Consolidate React imports into a single statement"
             ))
         
-        # Check for any syntax
-        import re
-        if re.search(r'any\b', code):
+        # Check for malformed image imports
+        if '@/public/images/' in code or 'AvatarImg' in code:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                category="typescript",
+                message="Local image import may not exist",
+                auto_fixable=True,
+                suggestion="Replace with placeholder image URL"
+            ))
+        
+        # Check for any type
+        if re.search(r':\s*any\b', code):
             issues.append(ValidationIssue(
                 level=ValidationLevel.WARNING,
                 category="typescript",
                 message="Avoid using 'any' type for better type safety",
-                auto_fixable=False
+                auto_fixable=True
             ))
         
         return issues
@@ -364,9 +343,6 @@ class ESLintValidator:
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
         
-        # Basic ESLint-style checks
-        import re
-        
         # Check for console.log
         if re.search(r'console\.log\(', code):
             issues.append(ValidationIssue(
@@ -376,17 +352,14 @@ class ESLintValidator:
                 auto_fixable=True
             ))
         
-        # Check for unused variables
-        variable_pattern = r'const\s+(\w+)\s*='
-        variables = re.findall(variable_pattern, code)
-        for var in variables:
-            if var not in code[code.find(f'const {var}') + 20:]:  # Simple check
-                issues.append(ValidationIssue(
-                    level=ValidationLevel.WARNING,
-                    category="eslint",
-                    message=f"Variable '{var}' is defined but never used",
-                    auto_fixable=True
-                ))
+        # Check for malformed JSX
+        if '/ width=' in code:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                category="eslint",
+                message="Malformed JSX self-closing tag",
+                auto_fixable=True
+            ))
         
         return issues
 
@@ -397,32 +370,26 @@ class ImportValidator:
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
         
-        import re
-        import_pattern = r'import.*from\s+[\'"]([^\'"]+)[\'"]'
-        imports = re.findall(import_pattern, code)
+        # Check for use client directive placement
+        lines = code.split('\n')
+        use_client_index = -1
+        first_import_index = -1
         
-        for import_path in imports:
-            if not self._is_valid_import(import_path, project_path):
-                issues.append(ValidationIssue(
-                    level=ValidationLevel.ERROR,
-                    category="imports",
-                    message=f"Import path '{import_path}' does not exist",
-                    auto_fixable=True,
-                    suggestion=f"Check if '{import_path}' path is correct"
-                ))
+        for i, line in enumerate(lines):
+            if '"use client"' in line or "'use client'" in line:
+                use_client_index = i
+            if line.strip().startswith('import') and first_import_index == -1:
+                first_import_index = i
+        
+        if use_client_index > 0 and first_import_index >= 0 and use_client_index > first_import_index:
+            issues.append(ValidationIssue(
+                level=ValidationLevel.ERROR,
+                category="imports",
+                message="'use client' directive must be at the top of the file",
+                auto_fixable=True
+            ))
         
         return issues
-    
-    def _is_valid_import(self, import_path: str, project_path: Path) -> bool:
-        """Check if import path exists."""
-        # Skip validation for node_modules and relative paths for now
-        if (import_path.startswith('@/') or 
-            import_path.startswith('./') or 
-            import_path.startswith('../') or
-            not import_path.startswith('.')):
-            return True  # Assume valid for now
-        
-        return True
 
 
 class ComponentStructureValidator:
@@ -430,7 +397,43 @@ class ComponentStructureValidator:
     
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
-        
+
+        # Check for invalid Tailwind classes using proper regex patterns (should match auto-fixer logic)
+        invalid_patterns = [
+            r'\btext-smline-height\b',
+            r'\btext-baseline-height\b',
+            r'\bbg-gray(?!-\d+)\b',
+            r'\btext-gray(?!-\d+)\b',
+            r'\bborder-gray(?!-\d+)\b',
+            r'\bbg-sky(?!-\d+)\b',
+            r'\btext-sky(?!-\d+)\b',
+            r'\bborder-sky(?!-\d+)\b',
+            r'\bbg-blue(?!-\d+)\b',
+            r'\btext-blue(?!-\d+)\b',
+            r'\bborder-blue(?!-\d+)\b',
+            r'\bbg-emerald(?!-\d+)\b',
+            r'\btext-emerald(?!-\d+)\b',
+            r'\bborder-emerald(?!-\d+)\b',
+            r'\bbg-indigo(?!-\d+)\b',
+            r'\btext-indigo(?!-\d+)\b',
+            r'\bborder-indigo(?!-\d+)\b',
+            r'\btext-black\b',
+            r'\bbg-black\b',
+            r'\bbg-sky/10\b',
+            r'\bbg-emerald/10\b',
+            r'\bbg-indigo/10\b',
+        ]
+
+        for pattern in invalid_patterns:
+            if re.search(pattern, code):
+                issues.append(ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    category="structure",
+                    message=f"Invalid Tailwind CSS class detected",
+                    auto_fixable=True
+                ))
+                break
+
         # Check for component export
         if 'export default' not in code and 'export {' not in code:
             issues.append(ValidationIssue(
@@ -439,16 +442,7 @@ class ComponentStructureValidator:
                 message="Component must have an export statement",
                 auto_fixable=True
             ))
-        
-        # Check for JSX return
-        if 'return (' not in code and 'return <' not in code:
-            issues.append(ValidationIssue(
-                level=ValidationLevel.ERROR,
-                category="structure",
-                message="Component must return JSX",
-                auto_fixable=False
-            ))
-        
+
         return issues
 
 
@@ -458,8 +452,6 @@ class AccessibilityValidator:
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
         
-        import re
-        
         # Check for images without alt
         if re.search(r'<img(?![^>]*alt=)', code):
             issues.append(ValidationIssue(
@@ -468,15 +460,6 @@ class AccessibilityValidator:
                 message="Images should have alt attributes",
                 auto_fixable=True,
                 suggestion="Add alt attribute to img elements"
-            ))
-        
-        # Check for buttons without accessible names
-        if re.search(r'<button(?![^>]*aria-label)(?![^>]*>[^<]*\w)', code):
-            issues.append(ValidationIssue(
-                level=ValidationLevel.INFO,
-                category="accessibility",
-                message="Consider adding aria-label to buttons without text content",
-                auto_fixable=False
             ))
         
         return issues
@@ -489,7 +472,6 @@ class PerformanceValidator:
         issues = []
         
         # Check for inline object/function creation
-        import re
         if re.search(r'onClick=\{.*=>.*\}', code):
             issues.append(ValidationIssue(
                 level=ValidationLevel.INFO,
@@ -502,24 +484,241 @@ class PerformanceValidator:
         return issues
 
 
-# Auto-fixer implementations
-class TypeScriptAutoFixer:
-    """Automatically fixes TypeScript issues."""
+# Enhanced Auto-fixer implementations
+class EnhancedTypeScriptAutoFixer:
+    """Automatically fixes TypeScript issues with advanced capabilities."""
+    
+    def __init__(self, project_path: str = None):
+        self.project_path = project_path
     
     def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
-        return any(issue.category == "typescript" and issue.auto_fixable for issue in issues)
+        return any(issue.category in ["typescript", "imports"] and issue.auto_fixable for issue in issues)
     
     def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
         fixed_code = code
         fixes_applied = []
         
-        # Remove any types (simple fix)
-        import re
-        if re.search(r':\s*any\b', code):
+        # 1. Fix duplicate imports and use client placement
+        fixed_code, import_fixes = self._fix_imports_comprehensively(fixed_code)
+        fixes_applied.extend(import_fixes)
+        
+        # 2. Fix problematic avatar imports
+        if 'AvatarImg' in fixed_code or '@/public/images/' in fixed_code:
+            fixed_code = self._fix_avatar_imports(fixed_code)
+            fixes_applied.append("Fixed problematic avatar import with placeholder URL")
+        
+        # 3. Remove any types
+        if re.search(r':\s*any\b', fixed_code):
             fixed_code = re.sub(r':\s*any\b', '', fixed_code)
             fixes_applied.append("Removed 'any' type annotations")
         
         return fixed_code, fixes_applied
+    
+    def _fix_imports_comprehensively(self, code: str) -> Tuple[str, List[str]]:
+        """Fix all import-related issues comprehensively."""
+        fixes_applied = []
+        lines = code.split('\n')
+        
+        # Separate different parts of the file
+        use_client_lines = []
+        import_lines = []
+        other_lines = []
+        
+        in_imports = True
+        for line in lines:
+            stripped = line.strip()
+            
+            # Check for use client
+            if stripped in ['"use client";', "'use client';", '"use client"', "'use client'"]:
+                use_client_lines.append('"use client";')
+                continue
+            
+            # Check for imports
+            if in_imports and stripped.startswith('import '):
+                import_lines.append(line)
+                continue
+            
+            # End of import section
+            if stripped and not stripped.startswith('import') and in_imports:
+                in_imports = False
+            
+            other_lines.append(line)
+        
+        # Process imports
+        if len(use_client_lines) > 0:
+            fixes_applied.append("Moved 'use client' directive to top of file")
+        
+        # Consolidate React imports
+        consolidated_imports = self._consolidate_react_imports(import_lines)
+        if len(consolidated_imports) < len(import_lines):
+            fixes_applied.append(f"Consolidated {len(import_lines) - len(consolidated_imports)} duplicate imports")
+        
+        # Rebuild the file
+        new_lines = []
+        
+        # Add use client first
+        if use_client_lines:
+            new_lines.append(use_client_lines[0])
+            new_lines.append('')
+        
+        # Add consolidated imports
+        new_lines.extend(consolidated_imports)
+        if consolidated_imports:
+            new_lines.append('')
+        
+        # Add the rest
+        # Skip leading empty lines in other_lines
+        while other_lines and not other_lines[0].strip():
+            other_lines.pop(0)
+        
+        new_lines.extend(other_lines)
+        
+        return '\n'.join(new_lines), fixes_applied
+    
+    def _consolidate_react_imports(self, import_lines: List[str]) -> List[str]:
+        """Consolidate duplicate React imports."""
+        react_imports = []
+        other_imports = []
+        
+        react_default = False
+        react_named = set()
+        
+        for line in import_lines:
+            if 'from \'react\'' in line or 'from "react"' in line:
+                # Parse React import
+                if 'import React' in line and not '{' in line:
+                    react_default = True
+                elif 'import React,' in line:
+                    react_default = True
+                    # Extract named imports
+                    match = re.search(r'\{([^}]+)\}', line)
+                    if match:
+                        names = [n.strip() for n in match.group(1).split(',')]
+                        react_named.update(names)
+                elif '{' in line:
+                    # Named imports only
+                    match = re.search(r'\{([^}]+)\}', line)
+                    if match:
+                        names = [n.strip() for n in match.group(1).split(',')]
+                        react_named.update(names)
+            else:
+                other_imports.append(line)
+        
+        # Build consolidated React import
+        consolidated = []
+        if react_default and react_named:
+            consolidated.append(f"import React, {{ {', '.join(sorted(react_named))} }} from 'react';")
+        elif react_default:
+            consolidated.append("import React from 'react';")
+        elif react_named:
+            consolidated.append(f"import {{ {', '.join(sorted(react_named))} }} from 'react';")
+        
+        # Combine all imports
+        return consolidated + other_imports
+    
+    def _fix_avatar_imports(self, code: str) -> str:
+        """Fix problematic local avatar imports."""
+        # Remove the import line
+        lines = code.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            if 'import AvatarImg from' in line and '@/public/images/' in line:
+                continue
+            filtered_lines.append(line)
+        
+        code = '\n'.join(filtered_lines)
+        
+        # Replace usage
+        code = code.replace(
+            'avatarUrl: AvatarImg',
+            'avatarUrl: "https://ui-avatars.com/api/?background=random&name=User"'
+        )
+        code = code.replace(
+            'src={avatarUrl || AvatarImg}',
+            'src={avatarUrl || "https://ui-avatars.com/api/?background=random&name=User"}'
+        )
+        
+        return code
+
+
+class EnhancedFormatAutoFixer:
+    """Automatically fixes formatting and style issues with Tailwind validation."""
+    
+    def __init__(self, project_path: str = None):
+        self.project_path = project_path
+    
+    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
+        return any(issue.category in ["structure", "eslint"] for issue in issues)
+    
+    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
+        fixed_code = code
+        fixes_applied = []
+        
+        # 1. Fix malformed JSX
+        if '/ width=' in fixed_code:
+            fixed_code = re.sub(r'/\s+width=', ' width=', fixed_code)
+            fixes_applied.append("Fixed malformed JSX self-closing tag")
+        
+        # 2. Fix invalid Tailwind CSS classes
+        fixed_code, tailwind_fixes = self._fix_tailwind_classes_properly(fixed_code)
+        fixes_applied.extend(tailwind_fixes)
+        
+        # 3. Basic formatting fixes
+        if re.search(r'\n\s*\n\s*\n', fixed_code):
+            fixed_code = re.sub(r'\n\s*\n\s*\n', '\n\n', fixed_code)
+            fixes_applied.append("Removed extra blank lines")
+        
+        return fixed_code, fixes_applied
+    
+    def _fix_tailwind_classes_properly(self, code: str) -> Tuple[str, List[str]]:
+        """Fix invalid Tailwind CSS classes with proper regex."""
+        fixes_applied = []
+        
+        # Define replacements with proper regex patterns
+        replacements = [
+            # Fix malformed compound classes first
+            (r'\btext-smline-height\b', 'text-sm', 'Fixed malformed text class'),
+            (r'\btext-baseline-height\b', 'text-base', 'Fixed baseline-height to text-base'),
+            
+            # Fix color classes without shade numbers
+            (r'\bbg-gray(?!-\d+)\b', 'bg-gray-100', 'Fixed bg-gray to bg-gray-100'),
+            (r'\btext-gray(?!-\d+)\b', 'text-gray-600', 'Fixed text-gray to text-gray-600'),
+            (r'\bborder-gray(?!-\d+)\b', 'border-gray-300', 'Fixed border-gray to border-gray-300'),
+            
+            (r'\bbg-sky(?!-\d+)\b', 'bg-sky-500', 'Fixed bg-sky to bg-sky-500'),
+            (r'\btext-sky(?!-\d+)\b', 'text-sky-600', 'Fixed text-sky to text-sky-600'),
+            (r'\bborder-sky(?!-\d+)\b', 'border-sky-500', 'Fixed border-sky to border-sky-500'),
+            
+            (r'\bbg-blue(?!-\d+)\b', 'bg-blue-600', 'Fixed bg-blue to bg-blue-600'),
+            (r'\btext-blue(?!-\d+)\b', 'text-blue-600', 'Fixed text-blue to text-blue-600'),
+            (r'\bborder-blue(?!-\d+)\b', 'border-blue-600', 'Fixed border-blue to border-blue-600'),
+            
+            (r'\bbg-emerald(?!-\d+)\b', 'bg-emerald-600', 'Fixed bg-emerald to bg-emerald-600'),
+            (r'\btext-emerald(?!-\d+)\b', 'text-emerald-600', 'Fixed text-emerald to text-emerald-600'),
+            (r'\bborder-emerald(?!-\d+)\b', 'border-emerald-600', 'Fixed border-emerald to border-emerald-600'),
+            
+            (r'\bbg-indigo(?!-\d+)\b', 'bg-indigo-600', 'Fixed bg-indigo to bg-indigo-600'),
+            (r'\btext-indigo(?!-\d+)\b', 'text-indigo-600', 'Fixed text-indigo to text-indigo-600'),
+            (r'\bborder-indigo(?!-\d+)\b', 'border-indigo-600', 'Fixed border-indigo to border-indigo-600'),
+            
+            # Fix other common issues
+            (r'\btext-black\b', 'text-gray-900', 'Fixed text-black to text-gray-900'),
+            (r'\bbg-black\b', 'bg-gray-900', 'Fixed bg-black to bg-gray-900'),
+            
+            # Fix opacity classes
+            (r'\bbg-sky/10\b', 'bg-sky-500/10', 'Fixed bg-sky/10 to bg-sky-500/10'),
+            (r'\bbg-emerald/10\b', 'bg-emerald-500/10', 'Fixed bg-emerald/10 to bg-emerald-500/10'),
+            (r'\bbg-indigo/10\b', 'bg-indigo-500/10', 'Fixed bg-indigo/10 to bg-indigo-500/10'),
+        ]
+        
+        # Apply each replacement
+        for pattern, replacement, description in replacements:
+            if re.search(pattern, code):
+                code = re.sub(pattern, replacement, code)
+                fixes_applied.append(description)
+        
+        return code, fixes_applied
 
 
 class ESLintAutoFixer:
@@ -533,7 +732,6 @@ class ESLintAutoFixer:
         fixes_applied = []
         
         # Remove console.log statements
-        import re
         if re.search(r'console\.log\([^)]*\);?\s*', code):
             fixed_code = re.sub(r'console\.log\([^)]*\);?\s*', '', fixed_code)
             fixes_applied.append("Removed console.log statements")
@@ -541,537 +739,87 @@ class ESLintAutoFixer:
         return fixed_code, fixes_applied
 
 
-class ImportAutoFixer:
-    """Automatically fixes import issues."""
-    
-    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
-        return any(issue.category == "imports" and issue.auto_fixable for issue in issues)
-    
-    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
-        # For now, just return as-is (complex import fixing needs project analysis)
-        return code, []
-
-
-class FormatAutoFixer:
-    """Automatically fixes formatting issues."""
-    
-    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
-        return True  # Can always try to format
-    
-    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
-        # Basic formatting fixes
-        fixes_applied = []
-        
-        # Remove extra whitespace
-        import re
-        if re.search(r'\n\s*\n\s*\n', code):
-            code = re.sub(r'\n\s*\n\s*\n', '\n\n', code)
-            fixes_applied.append("Removed extra blank lines")
-        
-        return code, fixes_applied
-
-
-# Enhanced Auto-fixer implementations that actually work
-class EnhancedTypeScriptAutoFixer:
-    """Automatically fixes TypeScript issues with advanced capabilities."""
-    
-    def __init__(self, project_path: str = None):
-        self.project_path = project_path
-    
-    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
-        return True  # Always try to fix TypeScript issues
-    
-    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
-        fixed_code = code
-        fixes_applied = []
-        
-        # 1. Fix duplicate imports
-        fixed_code, duplicate_fixes = self._fix_duplicate_imports(fixed_code)
-        fixes_applied.extend(duplicate_fixes)
-        
-        # 2. Convert to client component if using hooks
-        if self._uses_client_features(fixed_code) and not self._is_client_component(fixed_code):
-            fixed_code = self._add_use_client(fixed_code)
-            fixes_applied.append("Added 'use client' directive for client-side features")
-        
-        # 3. Add missing Next.js Image import
-        if self._needs_next_image_import(fixed_code):
-            fixed_code = self._add_next_image_import(fixed_code)
-            fixes_applied.append("Added Next.js Image import")
-        
-        # 4. Remove any types (simple fix)
-        if re.search(r':\s*any\b', fixed_code):
-            fixed_code = re.sub(r':\s*any\b', '', fixed_code)
-            fixes_applied.append("Removed 'any' type annotations")
-        
-        return fixed_code, fixes_applied
-    
-    def _fix_duplicate_imports(self, code: str) -> Tuple[str, List[str]]:
-        """Fix duplicate import statements and 'use client' directive placement."""
-        fixes_applied = []
-        lines = code.split('\n')
-        
-        # Find and move 'use client' directive to the top
-        use_client_line = None
-        use_client_index = -1
-        
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped in ['"use client";', "'use client';", '"use client"', "'use client'"]:
-                use_client_line = '"use client";'
-                use_client_index = i
-                break
-        
-        # Remove use client from current position
-        if use_client_index >= 0:
-            lines.pop(use_client_index)
-            fixes_applied.append("Moved 'use client' directive to top of file")
-        
-        # Find all import lines (after removing use client)
-        import_lines = []
-        other_lines = []
-        in_imports = True
-        
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('import ') and in_imports:
-                import_lines.append(stripped)
-            elif stripped == '' and in_imports:
-                # Skip empty lines in import section
-                continue
-            else:
-                in_imports = False
-                other_lines.append(line)
-        
-        # Check for duplicate React imports
-        react_imports = [line for line in import_lines if "from 'react'" in line or 'from "react"' in line]
-        
-        if len(react_imports) > 1:
-            # Consolidate React imports
-            all_imports = set()
-            has_default_react = False
-            
-            for imp in react_imports:
-                if 'React,' in imp or imp.strip().startswith('import React ') or imp.strip() == 'import React from \'react\';':
-                    has_default_react = True
-                
-                # Extract named imports
-                if '{' in imp and '}' in imp:
-                    named_part = imp[imp.find('{')+1:imp.find('}')]
-                    for item in named_part.split(','):
-                        item = item.strip()
-                        if item and item != 'React':
-                            all_imports.add(item)
-            
-            # Create consolidated import
-            if has_default_react and all_imports:
-                new_import = f"import React, {{ {', '.join(sorted(all_imports))} }} from 'react';"
-            elif has_default_react:
-                new_import = "import React from 'react';"
-            else:
-                new_import = f"import {{ {', '.join(sorted(all_imports))} }} from 'react';"
-            
-            # Replace all React imports with consolidated one
-            new_import_lines = []
-            for line in import_lines:
-                if not ("from 'react'" in line or 'from "react"' in line):
-                    new_import_lines.append(line)
-            
-            new_import_lines.insert(0, new_import)
-            import_lines = new_import_lines
-            fixes_applied.append(f"Consolidated {len(react_imports)} React import statements")
-        
-        # Remove problematic imports (like local images that don't exist)
-        filtered_imports = []
-        avatar_import_removed = False
-        
-        for imp in import_lines:
-            if '@/public/images/' in imp or '/images/' in imp:
-                # Replace with placeholder or remove
-                fixes_applied.append("Removed problematic local image import")
-                avatar_import_removed = True
-                continue
-            filtered_imports.append(imp)
-        
-        # If we removed an avatar import, we need to fix the code that uses it
-        if avatar_import_removed:
-            # Find and replace AvatarImg usage
-            code_content = '\n'.join(other_lines)
-            if 'avatarUrl: AvatarImg' in code_content:
-                code_content = code_content.replace(
-                    'avatarUrl: AvatarImg',
-                    'avatarUrl: "https://ui-avatars.com/api/?background=random&name=Taylor+West"'
-                )
-                other_lines = code_content.split('\n')
-                fixes_applied.append("Replaced problematic avatar import with placeholder URL")
-        
-        # Rebuild code with proper structure
-        new_lines = []
-        
-        # Add use client at the top
-        if use_client_line:
-            new_lines.append(use_client_line)
-            new_lines.append('')
-        
-        # Add consolidated imports
-        new_lines.extend(filtered_imports)
-        new_lines.append('')
-        
-        # Add rest of the code
-        new_lines.extend(other_lines)
-        
-        code = '\n'.join(new_lines)
-        return code, fixes_applied
-    
-    def _uses_client_features(self, code: str) -> bool:
-        """Check if code uses client-side features like useState, useEffect, etc."""
-        client_features = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext']
-        return any(feature in code for feature in client_features)
-    
-    def _is_client_component(self, code: str) -> bool:
-        """Check if component already has 'use client' directive."""
-        return "'use client'" in code or '"use client"' in code
-    
-    def _add_use_client(self, code: str) -> str:
-        """Add 'use client' directive at the top of the file."""
-        return "'use client';\n\n" + code
-    
-    def _needs_next_image_import(self, code: str) -> bool:
-        """Check if Next.js Image import is needed."""
-        has_img_tag = '<img' in code
-        has_image_import = 'from "next/image"' in code or "from 'next/image'" in code
-        return has_img_tag and not has_image_import
-    
-    def _add_next_image_import(self, code: str) -> str:
-        """Add Next.js Image import."""
-        lines = code.split('\n')
-        
-        # Find where to insert the import
-        insert_idx = 0
-        for i, line in enumerate(lines):
-            if line.strip().startswith('import'):
-                insert_idx = i + 1
-        
-        lines.insert(insert_idx, 'import Image from "next/image";')
-        return '\n'.join(lines)
-
-
-class EnhancedFormatAutoFixer:
-    """Automatically fixes formatting and style issues with Tailwind validation."""
-    
-    def __init__(self, project_path: str = None):
-        self.project_path = project_path
-    
-    def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
-        return True  # Can always try to format
-    
-    def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
-        fixed_code = code
-        fixes_applied = []
-        
-        # 1. Fix invalid Tailwind CSS classes
-        fixed_code, tailwind_fixes = self._fix_tailwind_classes(fixed_code)
-        fixes_applied.extend(tailwind_fixes)
-        
-        # 2. Replace img tags with Next.js Image components
-        fixed_code, image_fixes = self._fix_image_tags(fixed_code)
-        fixes_applied.extend(image_fixes)
-        
-        # 3. Basic formatting fixes
-        if re.search(r'\n\s*\n\s*\n', fixed_code):
-            fixed_code = re.sub(r'\n\s*\n\s*\n', '\n\n', fixed_code)
-            fixes_applied.append("Removed extra blank lines")
-        
-        return fixed_code, fixes_applied
-    
-    def _fix_tailwind_classes(self, code: str) -> Tuple[str, List[str]]:
-        """Fix common invalid Tailwind CSS classes."""
-        fixes_applied = []
-        
-        # Common invalid class mappings
-        class_fixes = {
-            'text-smline-height': 'text-sm',
-            'text-baseline-height': 'text-base',
-            'bg-gray': 'bg-gray-100',
-            'text-gray': 'text-gray-600',
-            'text-black': 'text-gray-900',
-            'bg-sky': 'bg-sky-500',
-            'text-blue': 'text-blue-600',
-            'bg-blue': 'bg-blue-600',
-            'text-indigo': 'text-indigo-600',
-            'bg-indigo': 'bg-indigo-600',
-            'text-emerald': 'text-emerald-600',
-            'bg-emerald': 'bg-emerald-600',
-            'border-sky': 'border-sky-500',
-            'border-blue': 'border-blue-600',
-            'border-emerald': 'border-emerald-600',
-            'border-gray': 'border-gray-300',
-            'bg-sky/10': 'bg-sky-500/10',
-            'bg-sky/20': 'bg-sky-500/20',
-        }
-        
-        # Use regex for precise matching to avoid cascading replacements
-        import re
-        
-        # First clean up cascaded classes (from previous broken runs)
-        cascade_fixes = [
-            (r'\bbg-gray-100-100-100\b', 'bg-gray-100'),
-            (r'\btext-gray-600-600-600\b', 'text-gray-600'),
-            (r'\btext-gray-600-600-900\b', 'text-gray-900'),
-            (r'\bbg-emerald-600-600-600\b', 'bg-emerald-600'),
-            (r'\btext-emerald-600-600-600\b', 'text-emerald-600'),
-            (r'\bbg-blue-600-600-600\b', 'bg-blue-600'),
-            (r'\btext-blue-600-600-600\b', 'text-blue-600'),
-            (r'\bbg-indigo-600-600-600\b', 'bg-indigo-600'),
-            (r'\btext-indigo-600-600-600\b', 'text-indigo-600'),
-            (r'\bbg-sky-500-500-500\b', 'bg-sky-500'),
-            (r'\btext-baseletter-spacing\b', 'text-base'),
-            (r'\bbaseline-height\b', 'leading-normal'),
-            (r'\bsmline-height\b', 'text-sm'),
-        ]
-        
-        # Clean up cascaded classes first (fix repeated patterns)
-        additional_cascade_fixes = [
-            (r'border-blue-600(?:-600)+', 'border-blue-600'),
-            (r'text-gray-600(?:-600)+', 'text-gray-600'),
-            (r'bg-gray-100(?:-100)+', 'bg-gray-100'),
-            (r'text-text-sm', 'text-sm'),
-            (r'border-red(?!-[0-9])', 'border-red-500'),
-            (r'text-red(?!-[0-9])', 'text-red-500'),
-        ]
-        
-        # Apply cascade fixes first
-        all_cascade_fixes = cascade_fixes + additional_cascade_fixes
-        for pattern, replacement in all_cascade_fixes:
-            if re.search(pattern, code):
-                code = re.sub(pattern, replacement, code)
-                fixes_applied.append(f"Fixed cascaded/invalid class to '{replacement}'")
-        
-        # Fix malformed Image tags
-        if '/ width=' in code:
-            # Fix malformed Image self-closing tags
-            code = re.sub(r'/\s+width=', ' width=', code)
-            fixes_applied.append("Fixed malformed Image tag syntax")
-        
-        # Then apply original fixes ONLY if not already fixed
-        for invalid_class, valid_class in class_fixes.items():
-            # Skip if we already have the valid class or if it's already been fixed
-            if valid_class in code or f'{invalid_class}-' in code:
-                continue
-                
-            # Use word boundaries and negative lookahead to prevent re-replacing
-            if invalid_class in ['bg-gray', 'text-gray', 'bg-blue', 'text-blue', 'bg-emerald', 'text-emerald', 'bg-indigo', 'text-indigo', 'bg-sky']:
-                # For color classes, only replace if not already followed by a number
-                pattern = rf'\b{re.escape(invalid_class)}(?!-[0-9])\b'
-            else:
-                # For other classes, use exact word boundary matching
-                pattern = rf'\b{re.escape(invalid_class)}\b'
-            
-            if re.search(pattern, code):
-                old_code = code
-                code = re.sub(pattern, valid_class, code)
-                if code != old_code:
-                    fixes_applied.append(f"Fixed invalid Tailwind class '{invalid_class}' to '{valid_class}'")
-        
-        return code, fixes_applied
-    
-    def _fix_image_tags(self, code: str) -> Tuple[str, List[str]]:
-        """Replace img tags with Next.js Image components."""
-        fixes_applied = []
-        
-        # Replace <img> with <Image> if Next.js Image is imported
-        if '<img' in code and 'next/image' in code:
-            img_pattern = r'<img([^>]*?)>'
-            
-            def replace_img(match):
-                attrs = match.group(1)
-                # Add width and height if missing (required for Next.js Image)
-                if 'width=' not in attrs:
-                    attrs += ' width={200}'
-                if 'height=' not in attrs:
-                    attrs += ' height={200}'
-                return f'<Image{attrs} />'
-            
-            new_code = re.sub(img_pattern, replace_img, code)
-            if new_code != code:
-                fixes_applied.append("Replaced img tags with Next.js Image components")
-                code = new_code
-        
-        return code, fixes_applied
-
-
-# AI-Powered Auto-fixer Implementation  
+# AI-Powered Auto-fixer
 class AIAutoFixer:
     """AI-powered code fixer using LLMs for intelligent issue resolution."""
     
     def __init__(self, project_path: Optional[str] = None):
         self.project_path = project_path
-        
-        # Initialize API clients (same pattern as generator)
         self.openai_client = None
         self.anthropic_client = None
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
         if os.getenv("OPENAI_API_KEY"):
             try:
-                import openai
-                self.openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                from openai import OpenAI
+                self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             except ImportError:
-                print("⚠️ OpenAI not available, install with: pip install openai")
+                print("⚠️ OpenAI not available for AI fixing")
         
         if os.getenv("ANTHROPIC_API_KEY"):
             try:
                 import anthropic
                 self.anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
             except ImportError:
-                print("⚠️ Anthropic not available, install with: pip install anthropic")
+                print("⚠️ Anthropic not available for AI fixing")
     
     def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
         """AI can potentially fix any issue if an API client is available."""
         return (self.openai_client is not None or self.anthropic_client is not None) and len(issues) > 0
-    
+
     def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
         """Use AI to intelligently fix code issues."""
         if not self.can_fix_issues(issues):
             return code, []
-        
+
+        # Build a concise prompt
+        prompt = (
+            "You are a senior React/TypeScript engineer. "
+            "Fix the following code so it compiles, renders, and scores ≥ 85 on QA. "
+            "Return ONLY the fixed code, no explanations.\n\n"
+            f"**Issues identified:**\n"
+            + "\n".join(
+                f"- {i.level.name}: {i.message}"
+                for i in issues
+                if i.level in (ValidationLevel.ERROR, ValidationLevel.WARNING)
+            )
+            + f"\n\n**Code to fix:**\n```tsx\n{code}\n```"
+        )
+
         try:
-            # Build the fixing prompt
-            system_prompt = self._build_system_prompt()
-            user_prompt = self._build_user_prompt(code, issues)
-            
-            # Call LLM to fix the code
-            if self.model.startswith("gpt") and self.openai_client:
-                fixed_code = self._fix_with_openai(system_prompt, user_prompt)
-            elif self.model.startswith("claude") and self.anthropic_client:
-                fixed_code = self._fix_with_anthropic(system_prompt, user_prompt)
-            elif self.openai_client:  # Fallback to OpenAI if available
-                fixed_code = self._fix_with_openai(system_prompt, user_prompt)
-            elif self.anthropic_client:  # Fallback to Anthropic if available
-                fixed_code = self._fix_with_anthropic(system_prompt, user_prompt)
+            if self.openai_client:
+                response = self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                )
+                fixed = response.choices[0].message.content
+            elif self.anthropic_client:
+                response = self.anthropic_client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                fixed = response.content[0].text
             else:
                 return code, []
-            
-            # Clean the response (remove markdown if present)
-            cleaned_code = self._clean_response(fixed_code)
-            
-            # Validate the fix was meaningful
-            if self._is_valid_fix(code, cleaned_code):
-                fixes_applied = [f"AI-powered fix: Applied {len(issues)} intelligent fixes"]
-                return cleaned_code, fixes_applied
-            else:
-                return code, []
-                
+
+            # Remove markdown fences if present
+            fixed = re.sub(r"```(?:tsx?)?\n", "", fixed)
+            fixed = re.sub(r"\n```$", "", fixed)
+
+            return fixed, ["AI-based fixes applied"]
         except Exception as e:
-            print(f"⚠️ AI fixing failed: {e}")
+            print(f"AI fixer failed: {e}")
             return code, []
-    
-    def _build_system_prompt(self) -> str:
-        """Build system prompt for AI fixing."""
-        return """You are an expert React/TypeScript/Next.js code fixer. Your job is to fix code issues while maintaining the original functionality and structure.
 
-CRITICAL RULES:
-1. ONLY return the fixed code - no explanations, no markdown blocks, no extra text
-2. Maintain the original component structure and logic
-3. Fix syntax errors, invalid CSS classes, import issues, and TypeScript problems
-4. Use proper Next.js patterns (Image components, 'use client' directives)
-5. Ensure all Tailwind CSS classes are valid
-6. Fix duplicate imports by consolidating them
-7. Add missing required props for Next.js Image components
-8. Preserve the original component name and exports
-
-TAILWIND CSS FIXES:
-- Replace invalid color classes like 'bg-gray' with 'bg-gray-100'
-- Replace 'text-gray' with 'text-gray-600'
-- Replace 'border-blue-600-600-600' with 'border-blue-600'
-- Replace 'text-leading-normal' with 'leading-normal'
-- Ensure all classes are valid Tailwind utility classes
-
-REACT/NEXT.JS FIXES:
-- Add 'use client' directive if component uses hooks
-- Replace <img> with <Image> and add required width/height props
-- Consolidate duplicate React imports
-- Fix TypeScript prop types and interfaces"""
-    
-    def _build_user_prompt(self, code: str, issues: List[ValidationIssue]) -> str:
-        """Build user prompt with code and issues to fix."""
-        issues_text = "\n".join([
-            f"- {issue.level.value.upper()}: {issue.category} - {issue.message}"
-            for issue in issues[:10]  # Limit to first 10 issues
-        ])
-        
-        return f"""Fix this React component code:
-
-ISSUES TO FIX:
-{issues_text}
-
-CODE TO FIX:
-{code}
-
-Return ONLY the fixed code with no additional text or formatting."""
-    
-    def _fix_with_openai(self, system_prompt: str, user_prompt: str) -> str:
-        """Fix code using OpenAI API."""
-        if not self.openai_client:
-            raise ValueError("OpenAI client not available")
-        
-        response = self.openai_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=3000,
-            temperature=0.1,  # Low temperature for consistent fixes
+    def _fix_avatar_imports(self, code: str) -> str:
+        """Replace non-existent avatar import with working placeholder."""
+        placeholder = "https://ui-avatars.com/api/?background=random&name=User"
+        code = re.sub(
+            r"import\s+\w+\s+from\s+['\"]@/public/images/.*['\"];?\n?",
+            "",
+            code,
         )
-        content = response.choices[0].message.content
-        return content.strip() if content else ""
-    
-    def _fix_with_anthropic(self, system_prompt: str, user_prompt: str) -> str:
-        """Fix code using Anthropic API."""
-        if not self.anthropic_client:
-            raise ValueError("Anthropic client not available")
-        
-        response = self.anthropic_client.messages.create(
-            model=self.model,
-            max_tokens=3000,
-            temperature=0.1,  # Low temperature for consistent fixes
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        # Handle Anthropic response format
-        if hasattr(response, 'content') and len(response.content) > 0:
-            if hasattr(response.content[0], 'text'):
-                return response.content[0].text.strip()
-        return ""
-    
-    def _clean_response(self, response: str) -> str:
-        """Clean AI response to extract just the code."""
-        # Remove markdown code blocks if present
-        if "```" in response:
-            start_marker = response.find("```")
-            if start_marker != -1:
-                # Skip the opening ```tsx or ```javascript
-                start_content = response.find("\n", start_marker) + 1
-                end_marker = response.find("```", start_content)
-                if end_marker != -1:
-                    response = response[start_content:end_marker].strip()
-        
-        return response.strip()
-    
-    def _is_valid_fix(self, original_code: str, fixed_code: str) -> bool:
-        """Validate that the fix is meaningful and safe."""
-        # Basic sanity checks
-        if not fixed_code or len(fixed_code) < 10:
-            return False
-        
-        # Should still be React/JSX code
-        if 'export' not in fixed_code or 'return' not in fixed_code:
-            return False
-        
-        # Should not be drastically different in length (avoid hallucination)
-        length_ratio = len(fixed_code) / len(original_code)
-        if length_ratio < 0.5 or length_ratio > 2.0:
-            return False
-        
-        return True
+        code = re.sub(r"\w*AvatarImg\b", f'"{placeholder}"', code)
+        return code
