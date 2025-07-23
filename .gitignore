@@ -271,8 +271,10 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-test_repos/
+test_repo/
 .claude
 copilot-chat-source
 copilot-chat-source/*
 test_projects
+test/*
+test
