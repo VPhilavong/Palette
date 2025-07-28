@@ -50,10 +50,10 @@ def main():
 @click.option("--preview", is_flag=True, help="Preview before creating files")
 @click.option("--no-tests", is_flag=True, help="Skip test file generation")
 @click.option("--storybook", is_flag=True, help="Include Storybook stories")
-@click.option("--no-qa", is_flag=True, help="Skip quality assurance")
+@click.option("--basic-mode", is_flag=True, help="Disable zero-fix validation (basic generation only)")
 def generate(prompt: str, type: Optional[str], framework: Optional[str], 
              styling: Optional[str], ui: str, output: Optional[str],
-             preview: bool, no_tests: bool, storybook: bool, no_qa: bool):
+             preview: bool, no_tests: bool, storybook: bool, basic_mode: bool):
     """Generate UI/UX code from natural language prompts"""
     
     console.print(Panel(
@@ -63,8 +63,8 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
     ))
     
     try:
-        # Initialize generator
-        generator = UIGenerator(project_path=output)
+        # Initialize generator with zero-fix validation enabled by default
+        generator = UIGenerator(project_path=output, quality_assurance=True)
         
         # Auto-detect settings from project if not specified
         if not framework:
@@ -88,8 +88,9 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
         request.include_tests = not no_tests
         request.include_storybook = storybook
         
-        # Disable QA if requested
-        if no_qa:
+        # Enable zero-fix validation by default, disable only in basic mode
+        if basic_mode:
+            generator.quality_assurance = False
             generator.validator = None
         
         # Generate files

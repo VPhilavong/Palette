@@ -81,9 +81,10 @@ class ZeroFixPipeline:
         
         try:
             print("🚀 Starting Zero-Fix Pipeline...")
+            self._print_progress_header()
             
             # Stage 1: Initial OpenAI validation
-            print("📊 Stage 1: OpenAI Code Interpreter validation")
+            self._print_stage_progress(1, "OpenAI Code Interpreter validation")
             initial_validation = await self.openai_assistant.validate_with_interpreter(current_code)
             validation_reports.append({"stage": "openai_initial", "result": initial_validation})
             
@@ -91,9 +92,10 @@ class ZeroFixPipeline:
             print(f"   Found {original_issues} initial issues")
             
             # Stage 2: Iterative fixing with structured outputs
+            self._print_stage_progress(2, "Structured Output Auto-Fixing")
             while iteration < self.max_iterations:
                 iteration += 1
-                print(f"🔄 Iteration {iteration}")
+                self._print_iteration_progress(iteration, self.max_iterations)
                 
                 # Check if we need to fix issues
                 has_errors = initial_validation.get("has_errors", False) if iteration == 1 else validation_result.get("has_errors", False)
@@ -129,7 +131,7 @@ class ZeroFixPipeline:
             
             # Stage 3: MCP Design System Compliance
             if self.enable_mcp_validation and self.mcp_client:
-                print("🎨 Stage 3: MCP design system validation")
+                self._print_stage_progress(3, "MCP Design System Compliance")
                 mcp_result = await self._validate_with_mcp(current_code, context)
                 mcp_validations.append(mcp_result)
                 
@@ -143,7 +145,7 @@ class ZeroFixPipeline:
             
             # Stage 4: Real Project Validation
             if self.enable_real_project_tests:
-                print("🔍 Stage 4: Real project validation")
+                self._print_stage_progress(4, "Real Project Validation")
                 real_validation = await self._validate_in_real_project(current_code, target_path or "Component.tsx")
                 validation_reports.append({"stage": "real_project", "result": real_validation})
                 
@@ -156,7 +158,7 @@ class ZeroFixPipeline:
                     validation_reports.append({"stage": "real_project_final", "result": final_real_validation})
             
             # Stage 5: Final AI Polish
-            print("✨ Stage 5: Final AI polish")
+            self._print_stage_progress(5, "Final AI Polish")
             final_code = await self._apply_final_polish(current_code, validation_reports, mcp_validations, context)
             
             # Final validation
@@ -168,11 +170,7 @@ class ZeroFixPipeline:
             
             success = final_issues == 0 and confidence_score >= self.confidence_threshold
             
-            print(f"🎯 Pipeline complete!")
-            print(f"   Original issues: {original_issues}")
-            print(f"   Final issues: {final_issues}")
-            print(f"   Confidence: {confidence_score:.2%}")
-            print(f"   Success: {'✅' if success else '❌'}")
+            self._print_completion_summary(original_issues, final_issues, confidence_score, success)
             
             return ZeroFixResult(
                 final_code=final_code,
@@ -568,6 +566,56 @@ class ZeroFixPipeline:
             results.append(result)
         
         return results
+    
+    def _print_progress_header(self):
+        """Print the pipeline progress header."""
+        print("\n" + "="*60)
+        print("🚀 ZERO-FIX VALIDATION PIPELINE")
+        print("="*60)
+        print("📋 Pipeline Stages:")
+        print("   1️⃣ OpenAI Code Interpreter validation")
+        print("   2️⃣ Structured Output Auto-Fixing")
+        print("   3️⃣ MCP Design System Compliance")
+        print("   4️⃣ Real Project Validation")
+        print("   5️⃣ Final AI Polish")
+        print("="*60)
+    
+    def _print_stage_progress(self, stage: int, description: str):
+        """Print progress for a specific stage."""
+        stage_emoji = ["", "📊", "🛠️", "🎨", "🔍", "✨"]
+        print(f"\n{stage_emoji[stage]} Stage {stage}/5: {description}")
+        print("-" * 50)
+    
+    def _print_iteration_progress(self, iteration: int, max_iterations: int):
+        """Print progress for iterations within a stage."""
+        progress_bar = "█" * iteration + "░" * (max_iterations - iteration)
+        print(f"   🔄 Iteration {iteration}/{max_iterations} [{progress_bar}]")
+    
+    def _print_completion_summary(self, original_issues: int, final_issues: int, confidence_score: float, success: bool):
+        """Print the final completion summary."""
+        print("\n" + "="*60)
+        print("🎯 PIPELINE COMPLETE!")
+        print("="*60)
+        
+        # Issues reduction
+        issues_fixed = original_issues - final_issues
+        if original_issues > 0:
+            reduction_percent = (issues_fixed / original_issues) * 100
+            print(f"📉 Issues: {original_issues} → {final_issues} (-{issues_fixed}, {reduction_percent:.1f}% reduction)")
+        else:
+            print(f"📉 Issues: {original_issues} → {final_issues}")
+        
+        # Confidence score with visual indicator
+        confidence_bar = "█" * int(confidence_score * 20) + "░" * (20 - int(confidence_score * 20))
+        print(f"📊 Confidence: {confidence_score:.2%} [{confidence_bar}]")
+        
+        # Success indicator
+        if success:
+            print("✅ Status: SUCCESS - Component ready for production!")
+        else:
+            print("❌ Status: ISSUES REMAIN - Review may be needed")
+        
+        print("="*60)
     
     def get_pipeline_stats(self, results: List[ZeroFixResult]) -> Dict[str, Any]:
         """Get statistics from pipeline results."""

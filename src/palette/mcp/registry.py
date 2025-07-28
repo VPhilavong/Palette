@@ -349,3 +349,218 @@ class MCPServerRegistry:
             "config_path": str(self.config_path),
             "servers": list(self.servers.keys())
         }
+    
+    def auto_discover_servers(self, project_path: str = ".") -> Dict[str, List[str]]:
+        """
+        Auto-discover MCP servers based on project configuration and dependencies.
+        Returns a dict with 'discovered' and 'enabled' server names.
+        """
+        project_path = Path(project_path)
+        discovered_servers = []
+        enabled_servers = []
+        
+        print("🔍 Auto-discovering MCP servers...")
+        
+        # Check for framework and UI library dependencies
+        dependencies = self._analyze_project_dependencies(project_path)
+        framework_info = self._detect_project_framework(project_path)
+        
+        print(f"   📦 Found dependencies: {', '.join(dependencies[:5])}{'...' if len(dependencies) > 5 else ''}")
+        print(f"   🚀 Detected framework: {framework_info.get('framework', 'unknown')}")
+        
+        # Always enable design-system server for project analysis
+        if "design-system" not in self.servers:
+            self._auto_add_server("design-system", enabled=True)
+            discovered_servers.append("design-system")
+            enabled_servers.append("design-system")
+        
+        # Framework-specific servers
+        framework = framework_info.get('framework', '')
+        if framework in ['next.js', 'react']:
+            # Enable React-related servers
+            if any(dep in dependencies for dep in ['@shadcn/ui', 'shadcn-ui']):
+                if self._auto_add_server("shadcn-ui", enabled=True):
+                    discovered_servers.append("shadcn-ui")
+                    enabled_servers.append("shadcn-ui")
+        
+        # Styling and UI dependencies
+        if any(dep in dependencies for dep in ['tailwindcss', '@tailwindcss/forms', '@tailwindcss/typography']):
+            if self._auto_add_server("tailwind", enabled=True):
+                discovered_servers.append("tailwind")
+                enabled_servers.append("tailwind")
+        
+        # Icon libraries
+        icon_libs = ['lucide-react', 'heroicons', '@heroicons/react', 'react-icons', 'phosphor-icons']
+        if any(dep in dependencies for dep in icon_libs):
+            if self._auto_add_server("icons", enabled=True):
+                discovered_servers.append("icons")
+                enabled_servers.append("icons")
+        
+        # Testing frameworks
+        test_deps = ['@testing-library/react', 'jest', 'vitest', 'cypress', '@playwright/test']
+        if any(dep in dependencies for dep in test_deps):
+            if self._auto_add_server("testing", enabled=False):  # Available but not auto-enabled
+                discovered_servers.append("testing")
+        
+        # Storybook
+        if any(dep in dependencies for dep in ['@storybook/react', '@storybook/nextjs']):
+            if self._auto_add_server("storybook", enabled=True):
+                discovered_servers.append("storybook")
+                enabled_servers.append("storybook")
+        
+        # Accessibility tools
+        a11y_deps = ['@axe-core/react', 'eslint-plugin-jsx-a11y', 'react-aria']
+        if any(dep in dependencies for dep in a11y_deps):
+            if self._auto_add_server("accessibility", enabled=True):
+                discovered_servers.append("accessibility")
+                enabled_servers.append("accessibility")
+        
+        # Check for Figma integration (environment variables or config)
+        if self._check_figma_integration(project_path):
+            if self._auto_add_server("figma", enabled=False):  # Available but requires token
+                discovered_servers.append("figma")
+        
+        # Save the updated configuration
+        if discovered_servers:
+            self.save_config()
+            
+        print(f"   ✅ Discovered {len(discovered_servers)} servers")
+        print(f"   🟢 Auto-enabled {len(enabled_servers)} servers")
+        
+        if discovered_servers:
+            print(f"   📋 Discovered: {', '.join(discovered_servers)}")
+        if enabled_servers:
+            print(f"   ⚡ Enabled: {', '.join(enabled_servers)}")
+        
+        return {
+            "discovered": discovered_servers,
+            "enabled": enabled_servers
+        }
+    
+    def _analyze_project_dependencies(self, project_path: Path) -> List[str]:
+        """Analyze project dependencies from package.json, requirements.txt, etc."""
+        dependencies = []
+        
+        # JavaScript/Node.js projects
+        package_json = project_path / "package.json"
+        if package_json.exists():
+            try:
+                with open(package_json, 'r') as f:
+                    data = json.load(f)
+                
+                # Collect all dependencies
+                for dep_type in ['dependencies', 'devDependencies', 'peerDependencies']:
+                    if dep_type in data:
+                        dependencies.extend(data[dep_type].keys())
+                        
+            except Exception as e:
+                print(f"   ⚠️ Failed to parse package.json: {e}")
+        
+        # Python projects
+        requirements_files = ['requirements.txt', 'requirements-dev.txt', 'pyproject.toml']
+        for req_file in requirements_files:
+            req_path = project_path / req_file
+            if req_path.exists():
+                try:
+                    if req_file.endswith('.toml'):
+                        # Handle pyproject.toml (simplified)
+                        with open(req_path, 'r') as f:
+                            content = f.read()
+                            # Basic extraction - could be improved with proper TOML parsing
+                            if 'dependencies' in content:
+                                # This is a simplified approach
+                                pass
+                    else:
+                        # Handle requirements.txt format
+                        with open(req_path, 'r') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line and not line.startswith('#'):
+                                    # Extract package name (before version specifiers)
+                                    pkg_name = line.split('==')[0].split('>=')[0].split('<=')[0].split('>')[0].split('<')[0].strip()
+                                    dependencies.append(pkg_name)
+                except Exception as e:
+                    print(f"   ⚠️ Failed to parse {req_file}: {e}")
+        
+        return dependencies
+    
+    def _detect_project_framework(self, project_path: Path) -> Dict[str, Any]:
+        """Detect the project framework and configuration."""
+        framework_info = {}
+        
+        # Check for Next.js
+        next_config_files = ['next.config.js', 'next.config.mjs', 'next.config.ts']
+        if any((project_path / config).exists() for config in next_config_files):
+            framework_info['framework'] = 'next.js'
+            framework_info['routing'] = 'app' if (project_path / 'app').exists() else 'pages'
+        
+        # Check for Vite
+        elif (project_path / 'vite.config.js').exists() or (project_path / 'vite.config.ts').exists():
+            framework_info['framework'] = 'vite'
+        
+        # Check for Create React App
+        elif (project_path / 'src' / 'App.js').exists() or (project_path / 'src' / 'App.tsx').exists():
+            framework_info['framework'] = 'react'
+        
+        # Check for Remix
+        elif (project_path / 'remix.config.js').exists():
+            framework_info['framework'] = 'remix'
+        
+        # Check for TypeScript
+        if (project_path / 'tsconfig.json').exists():
+            framework_info['typescript'] = True
+        
+        # Check for Tailwind
+        tailwind_configs = ['tailwind.config.js', 'tailwind.config.ts', 'tailwind.config.cjs']
+        if any((project_path / config).exists() for config in tailwind_configs):
+            framework_info['styling'] = 'tailwind'
+        
+        return framework_info
+    
+    def _check_figma_integration(self, project_path: Path) -> bool:
+        """Check if Figma integration is configured."""
+        # Check for Figma token in environment or config files
+        if os.getenv('FIGMA_TOKEN'):
+            return True
+        
+        # Check for Figma-related config files
+        figma_configs = ['.figmarc', 'figma.config.js', '.env.local']
+        for config in figma_configs:
+            config_path = project_path / config
+            if config_path.exists():
+                try:
+                    content = config_path.read_text()
+                    if 'FIGMA' in content.upper():
+                        return True
+                except:
+                    pass
+        
+        return False
+    
+    def _auto_add_server(self, server_name: str, enabled: bool = False) -> bool:
+        """Auto-add a predefined server if it doesn't exist."""
+        if server_name in self.servers:
+            # Server already exists, maybe update enabled status
+            if enabled and not self.servers[server_name].enabled:
+                self.servers[server_name].enabled = enabled
+                return True
+            return False
+        
+        # Add new server from predefined configs
+        predefined = self.get_predefined_servers()
+        if server_name in predefined:
+            server_def = predefined[server_name]
+            config = MCPServerConfig(
+                name=server_name,
+                type=server_def.get('type', 'stdio'),
+                command=server_def.get('command'),
+                args=server_def.get('args', []),
+                url=server_def.get('url'),
+                enabled=enabled,
+                env=server_def.get('env', {})
+            )
+            
+            self.servers[server_name] = config
+            return True
+        
+        return False
