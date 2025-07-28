@@ -6,9 +6,10 @@ from typing import Dict, Optional, Tuple
 import anthropic
 from openai import OpenAI
 
-from .prompts import UIPromptBuilder
+from .prompts import UIUXCopilotPromptBuilder
 from .enhanced_prompts import EnhancedPromptBuilder
 from ..quality import ComponentValidator, QualityReport
+from ..analysis.project_structure import ProjectStructureDetector
 
 
 class UIGenerator:
@@ -28,9 +29,9 @@ class UIGenerator:
                 print("✅ Enhanced prompt engineering enabled with project analysis")
             except Exception as e:
                 print(f"⚠️ Enhanced mode failed, falling back to basic: {e}")
-                self.prompt_builder = UIPromptBuilder()
+                self.prompt_builder = UIUXCopilotPromptBuilder()
         else:
-            self.prompt_builder = UIPromptBuilder()
+            self.prompt_builder = UIUXCopilotPromptBuilder()
 
         # Initialize quality validator
         if quality_assurance and project_path:
@@ -46,6 +47,11 @@ class UIGenerator:
         # Initialize API clients
         self.openai_client = None
         self.anthropic_client = None
+        
+        # Initialize project context
+        self._project_context = None
+        if project_path:
+            self._analyze_project(project_path)
 
         if os.getenv("OPENAI_API_KEY"):
             self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -197,16 +203,31 @@ class UIGenerator:
 
         # Remove markdown code blocks if present
         if "```" in response:
-            # Extract content between first pair of triple backticks
-            start_marker = response.find("```")
-            if start_marker != -1:
-                # Skip the opening ```tsx or ```javascript
-                start_content = response.find("\n", start_marker) + 1
-                end_marker = response.find("```", start_content)
-                if end_marker != -1:
-                    response = response[start_content:end_marker].strip()
-
-        return response
+            # Find all code blocks
+            parts = response.split("```")
+            if len(parts) >= 3:
+                # Take the content of the first code block (index 1)
+                code_content = parts[1]
+                
+                # Remove language specifier from first line if present
+                lines = code_content.split('\n')
+                if lines and lines[0].strip() in ['tsx', 'typescript', 'javascript', 'jsx', 'ts', 'js']:
+                    lines = lines[1:]
+                
+                response = '\n'.join(lines).strip()
+        
+        # Additional cleanup - remove any remaining markdown artifacts
+        lines = response.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Skip lines that are pure markdown artifacts
+            stripped = line.strip()
+            if stripped in ['```tsx', '```typescript', '```javascript', '```jsx', '```ts', '```js', '```']:
+                continue
+            cleaned_lines.append(line)
+        
+        response = '\n'.join(cleaned_lines)
+        return response.strip()
 
     def validate_component(self, code: str) -> bool:
         """Basic validation of generated component code"""
@@ -416,6 +437,55 @@ class UIGenerator:
                 return "prettier" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
     def _is_eslint_available(self, project_path: str) -> bool:
         """Check if ESLint is available in the project"""
@@ -438,6 +508,55 @@ class UIGenerator:
                 return "eslint" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
         config_files = [
             ".prettierrc",
@@ -476,6 +595,55 @@ class UIGenerator:
                 return "prettier" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
     def _is_eslint_available(self, project_path: str) -> bool:
         """Check if ESLint is available in the project"""
@@ -498,6 +666,55 @@ class UIGenerator:
                 return "eslint" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
     def _find_eslint_config(self, project_path: str = None) -> Optional[str]:
         """Find ESLint configuration file"""
@@ -526,6 +743,55 @@ class UIGenerator:
                 return "prettier" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
     def _is_eslint_available(self, project_path: str) -> bool:
         """Check if ESLint is available in the project"""
@@ -548,6 +814,55 @@ class UIGenerator:
                 return "eslint" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
         config_files = [
             ".eslintrc",
@@ -586,6 +901,55 @@ class UIGenerator:
                 return "prettier" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
 
     def _is_eslint_available(self, project_path: str) -> bool:
         """Check if ESLint is available in the project"""
@@ -608,3 +972,121 @@ class UIGenerator:
                 return "eslint" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
+    
+    @property
+    def project_context(self) -> Dict:
+        """Get project analysis context."""
+        return self._project_context or {}
+    
+    def _analyze_project(self, project_path: str):
+        """Analyze project structure and patterns."""
+        from ..analysis.context import ProjectAnalyzer
+        
+        try:
+            analyzer = ProjectAnalyzer()
+            self._project_context = analyzer.analyze_project(project_path)
+        except Exception as e:
+            print(f"⚠️ Project analysis failed: {e}")
+            self._project_context = {
+                'framework': 'react',
+                'styling': 'tailwind',
+                'component_library': 'none',
+                'typescript': True,
+                'project_path': project_path
+            }
+    
+    def _detect_generation_type(self, prompt: str) -> str:
+        """Detect generation type from prompt."""
+        prompt_lower = prompt.lower()
+        
+        # Check for multi-file patterns
+        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
+            return 'multi'
+        
+        # Check for page patterns
+        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
+            return 'page'
+        
+        # Check for feature patterns
+        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
+            return 'feature'
+        
+        # Check for utility patterns
+        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
+            return 'utils'
+        
+        # Check for hook patterns
+        if any(word in prompt_lower for word in ['hook', 'use']):
+            return 'hooks'
+        
+        # Default to single component
+        return 'single'
+
+    def generate(self, request) -> Dict[str, str]:
+        """Generate component(s) based on a GenerationRequest."""
+        # Convert request to context format
+        context = {
+            'framework': request.framework.value,
+            'styling': request.styling.value,
+            'component_library': request.component_library.value,
+            'typescript': True,
+            'project_path': self.project_path
+        }
+        
+        # Add project context if available
+        if self._project_context:
+            context.update(self._project_context)
+        
+        # Generate the component
+        if hasattr(self, 'validator') and self.validator and self.quality_assurance:
+            component_code, quality_report = self.generate_component_with_qa(
+                request.prompt, 
+                context,
+                target_path="Component.tsx"
+            )
+        else:
+            component_code = self.generate_component(request.prompt, context)
+        
+        # Determine the correct file path using smart project structure detection
+        file_path = self._determine_file_path_smart(request)
+        
+        # Return in the expected format
+        return {file_path: component_code}
+    
+    def _determine_file_path_smart(self, request) -> str:
+        """Use ProjectStructureDetector to determine the correct file path."""
+        if not self.project_path:
+            # Fallback to current directory if no project path
+            project_path = os.getcwd()
+        else:
+            project_path = self.project_path
+            
+        try:
+            detector = ProjectStructureDetector(project_path)
+            return detector.generate_file_path(request.prompt)
+        except Exception as e:
+            print(f"⚠️ Smart path detection failed: {e}")
+            # Fallback to simple component naming
+            return self._fallback_file_path(request.prompt)
+    
+    def _fallback_file_path(self, prompt: str) -> str:
+        """Fallback file path generation when smart detection fails."""
+        prompt_lower = prompt.lower()
+        
+        # Simple name extraction
+        if 'hero' in prompt_lower:
+            name = 'HeroSection'
+        elif 'pricing' in prompt_lower:
+            name = 'PricingSection'  
+        elif 'nav' in prompt_lower:
+            name = 'Navigation'
+        elif 'card' in prompt_lower:
+            name = 'Card'
+        elif 'button' in prompt_lower:
+            name = 'Button'
+        else:
+            name = 'Component'
+        
+        # Default to components directory with TypeScript extension
+        return f"components/{name}.tsx"
+

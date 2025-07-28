@@ -4,15 +4,15 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 
-from ..generation.enhanced_generator import UIUXCopilotGenerator
-from ..generation.complete_uiux_copilot import (
+from ..generation.generator import UIGenerator
+from ..generation.prompts import (
     GenerationRequest,
     FrameworkType,
     StylingLibrary,
@@ -64,7 +64,7 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
     
     try:
         # Initialize generator
-        generator = UIUXCopilotGenerator(project_path=output)
+        generator = UIGenerator(project_path=output)
         
         # Auto-detect settings from project if not specified
         if not framework:
@@ -130,7 +130,7 @@ def edit(file_path: str, prompt: str, mode: str, preview: bool):
     ))
     
     try:
-        generator = UIUXCopilotGenerator()
+        generator = UIGenerator()
         
         # Edit the file
         files = generator.edit_file(file_path, prompt, edit_mode=mode)
@@ -164,7 +164,7 @@ def analyze():
     ))
     
     try:
-        generator = UIUXCopilotGenerator()
+        generator = UIGenerator()
         context = generator.project_context
         
         # Display analysis results

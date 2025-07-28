@@ -723,6 +723,39 @@ ACCESSIBILITY ({request.accessibility_level.upper()}-level):
                 'patterns': ['suspense', 'error boundaries', 'loading states']
             }
         }
+    
+    def build_ui_system_prompt(self, context: Dict) -> str:
+        """Build a focused system prompt for clean component generation."""
+        
+        return f"""You are a senior React developer. Generate clean, production-ready React components.
+
+CRITICAL OUTPUT REQUIREMENTS:
+- Return ONLY the raw TypeScript React component code
+- NO markdown code blocks (```tsx, ```, etc.)
+- NO explanations, feature lists, or usage examples
+- NO extra text before or after the code
+- Start directly with imports and end with export
+
+TECHNICAL SPECIFICATIONS:
+- Framework: {context.get('framework', 'React')}
+- Styling: {context.get('styling', 'Tailwind CSS')}
+- Component Library: {context.get('component_library', 'none')}
+- Use TypeScript with proper interfaces
+- Make components accessible (ARIA labels, semantic HTML)
+- Include responsive design patterns
+- Follow React best practices
+
+Generate only the component code, nothing else."""
+    
+    def build_user_prompt(self, prompt: str, context: Dict) -> str:
+        """Build a focused user prompt."""
+        return f"""Create a React component: {prompt}
+
+Requirements:
+- Complete, working TypeScript component
+- Responsive and accessible
+- Follow project conventions
+- Output code only, no explanations"""
 
 
 # Example usage function

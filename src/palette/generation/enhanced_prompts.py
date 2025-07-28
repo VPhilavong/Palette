@@ -10,7 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from collections import defaultdict
 
-from .prompts import UIPromptBuilder
+from .prompts import UIUXCopilotPromptBuilder
 from ..analysis.treesitter_analyzer import TreeSitterAnalyzer, ComponentPattern
 
 
@@ -226,7 +226,7 @@ class ComponentSearchIndex:
         return scores
 
 
-class EnhancedPromptBuilder(UIPromptBuilder):
+class EnhancedPromptBuilder(UIUXCopilotPromptBuilder):
     """Enhanced prompt builder with few-shot learning and RAG capabilities."""
     
     def __init__(self):
