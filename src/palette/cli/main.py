@@ -81,13 +81,16 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
         mcp_in_cwd = Path("mcp-servers").exists()
         mcp_in_palette = (palette_dir / "mcp-servers").exists()
         
-        if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
-            generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
-            console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
-            if mcp_in_palette and not mcp_in_cwd:
-                console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
-        else:
-            generator = UIGenerator(project_path=output, quality_assurance=True)
+        # Temporarily disable MCP integration for stability
+        # TODO: Re-enable after fixing async context and QualityReport issues
+        # if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
+        #     generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
+        #     console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
+        #     if mcp_in_palette and not mcp_in_cwd:
+        #         console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
+        # else:
+        generator = UIGenerator(project_path=output, quality_assurance=True)
+        console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
         
         # Auto-detect settings from project if not specified
         if not framework:
