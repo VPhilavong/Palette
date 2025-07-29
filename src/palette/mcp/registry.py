@@ -49,9 +49,11 @@ class MCPServerRegistry:
             servers_config = mcp_config.get("servers", {})
             
             for name, config in servers_config.items():
+                # Remove 'name' from config to avoid conflicts
+                config_data = {k: v for k, v in config.items() if k != 'name'}
                 self.servers[name] = MCPServerConfig(
                     name=name,
-                    **config
+                    **config_data
                 )
                 
         except Exception as e:
@@ -593,8 +595,7 @@ class MCPServerRegistry:
                         type="stdio",
                         command="python",
                         args=[str(server_dir / "server.py")],
-                        enabled=True,  # Enable by default for built-in servers
-                        description=f"Palette built-in {server_name} server"
+                        enabled=True  # Enable by default for built-in servers
                     )
                     
                     self.servers[server_name] = config

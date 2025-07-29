@@ -6,6 +6,7 @@ Integrates UI Knowledge, Code Analysis, and Design Enforcement for professional-
 from typing import Dict, Optional, Tuple, List, Any
 import asyncio
 import os
+from pathlib import Path
 from ..mcp.client import MCPClient
 from ..mcp.registry import MCPServerRegistry
 from .generator import UIGenerator
