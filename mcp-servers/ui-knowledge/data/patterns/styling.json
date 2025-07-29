@@ -1,0 +1,192 @@
+{
+  "pattern": "styling",
+  "description": "Modern CSS and styling best practices",
+  "layout": {
+    "modern_approaches": [
+      "CSS Grid for 2D layouts",
+      "Flexbox for 1D layouts",
+      "Container queries for component-based responsive design",
+      "CSS custom properties for dynamic layouts",
+      "Aspect ratio for media containers"
+    ],
+    "grid_patterns": {
+      "responsive_grid": "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;",
+      "holy_grail": "grid-template-areas: 'header header header' 'nav main aside' 'footer footer footer';",
+      "card_layout": "display: grid; gap: 1rem; grid-auto-rows: min-content;"
+    },
+    "flexbox_patterns": {
+      "center_content": "display: flex; align-items: center; justify-content: center;",
+      "space_between": "display: flex; justify-content: space-between; align-items: center;",
+      "responsive_nav": "display: flex; flex-wrap: wrap; gap: 1rem;"
+    }
+  },
+  "spacing": {
+    "systems": [
+      "8px base unit system",
+      "Fibonacci sequence",
+      "Modular scale",
+      "Custom spacing scale"
+    ],
+    "best_practices": [
+      "Use consistent spacing scale",
+      "Prefer rem/em over px",
+      "Use CSS custom properties",
+      "Create spacing utilities",
+      "Consider optical spacing"
+    ],
+    "example_scale": {
+      "--space-xs": "0.25rem",
+      "--space-sm": "0.5rem",
+      "--space-md": "1rem",
+      "--space-lg": "1.5rem",
+      "--space-xl": "2rem",
+      "--space-2xl": "3rem",
+      "--space-3xl": "4rem"
+    }
+  },
+  "colors": {
+    "systems": [
+      "Design tokens approach",
+      "Semantic color naming",
+      "HSL for variations",
+      "CSS custom properties",
+      "Dark mode support"
+    ],
+    "semantic_colors": {
+      "--color-primary": "brand color",
+      "--color-secondary": "secondary brand",
+      "--color-success": "positive actions",
+      "--color-danger": "destructive actions",
+      "--color-warning": "caution states",
+      "--color-info": "informational"
+    },
+    "dark_mode": {
+      "approach": "CSS custom properties with data-theme",
+      "example": "[data-theme='dark'] { --color-background: #1a1a1a; --color-text: #ffffff; }",
+      "media_query": "@media (prefers-color-scheme: dark) { :root { /* dark colors */ } }"
+    }
+  },
+  "typography": {
+    "scale": {
+      "minor_third": "1.2",
+      "major_third": "1.25",
+      "perfect_fourth": "1.333",
+      "augmented_fourth": "1.414",
+      "perfect_fifth": "1.5",
+      "golden_ratio": "1.618"
+    },
+    "best_practices": [
+      "Use system font stack for performance",
+      "Limit to 2-3 font families",
+      "Set base font size to 16px",
+      "Use relative units (rem/em)",
+      "Ensure readable line heights (1.5-1.7)",
+      "Optimize font loading with font-display"
+    ],
+    "system_fonts": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+  },
+  "responsive": {
+    "strategies": [
+      "Mobile-first approach",
+      "Fluid typography with clamp()",
+      "Container queries",
+      "Responsive images with srcset",
+      "CSS Grid auto-fit/auto-fill"
+    ],
+    "breakpoints": {
+      "sm": "640px",
+      "md": "768px",
+      "lg": "1024px",
+      "xl": "1280px",
+      "2xl": "1536px"
+    },
+    "fluid_sizing": {
+      "typography": "font-size: clamp(1rem, 2vw + 1rem, 1.5rem);",
+      "spacing": "padding: clamp(1rem, 5vw, 3rem);",
+      "containers": "width: min(90%, 1200px);"
+    }
+  },
+  "animations": {
+    "principles": [
+      "Use for meaningful feedback",
+      "Keep duration under 400ms",
+      "Use easing functions",
+      "Respect prefers-reduced-motion",
+      "Optimize for 60fps"
+    ],
+    "common_easings": {
+      "ease-in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "ease-out": "cubic-bezier(0, 0, 0.2, 1)",
+      "ease-in": "cubic-bezier(0.4, 0, 1, 1)",
+      "bounce": "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+    },
+    "performance": [
+      "Animate transform and opacity only",
+      "Use will-change sparingly",
+      "Avoid animating layout properties",
+      "Use CSS over JavaScript when possible",
+      "Test on low-end devices"
+    ]
+  },
+  "modern_css": {
+    "features": [
+      "CSS Grid and Subgrid",
+      "Container Queries",
+      "CSS Nesting",
+      "Cascade Layers",
+      "Logical Properties",
+      ":has() selector",
+      "Custom Properties"
+    ],
+    "logical_properties": {
+      "margin-block": "vertical margins",
+      "padding-inline": "horizontal padding",
+      "inset": "top/right/bottom/left",
+      "block-size": "height in flow",
+      "inline-size": "width in flow"
+    }
+  },
+  "tailwind": {
+    "best_practices": [
+      "Use design system tokens",
+      "Extract component classes",
+      "Leverage JIT mode",
+      "Use arbitrary values sparingly",
+      "Configure theme properly",
+      "Optimize for production"
+    ],
+    "patterns": {
+      "component_classes": "@apply for repeated patterns",
+      "responsive": "sm:, md:, lg: prefixes",
+      "states": "hover:, focus:, active:",
+      "dark_mode": "dark: prefix",
+      "arbitrary": "[&>*]:mb-4 for complex selectors"
+    }
+  },
+  "css_modules": {
+    "patterns": [
+      "Component-scoped styles",
+      "composes for style reuse",
+      "Global styles with :global",
+      "CSS variables for theming",
+      "PostCSS for transforms"
+    ],
+    "example": ".button { composes: base from './base.module.css'; background: var(--color-primary); }"
+  },
+  "performance": [
+    "Minimize CSS bundle size",
+    "Remove unused CSS with PurgeCSS",
+    "Use CSS containment",
+    "Optimize critical CSS",
+    "Lazy load non-critical CSS",
+    "Avoid expensive selectors"
+  ],
+  "accessibility_styling": [
+    "Focus indicators that stand out",
+    "Skip links for navigation",
+    "High contrast mode support",
+    "Readable font sizes (min 14px)",
+    "Sufficient tap targets (44x44px)",
+    "Color not sole indicator"
+  ]
+}

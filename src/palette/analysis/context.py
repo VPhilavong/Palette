@@ -15,6 +15,9 @@ except ImportError:
     ASTAnalyzer = None
     AST_ANALYZER_TYPE = "none"
 
+# Import ProjectStructureDetector for enhanced project analysis
+from .project_structure import ProjectStructureDetector, FrameworkType
+
 
 class ProjectAnalyzer:
     """Analyzes project structure to extract design patterns and context"""
@@ -61,13 +64,16 @@ class ProjectAnalyzer:
     def analyze_project(self, project_path: str) -> Dict:
         """Extract design patterns for UI generation"""
 
+        # Enhanced project structure detection
+        enhanced_structure = self._get_enhanced_project_structure(project_path)
+        
         context = {
-            "framework": self._detect_framework(project_path),
+            "framework": enhanced_structure.get("framework", self._detect_framework(project_path)),
             "styling": self._detect_styling_system(project_path),
             "component_library": self._detect_component_library(project_path),
             "design_tokens": self._extract_design_tokens(project_path),
             "component_patterns": self._analyze_component_patterns(project_path),
-            "project_structure": self._analyze_project_structure(project_path),
+            "project_structure": enhanced_structure,
             "available_imports": self.get_available_imports(project_path),
             "main_css_file": self.main_css_file_path,
         }
@@ -118,6 +124,50 @@ class ProjectAnalyzer:
                     return framework
 
         return "unknown"
+
+    def _get_enhanced_project_structure(self, project_path: str) -> Dict:
+        """Get enhanced project structure analysis using ProjectStructureDetector."""
+        try:
+            detector = ProjectStructureDetector(project_path)
+            project_info = detector.detect_project_structure()
+            
+            # Convert ProjectInfo to format expected by analyze_project
+            enhanced_structure = {
+                "framework": self._convert_framework_type_to_string(project_info.framework),
+                "structure_type": project_info.structure.value,
+                "routes_directory": project_info.routes_dir,
+                "components_directory": project_info.components_dir,
+                "has_typescript": project_info.has_typescript,
+                "has_src_directory": project_info.has_src_dir,
+                "project_info": project_info,  # Keep original for detailed access
+            }
+            
+            print(f"✅ Enhanced project structure: {enhanced_structure['framework']} ({enhanced_structure['structure_type']})")
+            return enhanced_structure
+            
+        except Exception as e:
+            print(f"⚠️ Enhanced project structure detection failed: {e}")
+            
+            # Fallback to basic structure info
+            return {
+                "framework": self._detect_framework(project_path),
+                "structure_type": "unknown",
+                "routes_directory": "app",
+                "components_directory": "components",
+                "has_typescript": os.path.exists(os.path.join(project_path, "tsconfig.json")),
+                "has_src_directory": os.path.exists(os.path.join(project_path, "src")),
+                "project_info": None,
+            }
+    
+    def _convert_framework_type_to_string(self, framework_type: FrameworkType) -> str:
+        """Convert FrameworkType enum to string format used by the rest of the system."""
+        framework_mapping = {
+            FrameworkType.NEXTJS_APP_ROUTER: "next.js",
+            FrameworkType.NEXTJS_PAGES_ROUTER: "next.js", 
+            FrameworkType.REACT_APP: "react",
+            FrameworkType.UNKNOWN: "unknown",
+        }
+        return framework_mapping.get(framework_type, "unknown")
 
     def _detect_fullstack_structure(self, project_path: str) -> Optional[str]:
         """Detect full-stack project structure (frontend/backend separation)"""

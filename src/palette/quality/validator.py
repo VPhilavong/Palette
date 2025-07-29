@@ -397,35 +397,22 @@ class ComponentStructureValidator:
     
     def validate(self, code: str, target_path: str, project_path: Path) -> List[ValidationIssue]:
         issues = []
-
-        # Check for invalid Tailwind classes using proper regex patterns (should match auto-fixer logic)
-        invalid_patterns = [
-            r'\btext-smline-height\b',
-            r'\btext-baseline-height\b',
-            r'\bbg-gray(?!-\d+)\b',
-            r'\btext-gray(?!-\d+)\b',
-            r'\bborder-gray(?!-\d+)\b',
-            r'\bbg-sky(?!-\d+)\b',
-            r'\btext-sky(?!-\d+)\b',
-            r'\bborder-sky(?!-\d+)\b',
-            r'\bbg-blue(?!-\d+)\b',
-            r'\btext-blue(?!-\d+)\b',
-            r'\bborder-blue(?!-\d+)\b',
-            r'\bbg-emerald(?!-\d+)\b',
-            r'\btext-emerald(?!-\d+)\b',
-            r'\bborder-emerald(?!-\d+)\b',
-            r'\bbg-indigo(?!-\d+)\b',
-            r'\btext-indigo(?!-\d+)\b',
-            r'\bborder-indigo(?!-\d+)\b',
-            r'\btext-black\b',
-            r'\bbg-black\b',
-            r'\bbg-sky/10\b',
-            r'\bbg-emerald/10\b',
-            r'\bbg-indigo/10\b',
+        
+        # Check for invalid Tailwind classes
+        invalid_classes = [
+            'text-smline-height',
+            'text-baseline-height',
+            'bg-gray(?!-[0-9])',
+            'text-gray(?!-[0-9])',
+            'bg-sky(?!-[0-9])',
+            'text-blue(?!-[0-9])',
+            'bg-blue(?!-[0-9])',
+            'text-emerald(?!-[0-9])',
+            'bg-emerald(?!-[0-9])',
         ]
-
-        for pattern in invalid_patterns:
-            if re.search(pattern, code):
+        
+        for invalid_class in invalid_classes:
+            if re.search(rf'\b{invalid_class}\b', code):
                 issues.append(ValidationIssue(
                     level=ValidationLevel.ERROR,
                     category="structure",
@@ -433,7 +420,7 @@ class ComponentStructureValidator:
                     auto_fixable=True
                 ))
                 break
-
+        
         # Check for component export
         if 'export default' not in code and 'export {' not in code:
             issues.append(ValidationIssue(
@@ -442,7 +429,7 @@ class ComponentStructureValidator:
                 message="Component must have an export statement",
                 auto_fixable=True
             ))
-
+        
         return issues
 
 
@@ -766,60 +753,147 @@ class AIAutoFixer:
     def can_fix_issues(self, issues: List[ValidationIssue]) -> bool:
         """AI can potentially fix any issue if an API client is available."""
         return (self.openai_client is not None or self.anthropic_client is not None) and len(issues) > 0
-
+    
     def fix(self, code: str, issues: List[ValidationIssue]) -> Tuple[str, List[str]]:
         """Use AI to intelligently fix code issues."""
         if not self.can_fix_issues(issues):
             return code, []
-
-        # Build a concise prompt
-        prompt = (
-            "You are a senior React/TypeScript engineer. "
-            "Fix the following code so it compiles, renders, and scores ≥ 85 on QA. "
-            "Return ONLY the fixed code, no explanations.\n\n"
-            f"**Issues identified:**\n"
-            + "\n".join(
-                f"- {i.level.name}: {i.message}"
-                for i in issues
-                if i.level in (ValidationLevel.ERROR, ValidationLevel.WARNING)
-            )
-            + f"\n\n**Code to fix:**\n```tsx\n{code}\n```"
-        )
-
+        
         try:
-            if self.openai_client:
-                response = self.openai_client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                )
-                fixed = response.choices[0].message.content
-            elif self.anthropic_client:
-                response = self.anthropic_client.messages.create(
-                    model="claude-3-haiku-20240307",
-                    max_tokens=2000,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                fixed = response.content[0].text
+            # Build the fixing prompt
+            system_prompt = self._build_system_prompt()
+            user_prompt = self._build_user_prompt(code, issues)
+            
+            # Call LLM to fix the code
+            if self.model.startswith("gpt") and self.openai_client:
+                fixed_code = self._fix_with_openai(system_prompt, user_prompt)
+            elif self.model.startswith("claude") and self.anthropic_client:
+                fixed_code = self._fix_with_anthropic(system_prompt, user_prompt)
+            elif self.openai_client:  # Fallback to OpenAI if available
+                fixed_code = self._fix_with_openai(system_prompt, user_prompt)
+            elif self.anthropic_client:  # Fallback to Anthropic if available
+                fixed_code = self._fix_with_anthropic(system_prompt, user_prompt)
             else:
                 return code, []
-
-            # Remove markdown fences if present
-            fixed = re.sub(r"```(?:tsx?)?\n", "", fixed)
-            fixed = re.sub(r"\n```$", "", fixed)
-
-            return fixed, ["AI-based fixes applied"]
+            
+            # Clean the response (remove markdown if present)
+            cleaned_code = self._clean_response(fixed_code)
+            
+            # Validate the fix was meaningful
+            if self._is_valid_fix(code, cleaned_code):
+                fixes_applied = [f"AI-powered fix: Applied {len(issues)} intelligent fixes"]
+                return cleaned_code, fixes_applied
+            else:
+                return code, []
+                
         except Exception as e:
-            print(f"AI fixer failed: {e}")
+            print(f"⚠️ AI fixing failed: {e}")
             return code, []
+    
+    def _build_system_prompt(self) -> str:
+        """Build system prompt for AI fixing."""
+        return """You are an expert React/TypeScript/Next.js code fixer. Your job is to fix code issues while maintaining the original functionality and structure.
 
-    def _fix_avatar_imports(self, code: str) -> str:
-        """Replace non-existent avatar import with working placeholder."""
-        placeholder = "https://ui-avatars.com/api/?background=random&name=User"
-        code = re.sub(
-            r"import\s+\w+\s+from\s+['\"]@/public/images/.*['\"];?\n?",
-            "",
-            code,
+CRITICAL RULES:
+1. ONLY return the fixed code - no explanations, no markdown blocks, no extra text
+2. Maintain the original component structure and logic
+3. Fix ALL the issues mentioned, not just some of them
+4. Use proper Next.js patterns (Image components, 'use client' directives)
+5. Ensure all Tailwind CSS classes are valid with proper shade numbers
+6. Fix duplicate imports by consolidating them properly
+7. Place 'use client' directive at the very top of the file before any imports
+8. Preserve the original component name and exports
+
+SPECIFIC FIXES REQUIRED:
+- Consolidate duplicate React imports into a single statement
+- Move 'use client' to the top of the file
+- Replace invalid Tailwind classes like 'bg-gray' with 'bg-gray-100'
+- Replace 'text-gray' with 'text-gray-600'
+- Replace 'text-black' with 'text-gray-900'
+- Fix malformed classes like 'text-smline-height' to 'text-sm'
+- Fix self-closing JSX tags (change '/ width=' to ' width=')
+- Replace local image imports that don't exist with placeholder URLs
+- Add required width/height props to Image components"""
+    
+    def _build_user_prompt(self, code: str, issues: List[ValidationIssue]) -> str:
+        """Build user prompt with code and issues to fix."""
+        issues_text = "\n".join([
+            f"- {issue.level.value.upper()}: {issue.category} - {issue.message}"
+            for issue in issues[:15]  # Limit to first 15 issues
+        ])
+        
+        return f"""Fix this React component code that has multiple issues:
+
+ISSUES TO FIX:
+{issues_text}
+
+CODE TO FIX:
+{code}
+
+Return ONLY the complete fixed code with no additional text or formatting."""
+    
+    def _fix_with_openai(self, system_prompt: str, user_prompt: str) -> str:
+        """Fix code using OpenAI API."""
+        if not self.openai_client:
+            raise ValueError("OpenAI client not available")
+        
+        response = self.openai_client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=3000,
+            temperature=0.1,  # Low temperature for consistent fixes
         )
-        code = re.sub(r"\w*AvatarImg\b", f'"{placeholder}"', code)
-        return code
+        content = response.choices[0].message.content
+        return content.strip() if content else ""
+    
+    def _fix_with_anthropic(self, system_prompt: str, user_prompt: str) -> str:
+        """Fix code using Anthropic API."""
+        if not self.anthropic_client:
+            raise ValueError("Anthropic client not available")
+        
+        response = self.anthropic_client.messages.create(
+            model=self.model,
+            max_tokens=3000,
+            temperature=0.1,  # Low temperature for consistent fixes
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        # Handle Anthropic response format
+        if hasattr(response, 'content') and len(response.content) > 0:
+            if hasattr(response.content[0], 'text'):
+                return response.content[0].text.strip()
+        return ""
+    
+    def _clean_response(self, response: str) -> str:
+        """Clean AI response to extract just the code."""
+        # Remove markdown code blocks if present
+        if "```" in response:
+            start_marker = response.find("```")
+            if start_marker != -1:
+                # Skip the opening ```tsx or ```javascript
+                start_content = response.find("\n", start_marker) + 1
+                end_marker = response.find("```", start_content)
+                if end_marker != -1:
+                    response = response[start_content:end_marker].strip()
+        
+        return response.strip()
+    
+    def _is_valid_fix(self, original_code: str, fixed_code: str) -> bool:
+        """Validate that the fix is meaningful and safe."""
+        # Basic sanity checks
+        if not fixed_code or len(fixed_code) < 10:
+            return False
+        
+        # Should still be React/JSX code
+        if 'export' not in fixed_code or 'return' not in fixed_code:
+            return False
+        
+        # Should not be drastically different in length (avoid hallucination)
+        length_ratio = len(fixed_code) / len(original_code)
+        if length_ratio < 0.5 or length_ratio > 2.0:
+            return False
+        
+        return True

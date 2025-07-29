@@ -1,0 +1,124 @@
+{
+  "component": "button",
+  "description": "Interactive element that triggers an action when clicked",
+  "patterns": [
+    "Variant-based styling (primary, secondary, ghost, destructive)",
+    "Size options (small, medium, large)",
+    "Loading states with spinners",
+    "Disabled state handling",
+    "Icon support (left, right, icon-only)",
+    "Full-width option for mobile",
+    "Button groups for related actions"
+  ],
+  "best_practices": [
+    "Use semantic <button> element, not <div>",
+    "Provide clear, action-oriented labels",
+    "Ensure minimum touch target size (44x44px)",
+    "Implement proper focus states",
+    "Support keyboard navigation (Enter/Space)",
+    "Announce state changes to screen readers",
+    "Avoid disabled buttons when possible - provide context instead"
+  ],
+  "accessibility": {
+    "aria_attributes": [
+      "aria-label (for icon-only buttons)",
+      "aria-pressed (for toggle buttons)",
+      "aria-busy (during loading)",
+      "aria-disabled (when disabled)"
+    ],
+    "keyboard": {
+      "Enter": "Activate button",
+      "Space": "Activate button", 
+      "Tab": "Navigate to/from button"
+    },
+    "focus_management": [
+      "Visible focus indicator",
+      "Focus trap prevention",
+      "Logical tab order"
+    ]
+  },
+  "states": {
+    "default": "Normal resting state",
+    "hover": "Visual feedback on mouse over",
+    "active": "Pressed/clicked state",
+    "focus": "Keyboard navigation indicator",
+    "disabled": "Non-interactive state",
+    "loading": "Async operation in progress"
+  },
+  "frameworks": {
+    "react": {
+      "implementation": "const Button = forwardRef(({ variant, size, ...props }, ref) => {...})",
+      "props": {
+        "variant": "primary | secondary | ghost | destructive",
+        "size": "sm | md | lg",
+        "disabled": "boolean",
+        "loading": "boolean",
+        "onClick": "() => void",
+        "type": "button | submit | reset"
+      },
+      "patterns": [
+        "Use forwardRef for ref forwarding",
+        "Spread props for flexibility",
+        "Handle loading state internally",
+        "Prevent clicks during loading"
+      ]
+    },
+    "vue": {
+      "implementation": "<template><button :class='buttonClasses' v-bind='$attrs'>...</button></template>",
+      "props": {
+        "variant": "String",
+        "size": "String", 
+        "disabled": "Boolean",
+        "loading": "Boolean"
+      },
+      "patterns": [
+        "Use v-bind='$attrs' for prop forwarding",
+        "Compute classes based on props",
+        "Emit events instead of callbacks"
+      ]
+    }
+  },
+  "styling": {
+    "css_properties": [
+      "padding for clickable area",
+      "border-radius for shape",
+      "transition for smooth interactions",
+      "cursor states (pointer, not-allowed)",
+      "user-select: none for better UX"
+    ],
+    "tailwind_classes": {
+      "base": "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2",
+      "variants": {
+        "primary": "bg-primary text-primary-foreground hover:bg-primary/90",
+        "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        "ghost": "hover:bg-accent hover:text-accent-foreground",
+        "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      },
+      "sizes": {
+        "sm": "h-9 px-3",
+        "md": "h-10 px-4 py-2",
+        "lg": "h-11 px-8"
+      }
+    }
+  },
+  "examples": {
+    "basic": "<Button variant='primary' onClick={handleClick}>Click me</Button>",
+    "with_icon": "<Button variant='secondary'><Icon /> Save Changes</Button>",
+    "loading": "<Button loading={isLoading} disabled={isLoading}>Submit</Button>",
+    "group": "<ButtonGroup><Button>Left</Button><Button>Center</Button><Button>Right</Button></ButtonGroup>"
+  },
+  "common_mistakes": [
+    "Using <a> tags for non-navigation actions",
+    "Missing loading indicators for async operations",
+    "Insufficient color contrast",
+    "Touch targets too small on mobile",
+    "No focus states for keyboard users",
+    "Overusing disabled state instead of contextual help"
+  ],
+  "performance": [
+    "Memoize click handlers to prevent re-renders",
+    "Use CSS transitions instead of JS animations",
+    "Lazy load icons if using icon library",
+    "Debounce rapid clicks if needed"
+  ]
+}
