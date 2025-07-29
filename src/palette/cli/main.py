@@ -70,6 +70,10 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
     ))
     
     try:
+        # Default output to current directory if not specified
+        if output is None:
+            output = "."
+        
         # Initialize generator with zero-fix validation enabled by default
         # Use enhanced generator if available and MCP servers exist
         # Check both current directory and Palette installation directory

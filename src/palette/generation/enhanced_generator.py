@@ -17,6 +17,9 @@ class EnhancedUIGenerator(UIGenerator):
     """Enhanced generator that leverages frontend MCP servers for professional output."""
     
     def __init__(self, *args, **kwargs):
+        # Ensure project_path defaults to current directory
+        if 'project_path' in kwargs and kwargs['project_path'] is None:
+            kwargs['project_path'] = '.'
         super().__init__(*args, **kwargs)
         self.mcp_client = None
         self.mcp_registry = MCPServerRegistry()
