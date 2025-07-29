@@ -87,8 +87,8 @@ class UIGenerator:
             raise ValueError(f"Unsupported model: {self.model}")
 
     def generate_component_with_qa(self, prompt: str, context: Dict, target_path: str = None) -> Tuple[str, QualityReport]:
-        """Generate component with comprehensive quality assurance and auto-fixing using Zero-Fix Pipeline."""
-        print("🎨 Generating component with Zero-Fix Pipeline...")
+        """Generate component with comprehensive quality assurance and traditional validation."""
+        print("🎨 Generating component with traditional quality assurance...")
         
         # Step 1: Generate initial component
         component_code = self.generate_component(prompt, context)
