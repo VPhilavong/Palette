@@ -559,12 +559,16 @@ class MCPServerRegistry:
         predefined = self.get_predefined_servers()
         if server_name in predefined:
             server_def = predefined[server_name]
-            # Create config without 'name' field to avoid conflicts
-            config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
+            # Extract only the fields that MCPServerConfig expects
             config = MCPServerConfig(
                 name=server_name,
-                enabled=enabled,
-                **config_data
+                type=server_def.get('type', 'stdio'),
+                command=server_def.get('command'),
+                args=server_def.get('args'),
+                url=server_def.get('url'),
+                env=server_def.get('env'),
+                timeout=server_def.get('timeout', 30),
+                enabled=enabled
             )
             
             self.servers[server_name] = config
