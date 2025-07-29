@@ -292,8 +292,17 @@ class MCPServerRegistry:
         
         server_def = predefined[server_name]
         # Create config without 'name' field to avoid conflicts, then set name explicitly
-        config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
-        config = MCPServerConfig(name=server_name, **config_data)
+        # Extract only the fields that MCPServerConfig expects
+        config = MCPServerConfig(
+            name=server_name,
+            type=server_def.get('type', 'stdio'),
+            command=server_def.get('command'),
+            args=server_def.get('args'),
+            url=server_def.get('url'),
+            env=server_def.get('env'),
+            timeout=server_def.get('timeout', 30),
+            enabled=server_def.get('enabled', True)
+        )
         
         self.add_server(config)
         return True
@@ -330,9 +339,17 @@ class MCPServerRegistry:
                 self.servers.clear()
             
             for name, config in servers_config.items():
-                # Remove 'name' from config to avoid conflicts
-                config_data = {k: v for k, v in config.items() if k != 'name'}
-                self.servers[name] = MCPServerConfig(name=name, **config_data)
+                # Extract only the fields that MCPServerConfig expects
+                self.servers[name] = MCPServerConfig(
+                    name=name,
+                    type=config.get('type', 'stdio'),
+                    command=config.get('command'),
+                    args=config.get('args'),
+                    url=config.get('url'),
+                    env=config.get('env'),
+                    timeout=config.get('timeout', 30),
+                    enabled=config.get('enabled', True)
+                )
             
             self.save_config()
             return True
@@ -657,6 +674,15 @@ class MCPServerRegistry:
     def register_server(self, name: str, server_def: Dict[str, Any]) -> None:
         """Register a new server dynamically."""
         if name not in self.servers:
-            config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
-            config = MCPServerConfig(name=name, **config_data)
+            # Extract only the fields that MCPServerConfig expects
+            config = MCPServerConfig(
+                name=name,
+                type=server_def.get('type', 'stdio'),
+                command=server_def.get('command'),
+                args=server_def.get('args'),
+                url=server_def.get('url'),
+                env=server_def.get('env'),
+                timeout=server_def.get('timeout', 30),
+                enabled=server_def.get('enabled', True)
+            )
             self.servers[name] = config
