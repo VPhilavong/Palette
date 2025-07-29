@@ -1,0 +1,146 @@
+{
+  "framework": "react",
+  "version": "18+",
+  "description": "Modern React patterns and best practices",
+  "hooks": {
+    "patterns": [
+      "Custom hooks for reusable logic",
+      "useEffect with cleanup functions",
+      "useMemo for expensive computations",
+      "useCallback for stable references",
+      "useContext for cross-component state",
+      "useReducer for complex state logic",
+      "useRef for DOM access and mutable values"
+    ],
+    "best_practices": [
+      "Name custom hooks with 'use' prefix",
+      "Specify dependency arrays correctly",
+      "Clean up effects to prevent memory leaks",
+      "Don't call hooks conditionally",
+      "Extract complex logic to custom hooks",
+      "Use the ESLint rules of hooks plugin"
+    ],
+    "examples": {
+      "custom_hook": "const useLocalStorage = (key, initialValue) => { const [value, setValue] = useState(() => { const item = localStorage.getItem(key); return item ? JSON.parse(item) : initialValue; }); useEffect(() => { localStorage.setItem(key, JSON.stringify(value)); }, [key, value]); return [value, setValue]; }",
+      "cleanup": "useEffect(() => { const timer = setTimeout(() => {}, 1000); return () => clearTimeout(timer); }, []);"
+    }
+  },
+  "state-management": {
+    "patterns": [
+      "Lift state up to common parent",
+      "Composition over prop drilling",
+      "Context for cross-cutting concerns",
+      "Local state for UI-only concerns",
+      "Server state with React Query/SWR",
+      "Global state with Zustand/Redux"
+    ],
+    "best_practices": [
+      "Keep state as local as possible",
+      "Normalize complex state shapes",
+      "Use derived state instead of syncing",
+      "Separate server and client state",
+      "Implement optimistic updates",
+      "Handle loading and error states"
+    ]
+  },
+  "performance": {
+    "patterns": [
+      "React.memo for expensive components",
+      "useMemo for expensive calculations",
+      "useCallback for stable function refs",
+      "Virtual scrolling for long lists",
+      "Code splitting with React.lazy",
+      "Suspense for loading states"
+    ],
+    "best_practices": [
+      "Profile before optimizing",
+      "Avoid premature optimization",
+      "Keep component trees shallow",
+      "Use keys properly in lists",
+      "Debounce/throttle event handlers",
+      "Batch state updates when possible"
+    ]
+  },
+  "component-patterns": {
+    "composition": {
+      "description": "Building complex UIs from simple components",
+      "patterns": [
+        "Compound components",
+        "Render props",
+        "Higher-order components",
+        "Custom hooks for logic",
+        "Slots pattern with children"
+      ],
+      "example": "const Card = ({ children }) => <div className='card'>{children}</div>; Card.Header = ({ children }) => <div className='card-header'>{children}</div>; Card.Body = ({ children }) => <div className='card-body'>{children}</div>;"
+    },
+    "conditional-rendering": {
+      "patterns": [
+        "Ternary operators for simple conditions",
+        "Logical && for show/hide",
+        "Early returns for guard clauses",
+        "Switch statements for multiple conditions",
+        "Component maps for dynamic components"
+      ]
+    }
+  },
+  "data-fetching": {
+    "patterns": [
+      "Fetch in useEffect with cleanup",
+      "Custom hooks for data fetching",
+      "Suspense for data fetching",
+      "React Query for server state",
+      "SWR for data synchronization",
+      "Error boundaries for error handling"
+    ],
+    "best_practices": [
+      "Handle loading states",
+      "Handle error states",
+      "Implement retry logic",
+      "Cache responses when appropriate",
+      "Cancel requests on unmount",
+      "Use optimistic updates"
+    ]
+  },
+  "typescript": {
+    "patterns": [
+      "Type component props with interfaces",
+      "Use generic components when needed",
+      "Type event handlers properly",
+      "Use discriminated unions for variants",
+      "Const assertions for literal types",
+      "Type guards for narrowing"
+    ],
+    "examples": {
+      "component": "interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> { variant?: 'primary' | 'secondary'; size?: 'sm' | 'md' | 'lg'; }",
+      "generic": "function List<T>({ items, renderItem }: { items: T[], renderItem: (item: T) => React.ReactNode }) { return <>{items.map(renderItem)}</>; }"
+    }
+  },
+  "testing": {
+    "patterns": [
+      "Test user interactions, not implementation",
+      "Use React Testing Library",
+      "Mock external dependencies",
+      "Test accessibility with jest-axe",
+      "Snapshot test sparingly",
+      "Integration tests over unit tests"
+    ],
+    "best_practices": [
+      "Arrange-Act-Assert pattern",
+      "Test from the user's perspective",
+      "Don't test implementation details",
+      "Use data-testid sparingly",
+      "Mock at the right level",
+      "Keep tests maintainable"
+    ]
+  },
+  "common_mistakes": [
+    "Mutating state directly",
+    "Missing dependency arrays",
+    "useEffect without cleanup",
+    "Calling setState in render",
+    "Using array index as key",
+    "Premature optimization",
+    "Over-using context",
+    "Not handling errors"
+  ]
+}

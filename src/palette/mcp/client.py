@@ -57,16 +57,22 @@ class MCPResource:
 class MCPClient:
     """Main MCP client for managing connections to multiple MCP servers."""
     
-    def __init__(self, openai_assistant=None):
+    def __init__(self, openai_assistant=None, servers=None):
         self.openai_assistant = openai_assistant
         self.servers: Dict[str, MCPServerConfig] = {}
         self.connections: Dict[str, Any] = {}
         self.available_tools: Dict[str, MCPTool] = {}
         self.available_resources: Dict[str, MCPResource] = {}
         self.logger = logging.getLogger(__name__)
+        self.fallback_mode = not HAS_MCP_SDK
         
         if not HAS_MCP_SDK:
-            self.logger.warning("MCP SDK not available. Some features will be limited.")
+            self.logger.warning("MCP SDK not available. Using fallback mode.")
+        
+        # Add servers if provided
+        if servers:
+            for server in servers:
+                self.servers[server.name] = server
     
     async def add_server(self, config: MCPServerConfig) -> bool:
         """Add and connect to an MCP server."""

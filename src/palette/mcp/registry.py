@@ -9,6 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 
 from .client import MCPServerConfig
+import logging
 
 
 class MCPServerRegistry:
@@ -17,7 +18,10 @@ class MCPServerRegistry:
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = Path(config_path) if config_path else self._get_default_config_path()
         self.servers: Dict[str, MCPServerConfig] = {}
+        self.logger = logging.getLogger(__name__)
         self.load_config()
+        # Auto-discover servers if running in a project
+        self._auto_discover_project_servers()
     
     def _get_default_config_path(self) -> Path:
         """Get the default config path."""
@@ -285,8 +289,9 @@ class MCPServerRegistry:
             return False
         
         server_def = predefined[server_name]
-        config = MCPServerConfig(**{k: v for k, v in server_def.items() 
-                                   if k in MCPServerConfig.__dataclass_fields__})
+        # Create config without 'name' field to avoid conflicts, then set name explicitly
+        config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
+        config = MCPServerConfig(name=server_name, **config_data)
         
         self.add_server(config)
         return True
@@ -323,7 +328,9 @@ class MCPServerRegistry:
                 self.servers.clear()
             
             for name, config in servers_config.items():
-                self.servers[name] = MCPServerConfig(name=name, **config)
+                # Remove 'name' from config to avoid conflicts
+                config_data = {k: v for k, v in config.items() if k != 'name'}
+                self.servers[name] = MCPServerConfig(name=name, **config_data)
             
             self.save_config()
             return True
@@ -550,17 +557,101 @@ class MCPServerRegistry:
         predefined = self.get_predefined_servers()
         if server_name in predefined:
             server_def = predefined[server_name]
+            # Create config without 'name' field to avoid conflicts
+            config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
             config = MCPServerConfig(
                 name=server_name,
-                type=server_def.get('type', 'stdio'),
-                command=server_def.get('command'),
-                args=server_def.get('args', []),
-                url=server_def.get('url'),
                 enabled=enabled,
-                env=server_def.get('env', {})
+                **config_data
             )
             
             self.servers[server_name] = config
             return True
         
         return False
+    
+    def _auto_discover_project_servers(self) -> None:
+        """Auto-discover MCP servers in the project."""
+        # Check for Palette's built-in MCP servers
+        cwd = Path.cwd()
+        mcp_servers_dir = cwd / "mcp-servers"
+        
+        if mcp_servers_dir.exists():
+            self.logger.info("Auto-discovering Palette MCP servers...")
+            
+            for server_dir in mcp_servers_dir.iterdir():
+                if server_dir.is_dir() and (server_dir / "server.py").exists():
+                    server_name = server_dir.name
+                    
+                    # Skip if already configured
+                    if server_name in self.servers:
+                        continue
+                    
+                    # Add the server
+                    config = MCPServerConfig(
+                        name=server_name,
+                        type="stdio",
+                        command="python",
+                        args=[str(server_dir / "server.py")],
+                        enabled=True,  # Enable by default for built-in servers
+                        description=f"Palette built-in {server_name} server"
+                    )
+                    
+                    self.servers[server_name] = config
+                    self.logger.info(f"Auto-discovered server: {server_name}")
+    
+    def _discover_project_servers(self, project_path: Path) -> Dict[str, Dict[str, Any]]:
+        """Discover MCP servers from project configuration."""
+        servers = {}
+        
+        # Check for .palette/mcp-servers.json
+        config_file = project_path / ".palette" / "mcp-servers.json"
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    for name, server_def in config.items():
+                        servers[name] = server_def
+                        self.logger.info(f"Found project server: {name}")
+            except Exception as e:
+                self.logger.error(f"Failed to load project MCP config: {e}")
+        
+        # Check for palette.json with mcp section
+        palette_config = project_path / "palette.json"
+        if palette_config.exists():
+            try:
+                with open(palette_config, 'r') as f:
+                    config = json.load(f)
+                    if "mcp_servers" in config:
+                        for name, server_def in config["mcp_servers"].items():
+                            servers[name] = server_def
+                            self.logger.info(f"Found server in palette.json: {name}")
+            except Exception as e:
+                self.logger.error(f"Failed to load palette.json: {e}")
+        
+        # Auto-discover Palette's built-in MCP servers
+        mcp_servers_dir = project_path / "mcp-servers"
+        if mcp_servers_dir.exists():
+            for server_dir in mcp_servers_dir.iterdir():
+                if server_dir.is_dir() and (server_dir / "server.py").exists():
+                    server_name = server_dir.name
+                    if server_name not in servers:  # Don't override user config
+                        servers[server_name] = {
+                            "command": "python",
+                            "args": [str(server_dir / "server.py")],
+                            "description": f"Auto-discovered Palette {server_name} server"
+                        }
+                        self.logger.info(f"Auto-discovered built-in server: {server_name}")
+        
+        return servers
+    
+    def get_all_servers(self) -> List[MCPServerConfig]:
+        """Get all registered servers (enabled and disabled)."""
+        return list(self.servers.values())
+    
+    def register_server(self, name: str, server_def: Dict[str, Any]) -> None:
+        """Register a new server dynamically."""
+        if name not in self.servers:
+            config_data = {k: v for k, v in server_def.items() if k != 'name' and k in MCPServerConfig.__dataclass_fields__}
+            config = MCPServerConfig(name=name, **config_data)
+            self.servers[name] = config

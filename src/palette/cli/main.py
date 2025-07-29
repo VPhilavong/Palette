@@ -21,6 +21,13 @@ from ..generation.prompts import (
     create_generation_request
 )
 
+# Try to import enhanced generator
+try:
+    from ..generation.enhanced_generator import EnhancedUIGenerator
+    ENHANCED_AVAILABLE = True
+except ImportError:
+    ENHANCED_AVAILABLE = False
+
 console = Console()
 
 
@@ -64,7 +71,12 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
     
     try:
         # Initialize generator with zero-fix validation enabled by default
-        generator = UIGenerator(project_path=output, quality_assurance=True)
+        # Use enhanced generator if available and MCP servers exist
+        if ENHANCED_AVAILABLE and Path("mcp-servers").exists():
+            generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
+            console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
+        else:
+            generator = UIGenerator(project_path=output, quality_assurance=True)
         
         # Auto-detect settings from project if not specified
         if not framework:

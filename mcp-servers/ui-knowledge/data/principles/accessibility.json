@@ -1,0 +1,121 @@
+{
+  "category": "accessibility",
+  "description": "Making web applications usable by everyone, including people with disabilities",
+  "guidelines": [
+    "Provide text alternatives for non-text content",
+    "Ensure sufficient color contrast (4.5:1 for normal text, 3:1 for large text)",
+    "Make all functionality keyboard accessible",
+    "Give users enough time to read and use content",
+    "Don't use color as the only means of conveying information",
+    "Help users navigate and find content",
+    "Make text readable and understandable",
+    "Make pages appear and operate predictably"
+  ],
+  "wcag_levels": {
+    "A": {
+      "description": "Minimum level of accessibility",
+      "requirements": [
+        "Images have alt text",
+        "Videos have captions",
+        "Content is keyboard accessible",
+        "Page has a language attribute"
+      ]
+    },
+    "AA": {
+      "description": "Standard level for most organizations",
+      "requirements": [
+        "Color contrast ratios meet standards",
+        "Text can be resized up to 200%",
+        "Multiple ways to find pages",
+        "Headings and labels are descriptive"
+      ]
+    },
+    "AAA": {
+      "description": "Enhanced level for specialized contexts",
+      "requirements": [
+        "Enhanced color contrast (7:1)",
+        "No background audio or can be turned off",
+        "Line height of at least 1.5",
+        "Paragraph spacing of at least 1.5x font size"
+      ]
+    }
+  },
+  "component_specific": {
+    "forms": {
+      "guidelines": [
+        "Label all form inputs clearly",
+        "Group related fields with fieldsets",
+        "Provide clear error messages",
+        "Don't rely solely on placeholder text",
+        "Make error messages specific and helpful",
+        "Announce form validation to screen readers"
+      ],
+      "aria_patterns": [
+        "aria-label for inputs without visible labels",
+        "aria-describedby for help text",
+        "aria-invalid for validation states",
+        "aria-required for mandatory fields"
+      ]
+    },
+    "navigation": {
+      "guidelines": [
+        "Provide skip links to main content",
+        "Use semantic HTML5 nav elements",
+        "Indicate current page in navigation",
+        "Ensure logical tab order",
+        "Provide multiple navigation methods"
+      ],
+      "aria_patterns": [
+        "role='navigation' for nav areas",
+        "aria-current='page' for active page",
+        "aria-label to distinguish multiple navs"
+      ]
+    },
+    "modals": {
+      "guidelines": [
+        "Trap focus within modal when open",
+        "Return focus to trigger element on close",
+        "Provide close button and Escape key handling",
+        "Announce modal opening to screen readers",
+        "Prevent interaction with background content"
+      ],
+      "aria_patterns": [
+        "role='dialog' on modal container",
+        "aria-modal='true'",
+        "aria-labelledby pointing to heading",
+        "aria-describedby for modal content"
+      ]
+    }
+  },
+  "testing": {
+    "manual": [
+      "Navigate using only keyboard",
+      "Test with screen reader (NVDA, JAWS, VoiceOver)",
+      "Check color contrast with tools",
+      "Zoom to 200% and check layout",
+      "Disable CSS and check content order"
+    ],
+    "automated": [
+      "axe DevTools browser extension",
+      "Lighthouse accessibility audit",
+      "jest-axe for unit tests",
+      "Pa11y for CI/CD integration",
+      "WAVE evaluation tool"
+    ]
+  },
+  "common_issues": [
+    "Missing alt text on images",
+    "Poor color contrast",
+    "Missing focus indicators",
+    "Keyboard traps",
+    "Missing form labels",
+    "Empty links or buttons",
+    "Unclear error messages"
+  ],
+  "resources": [
+    "WebAIM: https://webaim.org/",
+    "A11y Project: https://www.a11yproject.com/",
+    "MDN Accessibility: https://developer.mozilla.org/en-US/docs/Web/Accessibility",
+    "WCAG Guidelines: https://www.w3.org/WAI/WCAG21/quickref/"
+  ]
+}
