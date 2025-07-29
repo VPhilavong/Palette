@@ -1,13 +1,19 @@
 {
     "version": "0.2.0",
     "configurations": [
-        {
-            "name": "Extension",
-            "type": "extensionHost",
-            "request": "launch",
-            "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}"
-            ]
-        }
+      {
+        "name": "Run Code Palette Extension",
+        "type": "extensionHost",
+        "request": "launch",
+        "runtimeExecutable": "${execPath}",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"
+        ],
+        "outFiles": [
+          "${workspaceFolder}/vscode-extension/out/**/*.js"
+        ],
+        "preLaunchTask": "npm: compile"
+      }
     ]
-}
+  }
+  
