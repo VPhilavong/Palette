@@ -72,9 +72,16 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
     try:
         # Initialize generator with zero-fix validation enabled by default
         # Use enhanced generator if available and MCP servers exist
-        if ENHANCED_AVAILABLE and Path("mcp-servers").exists():
+        # Check both current directory and Palette installation directory
+        palette_dir = Path(__file__).parent.parent.parent.parent  # Go up to Palette root
+        mcp_in_cwd = Path("mcp-servers").exists()
+        mcp_in_palette = (palette_dir / "mcp-servers").exists()
+        
+        if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
             generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
             console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
+            if mcp_in_palette and not mcp_in_cwd:
+                console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
         else:
             generator = UIGenerator(project_path=output, quality_assurance=True)
         

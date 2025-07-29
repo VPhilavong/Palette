@@ -23,22 +23,36 @@ class EnhancedUIGenerator(UIGenerator):
     
     def _setup_mcp_servers(self):
         """Set up the professional frontend MCP servers."""
+        # Find MCP servers - check project directory first, then Palette installation
+        mcp_path = None
+        if (Path(self.project_path) / "mcp-servers").exists():
+            mcp_path = Path(self.project_path) / "mcp-servers"
+        else:
+            # Check Palette installation directory
+            palette_dir = Path(__file__).parent.parent.parent.parent
+            if (palette_dir / "mcp-servers").exists():
+                mcp_path = palette_dir / "mcp-servers"
+        
+        if not mcp_path:
+            print("⚠️ MCP servers not found")
+            return
+        
         # Register our custom MCP servers
         servers_to_register = [
             {
                 "name": "ui-knowledge",
                 "command": "python",
-                "args": [str(self.project_path / "mcp-servers/ui-knowledge/server.py")]
+                "args": [str(mcp_path / "ui-knowledge/server.py")]
             },
             {
                 "name": "code-analysis", 
                 "command": "python",
-                "args": [str(self.project_path / "mcp-servers/code-analysis/server.py")]
+                "args": [str(mcp_path / "code-analysis/server.py")]
             },
             {
                 "name": "design-enforcer",
                 "command": "python", 
-                "args": [str(self.project_path / "mcp-servers/design-enforcer/server.py")]
+                "args": [str(mcp_path / "design-enforcer/server.py")]
             }
         ]
         
