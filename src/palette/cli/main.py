@@ -21,7 +21,14 @@ from ..generation.prompts import (
     create_generation_request
 )
 
-# Try to import enhanced generator
+# Try to import knowledge-enhanced generator
+try:
+    from ..generation.knowledge_generator import KnowledgeUIGenerator
+    KNOWLEDGE_AVAILABLE = True
+except ImportError:
+    KNOWLEDGE_AVAILABLE = False
+
+# Try to import enhanced generator (legacy, now disabled)
 try:
     from ..generation.enhanced_generator import EnhancedUIGenerator
     ENHANCED_AVAILABLE = True
@@ -81,16 +88,21 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
         mcp_in_cwd = Path("mcp-servers").exists()
         mcp_in_palette = (palette_dir / "mcp-servers").exists()
         
-        # Temporarily disable MCP integration for stability
-        # TODO: Re-enable after fixing async context and QualityReport issues
+        # Use Knowledge-enhanced generator if available
+        if KNOWLEDGE_AVAILABLE:
+            generator = KnowledgeUIGenerator(project_path=output, quality_assurance=True)
+            console.print("[green]🧠 Using Knowledge-Enhanced Generator[/green]")
+        else:
+            generator = UIGenerator(project_path=output, quality_assurance=True)
+            console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
+        
+        # Legacy MCP integration (temporarily disabled)
+        # TODO: Remove after confirming knowledge base works well
         # if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
         #     generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
         #     console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
         #     if mcp_in_palette and not mcp_in_cwd:
         #         console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
-        # else:
-        generator = UIGenerator(project_path=output, quality_assurance=True)
-        console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
         
         # Auto-detect settings from project if not specified
         if not framework:
