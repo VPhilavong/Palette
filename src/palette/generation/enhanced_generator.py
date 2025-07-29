@@ -463,13 +463,24 @@ Return only the fixed component code.
                 formatted.append(f"- {issue}")
         return "\n".join(formatted)
     
-    async def generate_component_with_qa(
+    def generate_component_with_qa(
         self,
         prompt: str,
         context: Dict,
         target_path: Optional[str] = None
     ) -> Tuple[str, QualityReport]:
         """Override parent method to use MCP enhancement."""
+        
+        # Run the async version in a sync wrapper
+        return asyncio.run(self._generate_component_with_qa_async(prompt, context, target_path))
+    
+    async def _generate_component_with_qa_async(
+        self,
+        prompt: str,
+        context: Dict,
+        target_path: Optional[str] = None
+    ) -> Tuple[str, QualityReport]:
+        """Async implementation of component generation with MCP enhancement."""
         
         # Check if MCP servers are available
         if self.mcp_client:

@@ -585,7 +585,6 @@ class MCPClient:
     
     def __del__(self):
         """Cleanup on deletion."""
-        try:
-            asyncio.create_task(self.close_all_connections())
-        except:
-            pass
+        # Note: Can't reliably run async cleanup in __del__
+        # Connections will be cleaned up by the OS
+        pass
