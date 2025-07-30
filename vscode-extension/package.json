@@ -10,6 +10,7 @@
   "categories": [
     "Other"
   ],
+  "main": "./out/extension.js",
   "keywords": [
     "react",
     "component",
@@ -19,30 +20,26 @@
     "design"
   ],
   "activationEvents": [
-    "onLanguage:typescript",
-    "onLanguage:typescriptreact",
-    "onLanguage:javascript",
-    "onLanguage:javascriptreact"
+    "onCommand:palette.openWebview",
+    "onCommand:palette.generate",
+    "onCommand:palette.analyze"
   ],
-  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "palette.openWebview",
+        "title": "Open Palette"
+      },
+      {
         "command": "palette.generate",
-        "title": "Ask to Build",
-        "category": "Palette"
+        "title": "Ask to Build"
       },
       {
         "command": "palette.analyze",
-        "title": "Analyze Project",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.openWebview",
-        "title": "Open Palette",
-        "category": "Palette"
+        "title": "Analyze Project"
       }
     ],
+    "main": "./out/extension.js",
     "menus": {
       "commandPalette": [
         {
@@ -80,13 +77,17 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p ."
   },
   "devDependencies": {
-    "@types/vscode": "^1.60.0",
     "@types/node": "16.x",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@types/vscode": "^1.60.0",
     "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "lucide-react": "^0.534.0"
   }
 }
