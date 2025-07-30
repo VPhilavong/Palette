@@ -1,6 +1,6 @@
 """
-Enhanced UI Generator using OpenAI File Search knowledge base.
-Replaces the complex MCP architecture with a simpler, more reliable approach.
+Enhanced UI Generator using local knowledge base.
+Fast, unlimited semantic search without rate limits or API dependencies.
 """
 
 import os
@@ -9,8 +9,6 @@ from pathlib import Path
 
 from .generator import UIGenerator
 from ..knowledge import (
-    PaletteKnowledgeBase, 
-    KnowledgeEnhancedGenerator,
     LocalKnowledgeBase,
     LocalKnowledgeEnhancedGenerator,
     HAS_LOCAL_KNOWLEDGE
@@ -19,7 +17,7 @@ from ..quality import QualityReport
 
 
 class KnowledgeUIGenerator(UIGenerator):
-    """UI Generator enhanced with File Search knowledge base."""
+    """UI Generator enhanced with local knowledge base."""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,8 +26,7 @@ class KnowledgeUIGenerator(UIGenerator):
         self._setup_knowledge_base()
     
     def _setup_knowledge_base(self):
-        """Set up the knowledge base system with local-first approach."""
-        # Try local knowledge base first (no rate limits, faster)
+        """Set up the local knowledge base system."""
         if HAS_LOCAL_KNOWLEDGE:
             try:
                 print("🧠 Initializing local knowledge base...")
@@ -40,23 +37,9 @@ class KnowledgeUIGenerator(UIGenerator):
             except Exception as e:
                 print(f"⚠️ Local knowledge base failed: {e}")
         
-        # Fallback to OpenAI File Search if local not available
-        if os.getenv("OPENAI_API_KEY"):
-            try:
-                print("🌐 Falling back to OpenAI File Search knowledge base...")
-                self.knowledge_base = PaletteKnowledgeBase()
-                self.knowledge_generator = KnowledgeEnhancedGenerator(self.knowledge_base)
-                
-                # Ensure core knowledge base exists
-                self.knowledge_base.create_core_knowledge_base()
-                print("✅ Remote knowledge base ready (rate limited)")
-                return
-            except Exception as e:
-                print(f"⚠️ Remote knowledge base failed: {e}")
-        
         # No knowledge enhancement available
-        print("⚠️ No knowledge base available - install dependencies or set OPENAI_API_KEY")
-        print("   Install local knowledge: pip install sentence-transformers faiss-cpu")
+        print("⚠️ Local knowledge base not available")
+        print("   Install dependencies: pip install sentence-transformers faiss-cpu numpy")
         self.knowledge_base = None
         self.knowledge_generator = None
     
@@ -111,48 +94,28 @@ class KnowledgeUIGenerator(UIGenerator):
         return super().generate_component(prompt, context)
     
     def get_knowledge_status(self) -> Dict[str, Any]:
-        """Get status of the knowledge base system."""
+        """Get status of the local knowledge base system."""
         if not self.knowledge_base:
             return {
                 "available": False,
-                "reason": "Knowledge base not initialized",
+                "reason": "Local knowledge base not initialized",
                 "type": "none"
             }
         
-        # Local knowledge base
-        if isinstance(self.knowledge_base, LocalKnowledgeBase):
-            return {
-                "available": True,
-                "type": "local",
-                "rate_limits": False,
-                **self.knowledge_base.get_stats()
-            }
-        
-        # Remote knowledge base (OpenAI File Search)
-        try:
-            bases = self.knowledge_base.get_available_knowledge_bases()
-            return {
-                "available": True,
-                "type": "remote",
-                "rate_limits": True,
-                "knowledge_bases": bases,
-                "total_bases": len(bases),
-                "active_bases": len([b for b in bases if b["status"] == "active"])
-            }
-        except Exception as e:
-            return {
-                "available": False,
-                "type": "remote",
-                "reason": str(e)
-            }
+        # Local knowledge base status
+        return {
+            "available": True,
+            "type": "local",
+            "rate_limits": False,
+            **self.knowledge_base.get_stats()
+        }
     
     def create_project_knowledge_base(self) -> Optional[str]:
-        """Create a knowledge base for the current project."""
+        """Create a knowledge base for the current project (local only)."""
         if not self.knowledge_base or not self.project_path:
             return None
         
-        try:
-            return self.knowledge_base.create_project_knowledge_base(self.project_path)
-        except Exception as e:
-            print(f"⚠️ Failed to create project knowledge base: {e}")
-            return None
+        # Note: Local knowledge base doesn't support project-specific creation yet
+        # This would need to be implemented to analyze project files and add them
+        print("⚠️ Project-specific knowledge base creation not yet implemented for local knowledge base")
+        return None
