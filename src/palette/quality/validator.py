@@ -68,10 +68,15 @@ class ComponentValidator:
             ESLintAutoFixer(),
         ]
     
-    def validate_design_token_usage(self, code: str, design_tokens: Dict) -> Tuple[bool, List[str]]:
-        """Validate that generated code uses project design tokens."""
+    def validate_design_token_usage(self, code: str, design_tokens: Dict) -> Tuple[bool, List[str], float]:
+        """Validate that generated code uses project design tokens and calculate usage score."""
         issues = []
         uses_project_tokens = False
+        
+        # Initialize counters
+        total_color_uses = 0
+        project_color_uses = 0
+        generic_color_uses = 0
         
         if design_tokens.get('colors'):
             colors = design_tokens['colors']
@@ -82,23 +87,40 @@ class ComponentValidator:
             
             # Exclude generic colors
             project_colors = [c for c in color_list if c not in ['black', 'white', 'gray', 'transparent']]
+            generic_colors = ['black', 'white', 'gray', 'transparent']
             
-            # Check if any project colors are used
-            for color in project_colors:
-                # Check for Tailwind color classes
-                if any(pattern in code for pattern in [
-                    f'bg-{color}',
-                    f'text-{color}',
-                    f'border-{color}',
-                    f'from-{color}',
-                    f'to-{color}',
-                    f'via-{color}'
-                ]):
+            # Count all color uses
+            import re
+            color_pattern = r'(?:bg|text|border|ring|from|to|via|fill|stroke|divide|placeholder|decoration)-(\w+)-?\d*'
+            color_matches = re.findall(color_pattern, code)
+            
+            for match in color_matches:
+                total_color_uses += 1
+                if match in project_colors:
+                    project_color_uses += 1
                     uses_project_tokens = True
-                    break
+                elif match in generic_colors:
+                    generic_color_uses += 1
             
             if not uses_project_tokens and project_colors:
                 issues.append(f"Component doesn't use project colors: {', '.join(project_colors[:3])}")
+        
+        # Calculate design token usage score
+        if total_color_uses > 0:
+            base_score = (project_color_uses / total_color_uses) * 100
+            
+            # Bonus points
+            bonus = 0
+            # Gradient bonus
+            if any(pattern in code for pattern in ['from-', 'to-', 'via-']) and project_color_uses > 0:
+                bonus += 10
+            # Consistency bonus (using mostly project colors)
+            if project_color_uses > generic_color_uses:
+                bonus += 5
+            
+            design_token_score = min(100, base_score + bonus)
+        else:
+            design_token_score = 0
         
         # Check for gradient usage if requested
         if 'gradient' in code.lower() and 'gradient' not in code:
@@ -107,7 +129,7 @@ class ComponentValidator:
             if not any(pattern in code for pattern in gradient_patterns):
                 issues.append("Component mentions gradient but doesn't use gradient classes")
         
-        return uses_project_tokens, issues
+        return uses_project_tokens, issues, design_token_score
     
     def validate_component(self, component_code: str, target_path: str) -> QualityReport:
         """Run comprehensive validation on generated component."""

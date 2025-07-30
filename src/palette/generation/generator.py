@@ -153,9 +153,13 @@ class UIGenerator:
         
         # Add design token validation
         if context.get('design_tokens'):
-            uses_tokens, token_issues = self.validator.validate_design_token_usage(
+            uses_tokens, token_issues, token_score = self.validator.validate_design_token_usage(
                 refined_code, context['design_tokens']
             )
+            
+            # Add design token score to report
+            print(f"🎨 Design Token Usage: {token_score:.1f}%")
+            
             if token_issues:
                 from ..quality.validator import ValidationIssue, ValidationLevel
                 for issue in token_issues:
@@ -165,12 +169,16 @@ class UIGenerator:
                         message=issue,
                         suggestion="Use project-specific design tokens instead of generic colors"
                     ))
-                # Slightly reduce score for not using design tokens
-                quality_report.score = max(0, quality_report.score - 5)
+            
+            # Add to checks with score
             if uses_tokens:
-                quality_report.passed_checks.append("Design token usage")
+                quality_report.passed_checks.append(f"Design token usage ({token_score:.0f}%)")
             else:
-                quality_report.failed_checks.append("Design token usage")
+                quality_report.failed_checks.append(f"Design token usage ({token_score:.0f}%)")
+                
+            # Adjust overall score based on token usage (max 5 point impact)
+            token_impact = (token_score / 100) * 5
+            quality_report.score = min(100, quality_report.score + token_impact - 2.5)
         
         # Display quality summary
         self._display_quality_summary(quality_report)

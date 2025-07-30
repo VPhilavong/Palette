@@ -28,12 +28,6 @@ try:
 except ImportError:
     KNOWLEDGE_AVAILABLE = False
 
-# Try to import enhanced generator (legacy, now disabled)
-try:
-    from ..generation.enhanced_generator import EnhancedUIGenerator
-    ENHANCED_AVAILABLE = True
-except ImportError:
-    ENHANCED_AVAILABLE = False
 
 console = Console()
 
@@ -96,13 +90,6 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
             generator = UIGenerator(project_path=output, quality_assurance=True)
             console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
         
-        # Legacy MCP integration (temporarily disabled)
-        # TODO: Remove after confirming knowledge base works well
-        # if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
-        #     generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
-        #     console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
-        #     if mcp_in_palette and not mcp_in_cwd:
-        #         console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
         
         # Auto-detect settings from project if not specified
         if not framework:
