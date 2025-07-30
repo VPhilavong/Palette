@@ -5,13 +5,13 @@ from typing import Dict, Optional, Tuple
 
 import anthropic
 from openai import OpenAI
+from ..utils.async_utils import safe_run_async
 
 from .prompts import UIUXCopilotPromptBuilder
 from .enhanced_prompts import EnhancedPromptBuilder
 from ..quality import ComponentValidator, QualityReport
 from ..analysis.project_structure import ProjectStructureDetector
 from ..quality.zero_fix_pipeline import ZeroFixPipeline
-from ..mcp.registry import MCPServerRegistry
 
 
 class UIGenerator:
@@ -109,59 +109,42 @@ class UIGenerator:
             )
             return component_code, dummy_report
         
-        # Step 3: Use traditional validation (Zero-Fix Pipeline temporarily disabled)
-        # TODO: Re-enable Zero-Fix Pipeline after fixing async event loop issues
-        print("🔄 Using traditional quality assurance...")
+        # Step 3: Use Zero-Fix Pipeline for advanced validation
+        print("🚀 Using Zero-Fix Pipeline for advanced quality assurance...")
         
-        # Skip Zero-Fix Pipeline to avoid async issues
-        # try:
-        #     import asyncio
-        #     
-        #     # Initialize Zero-Fix Pipeline with auto-discovered MCP servers
-        #     from ..mcp.client import MCPClient
-        #     mcp_client = None
+        try:
+            # Initialize Zero-Fix Pipeline (without MCP dependencies)
+            zero_fix_pipeline = ZeroFixPipeline(
+                project_path=self.project_path,
+                mcp_client=None  # No MCP since we removed it
+            )
             
-        #     # Use auto-discovered MCP servers if available
-        #     if hasattr(self, '_mcp_discovery') and self._mcp_discovery.get('enabled'):
-        #         try:
-        #             mcp_registry = MCPServerRegistry()
-        #             enabled_servers = mcp_registry.get_enabled_servers()
-        #             if enabled_servers:
-        #                 mcp_client = MCPClient(servers=enabled_servers)
-        #                 print(f"🎯 Zero-Fix Pipeline using {len(enabled_servers)} MCP servers")
-        #         except Exception as e:
-        #             print(f"⚠️ MCP client initialization failed: {e}")
-        #     
-        #     zero_fix_pipeline = ZeroFixPipeline(
-        #         project_path=self.project_path,
-        #         mcp_client=mcp_client
-        #     )
-        #     
-        #     # Run the pipeline
-        #     pipeline_result = asyncio.run(zero_fix_pipeline.process(
-        #         component_code, 
-        #         context, 
-        #         target_path or "Component.tsx"
-        #     ))
-        #     
-        #     # Convert ZeroFixResult to QualityReport format
-        #     quality_report = self._convert_zero_fix_to_quality_report(pipeline_result)
-        #     
-        #     # Display pipeline summary
-        #     self._display_zero_fix_summary(pipeline_result)
-        #     
-        #     # Use the pipeline result as the final code
-        #     final_code = pipeline_result.final_code
-        #     
-        #     # Step 4: Final formatting (after all fixes)
-        #     print("🎨 Final formatting pass...")
-        #     formatted_code = self.format_and_lint_code(final_code, self.project_path or os.getcwd())
-        #     
-        #     return formatted_code, quality_report
-        #     
-        # except Exception as e:
-        #     print(f"⚠️ Zero-Fix Pipeline failed, fallingback to traditional QA: {e}")
-        #     
+            # Run the pipeline with safe async handling
+            pipeline_result = safe_run_async(zero_fix_pipeline.process(
+                component_code, 
+                context, 
+                target_path or "Component.tsx"
+            ))
+            
+            # Convert ZeroFixResult to QualityReport format
+            quality_report = self._convert_zero_fix_to_quality_report(pipeline_result)
+            
+            # Display pipeline summary
+            self._display_zero_fix_summary(pipeline_result)
+            
+            # Use the pipeline result as the final code
+            final_code = pipeline_result.final_code
+            
+            # Step 4: Final formatting (after all fixes)
+            print("🎨 Final formatting pass...")
+            formatted_code = self.format_and_lint_code(final_code, self.project_path or os.getcwd())
+            
+            return formatted_code, quality_report
+            
+        except Exception as e:
+            print(f"⚠️ Zero-Fix Pipeline failed, falling back to traditional QA: {e}")
+            # Fall through to traditional validation
+            
         # Traditional validation
         target_file = target_path or "Component.tsx"
         refined_code, quality_report = self.validator.iterative_refinement(
@@ -769,20 +752,6 @@ class UIGenerator:
     
     def _auto_discover_mcp_servers(self, project_path: str):
         """Auto-discover and configure MCP servers based on project setup."""
-        try:
-            # Initialize MCP registry
-            mcp_registry = MCPServerRegistry()
-            
-            # Run auto-discovery
-            discovery_result = mcp_registry.auto_discover_servers(project_path)
-            
-            # Store discovery results for potential use in Zero-Fix Pipeline
-            self._mcp_discovery = discovery_result
-            
-            if discovery_result['enabled']:
-                print(f"🎯 MCP integration enabled with {len(discovery_result['enabled'])} servers")
-            
-        except Exception as e:
-            print(f"⚠️ MCP auto-discovery failed: {e}")
-            # Don't fail the entire initialization if MCP discovery fails
-            self._mcp_discovery = {"discovered": [], "enabled": []}
+        # MCP support has been removed in favor of local knowledge base
+        # Initialize empty discovery results
+        self._mcp_discovery = {"discovered": [], "enabled": []}

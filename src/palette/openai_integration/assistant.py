@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openai import OpenAI, AsyncOpenAI
+from ..utils.async_utils import safe_run_async
 
 
 @dataclass
@@ -222,7 +223,7 @@ class PaletteAssistant:
         use_code_interpreter: bool = True
     ) -> Tuple[str, Dict[str, Any]]:
         """Synchronous wrapper for component generation."""
-        return asyncio.run(self.generate_component_async(prompt, context, use_code_interpreter))
+        return safe_run_async(self.generate_component_async(prompt, context, use_code_interpreter))
     
     async def validate_with_interpreter(self, code: str) -> Dict[str, Any]:
         """Use Code Interpreter to validate component code."""
