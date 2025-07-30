@@ -151,6 +151,27 @@ class UIGenerator:
             component_code, target_file, max_iterations=3
         )
         
+        # Add design token validation
+        if context.get('design_tokens'):
+            uses_tokens, token_issues = self.validator.validate_design_token_usage(
+                refined_code, context['design_tokens']
+            )
+            if token_issues:
+                from ..quality.validator import ValidationIssue, ValidationLevel
+                for issue in token_issues:
+                    quality_report.issues.append(ValidationIssue(
+                        level=ValidationLevel.WARNING,
+                        category="design_tokens",
+                        message=issue,
+                        suggestion="Use project-specific design tokens instead of generic colors"
+                    ))
+                # Slightly reduce score for not using design tokens
+                quality_report.score = max(0, quality_report.score - 5)
+            if uses_tokens:
+                quality_report.passed_checks.append("Design token usage")
+            else:
+                quality_report.failed_checks.append("Design token usage")
+        
         # Display quality summary
         self._display_quality_summary(quality_report)
         

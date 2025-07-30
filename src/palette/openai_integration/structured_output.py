@@ -3,6 +3,7 @@ Structured Output implementation for guaranteed schema-compliant component gener
 Uses OpenAI's structured output feature to ensure zero manual fixing.
 """
 
+import os
 import json
 from typing import Dict, List, Optional, Any, Type, Tuple
 from dataclasses import dataclass, asdict
@@ -93,9 +94,13 @@ class StructuredOutputGenerator:
         self,
         prompt: str,
         context: Dict[str, Any],
-        model: str = "gpt-4-turbo-preview"
+        model: str = None
     ) -> GeneratedComponent:
         """Generate a component with structured output guarantee."""
+        
+        # Use environment variable if model not specified
+        if model is None:
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
         # Build the system prompt with context
         system_prompt = self._build_system_prompt(context)
@@ -126,9 +131,13 @@ class StructuredOutputGenerator:
         self,
         code: str,
         validation_context: Dict[str, Any],
-        model: str = "gpt-4-turbo-preview"
+        model: str = None
     ) -> ValidationResult:
         """Validate code and get structured results."""
+        
+        # Use environment variable if model not specified
+        if model is None:
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
         validation_prompt = f"""
         Validate this React component code thoroughly:

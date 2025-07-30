@@ -518,29 +518,44 @@ class ZeroFixPipeline:
         validation_reports: List[Dict[str, Any]],
         mcp_validations: List[Dict[str, Any]]
     ) -> float:
-        """Calculate confidence score based on all validations."""
+        """Calculate confidence score based on final validation state only."""
         
         score = 1.0
         
-        # Penalize for remaining errors
-        for report in validation_reports:
-            result = report.get("result", {})
+        # Only consider the FINAL validation report
+        final_report = next(
+            (r for r in reversed(validation_reports) if r.get("stage") == "final"),
+            validation_reports[-1] if validation_reports else None
+        )
+        
+        if final_report:
+            result = final_report.get("result", {})
             errors = result.get("errors", [])
             warnings = result.get("warnings", [])
             
-            # Heavy penalty for errors
-            score -= len(errors) * 0.1
-            # Light penalty for warnings
-            score -= len(warnings) * 0.02
+            # Heavy penalty for errors in final state
+            score -= len(errors) * 0.15
+            # Light penalty for warnings in final state
+            score -= len(warnings) * 0.03
         
-        # Penalize for MCP compliance issues
+        # Bonus for successful fixing (if we started with errors and ended with none)
+        if validation_reports:
+            initial_report = validation_reports[0]
+            initial_errors = len(initial_report.get("result", {}).get("errors", []))
+            final_errors = len(final_report.get("result", {}).get("errors", [])) if final_report else 0
+            
+            if initial_errors > 0 and final_errors == 0:
+                # Bonus for successfully fixing all errors
+                score += 0.15
+        
+        # Penalize for MCP compliance issues (if available)
         for mcp_validation in mcp_validations:
             issues = mcp_validation.get("issues", [])
             score -= len(issues) * 0.05
         
         # Bonus for passing real project validation
         real_validation = next(
-            (r for r in validation_reports if r.get("stage") == "real_project_final"),
+            (r for r in validation_reports if r.get("stage") in ["real_project_final", "real_project"]),
             None
         )
         

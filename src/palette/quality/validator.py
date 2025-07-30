@@ -68,6 +68,47 @@ class ComponentValidator:
             ESLintAutoFixer(),
         ]
     
+    def validate_design_token_usage(self, code: str, design_tokens: Dict) -> Tuple[bool, List[str]]:
+        """Validate that generated code uses project design tokens."""
+        issues = []
+        uses_project_tokens = False
+        
+        if design_tokens.get('colors'):
+            colors = design_tokens['colors']
+            if isinstance(colors, dict):
+                color_list = list(colors.keys())
+            else:
+                color_list = colors
+            
+            # Exclude generic colors
+            project_colors = [c for c in color_list if c not in ['black', 'white', 'gray', 'transparent']]
+            
+            # Check if any project colors are used
+            for color in project_colors:
+                # Check for Tailwind color classes
+                if any(pattern in code for pattern in [
+                    f'bg-{color}',
+                    f'text-{color}',
+                    f'border-{color}',
+                    f'from-{color}',
+                    f'to-{color}',
+                    f'via-{color}'
+                ]):
+                    uses_project_tokens = True
+                    break
+            
+            if not uses_project_tokens and project_colors:
+                issues.append(f"Component doesn't use project colors: {', '.join(project_colors[:3])}")
+        
+        # Check for gradient usage if requested
+        if 'gradient' in code.lower() and 'gradient' not in code:
+            # Check if gradient classes are used
+            gradient_patterns = ['from-', 'to-', 'via-', 'gradient-to-']
+            if not any(pattern in code for pattern in gradient_patterns):
+                issues.append("Component mentions gradient but doesn't use gradient classes")
+        
+        return uses_project_tokens, issues
+    
     def validate_component(self, component_code: str, target_path: str) -> QualityReport:
         """Run comprehensive validation on generated component."""
         issues = []

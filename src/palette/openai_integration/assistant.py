@@ -18,7 +18,7 @@ from ..utils.async_utils import safe_run_async
 class AssistantConfig:
     """Configuration for the Palette Assistant."""
     name: str = "Palette UI/UX Generator"
-    model: str = "gpt-4-turbo-preview"
+    model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     instructions: str = """You are an expert UI/UX developer assistant specialized in generating 
     high-quality React components. You have deep knowledge of:
     - React and TypeScript best practices

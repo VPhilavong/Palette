@@ -149,8 +149,14 @@ CORE CAPABILITIES:
 - Follow established design patterns and best practices
 - Generate multi-file architectures when appropriate
 
-DESIGN SYSTEM:
-{self._format_design_tokens(design_tokens)}
+CRITICAL: PROJECT DESIGN SYSTEM
+{self._format_design_tokens_enhanced(design_tokens)}
+
+DESIGN TOKEN USAGE RULES:
+- MUST use project-specific colors over generic ones (e.g., use 'blue' or 'emerald' instead of 'gray')
+- MUST incorporate detected design tokens in every component
+- For gradients, use project colors (e.g., 'from-blue-500 to-emerald-500')
+- Maintain consistency with the existing design system
 
 QUALITY STANDARDS:
 - TypeScript by default with comprehensive type safety
@@ -657,6 +663,40 @@ ACCESSIBILITY ({request.accessibility_level.upper()}-level):
             sections.append(f"Typography: {', '.join(str(t) for t in type_list)}")
         
         return "\n".join(sections) if sections else "No specific design tokens detected"
+    
+    def _format_design_tokens_enhanced(self, tokens: Dict) -> str:
+        """Format design tokens with emphasis for better adherence"""
+        sections = []
+        
+        if tokens.get('colors'):
+            colors = tokens['colors']
+            if isinstance(colors, dict):
+                color_list = list(colors.keys())[:10]
+            else:
+                color_list = colors[:10]
+            
+            # Exclude generic colors and emphasize project-specific ones
+            project_colors = [c for c in color_list if c not in ['black', 'white', 'gray']]
+            
+            sections.append(f"PROJECT COLORS (USE THESE!): {', '.join(project_colors)}")
+            sections.append(f"Available shades: {'-'.join([f'{c}-500' for c in project_colors[:3]])}")
+            
+            # Add gradient examples
+            if len(project_colors) >= 2:
+                sections.append(f"Gradient examples: from-{project_colors[0]}-400 to-{project_colors[1]}-600")
+        
+        if tokens.get('spacing'):
+            spacing_list = tokens['spacing'][:8] if isinstance(tokens['spacing'], list) else list(tokens['spacing'].keys())[:8]
+            sections.append(f"Spacing scale: {', '.join(str(s) for s in spacing_list)}")
+        
+        if tokens.get('typography'):
+            type_list = tokens['typography'][:6] if isinstance(tokens['typography'], list) else list(tokens['typography'].keys())[:6]
+            sections.append(f"Typography scale: {', '.join(str(t) for t in type_list)}")
+        
+        if not sections:
+            return "No specific design tokens detected - use standard Tailwind classes"
+        
+        return "\n".join(sections)
     
     def _format_project_context(self, context: Dict, ast_analysis: Dict) -> str:
         """Format project context for the prompt"""
