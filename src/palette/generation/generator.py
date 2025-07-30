@@ -7,6 +7,11 @@ import anthropic
 from openai import OpenAI
 
 from ..analysis.project_structure import ProjectStructureDetector
+from ..intelligence import (
+    AssetIntelligence,
+    ComponentRelationshipEngine,
+    IntentAnalyzer,
+)
 from ..quality import ComponentValidator, QualityReport
 from ..quality.zero_fix_pipeline import ZeroFixPipeline
 from ..utils.async_utils import safe_run_async
@@ -55,6 +60,19 @@ class UIGenerator:
 
         # Initialize prompt parser
         self.prompt_parser = PromptParser()
+
+        # Initialize intelligence systems
+        self.intent_analyzer = IntentAnalyzer()
+        self.asset_intelligence = None
+        self.component_mapper = None
+
+        if project_path:
+            try:
+                self.asset_intelligence = AssetIntelligence(project_path)
+                self.component_mapper = ComponentRelationshipEngine(project_path)
+                print("✅ Intelligence systems initialized")
+            except Exception as e:
+                print(f"⚠️ Intelligence initialization failed: {e}")
 
         # Initialize API clients
         self.openai_client = None
@@ -420,6 +438,187 @@ class UIGenerator:
 
         response = "\n".join(cleaned_lines)
         return response.strip()
+
+    def generate_with_intelligence(self, prompt: str) -> Tuple[str, Dict]:
+        """Generate component with full intelligence systems engaged."""
+        print("\n🧠 Analyzing your request...")
+
+        # Step 1: Analyze intent
+        intent_context = self.intent_analyzer.analyze_intent(
+            prompt, self._project_context
+        )
+        print(f"📊 {self.intent_analyzer.get_intent_summary(intent_context)}")
+
+        # Step 2: Analyze assets if available
+        asset_context = None
+        asset_suggestions = []
+        if self.asset_intelligence:
+            print("\n📸 Scanning project assets...")
+            asset_context = self.asset_intelligence.analyze_project_assets()
+            asset_suggestions = self.asset_intelligence.suggest_assets_for_component(
+                prompt, intent_context.primary_intent.value
+            )
+
+            if asset_suggestions:
+                print(f"🎨 Found {len(asset_suggestions)} relevant assets")
+                for suggestion in asset_suggestions[:3]:
+                    if suggestion.suggested_asset:
+                        print(
+                            f"  • {suggestion.usage_context}: {suggestion.suggested_asset.name}"
+                        )
+                    else:
+                        print(f"  • {suggestion.usage_context}: Using placeholder")
+
+        # Step 3: Analyze component relationships
+        relationship_context = None
+        if self.component_mapper:
+            print("\n🔗 Analyzing component relationships...")
+            relationship_context = self.component_mapper.analyze_component_ecosystem(
+                prompt, intent_context.primary_intent.value
+            )
+            summary = self.component_mapper.get_relationship_summary(
+                relationship_context
+            )
+            if summary:
+                print(f"📍 {summary}")
+
+        # Step 4: Show clarifying questions if needed
+        if (
+            intent_context.suggested_clarifications
+            and intent_context.confidence_score < 0.7
+        ):
+            print("\n❓ To better understand your needs, consider:")
+            for i, question in enumerate(
+                intent_context.suggested_clarifications[:3], 1
+            ):
+                print(f"   {i}. {question}")
+            print("   (Proceeding with current understanding)")
+
+        # Step 5: Generate with enhanced context
+        print("\n🚀 Generating component with enhanced context...")
+
+        # Build enhanced prompt with all intelligence
+        enhanced_request = self._build_intelligent_request(
+            prompt, intent_context, asset_context, relationship_context
+        )
+
+        # Generate the component
+        result = self.generate_component(enhanced_request)
+
+        # Step 6: Add intelligence metadata
+        intelligence_data = {
+            "intent": {
+                "primary": intent_context.primary_intent.value,
+                "goals": [g.value for g in intent_context.user_goals],
+                "confidence": intent_context.confidence_score,
+                "features": intent_context.key_features,
+            },
+            "assets": {
+                "suggested": len(asset_suggestions),
+                "used": sum(1 for s in asset_suggestions if s.suggested_asset),
+            },
+            "relationships": {
+                "suggested_location": (
+                    relationship_context.suggested_location
+                    if relationship_context
+                    else None
+                ),
+                "parent_components": (
+                    [p.name for p in relationship_context.parent_layouts[:3]]
+                    if relationship_context
+                    else []
+                ),
+                "common_patterns": (
+                    relationship_context.common_patterns[:3]
+                    if relationship_context
+                    else []
+                ),
+            },
+            "next_steps": self._generate_next_steps(prompt, intent_context),
+        }
+
+        # Show next steps
+        if intelligence_data["next_steps"]:
+            print("\n💡 Suggested next steps:")
+            for i, step in enumerate(intelligence_data["next_steps"][:3], 1):
+                print(f"   {i}. {step}")
+
+        return result, intelligence_data
+
+    def _build_intelligent_request(
+        self, prompt: str, intent_context, asset_context, relationship_context
+    ) -> str:
+        """Build an enhanced prompt with all intelligence insights."""
+        enhanced_parts = [prompt]
+
+        # Add implicit requirements
+        if intent_context.implicit_requirements:
+            enhanced_parts.append(
+                "\nImplicit requirements detected: "
+                + ", ".join(intent_context.implicit_requirements[:3])
+            )
+
+        # Add asset context
+        if asset_context and asset_context.logos:
+            enhanced_parts.append(
+                f"\nProject has {len(asset_context.logos)} logo variations available"
+            )
+
+        if asset_context and asset_context.colors:
+            color_list = list(asset_context.colors.items())[:5]
+            enhanced_parts.append(
+                "\nBrand colors detected: "
+                + ", ".join(f"{name}: {value}" for name, value in color_list)
+            )
+
+        # Add relationship context
+        if relationship_context and relationship_context.common_patterns:
+            enhanced_parts.append(
+                "\nCommon patterns in similar components: "
+                + ", ".join(relationship_context.common_patterns[:2])
+            )
+
+        return "\n".join(enhanced_parts)
+
+    def _generate_next_steps(self, prompt: str, intent_context) -> List[str]:
+        """Generate intelligent next step suggestions."""
+        next_steps = []
+
+        if intent_context.primary_intent.value == "landing_page":
+            next_steps.extend(
+                [
+                    "Create a features section to highlight key benefits",
+                    "Add testimonials for social proof",
+                    "Build a contact form for lead generation",
+                ]
+            )
+        elif intent_context.primary_intent.value == "e_commerce":
+            if "pricing" in prompt.lower():
+                next_steps.extend(
+                    [
+                        "Add a comparison table for detailed feature breakdown",
+                        "Create a FAQ section to address common questions",
+                        "Build testimonials to increase trust",
+                    ]
+                )
+            elif "product" in prompt.lower():
+                next_steps.extend(
+                    [
+                        "Add product filtering and sorting",
+                        "Create a product detail modal or page",
+                        "Build a shopping cart component",
+                    ]
+                )
+        elif intent_context.primary_intent.value == "dashboard":
+            next_steps.extend(
+                [
+                    "Add data visualization components",
+                    "Create filter controls for the data",
+                    "Build an export functionality",
+                ]
+            )
+
+        return next_steps
 
     def _generate_usage_example(self, component_code: str, prompt: str) -> str:
         """Generate a usage example for the component based on its props."""

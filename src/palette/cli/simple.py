@@ -27,7 +27,12 @@ def main():
 @click.option("--preview", is_flag=True, help="Preview component before creating file")
 @click.option("--output", "-o", help="Output file path (auto-detected if not provided)")
 @click.option("--model", default="gpt-4", help="LLM model to use")
-def generate(prompt: str, preview: bool, output: Optional[str], model: str):
+@click.option(
+    "--intelligent", is_flag=True, help="Enable intelligent collaborative generation"
+)
+def generate(
+    prompt: str, preview: bool, output: Optional[str], model: str, intelligent: bool
+):
     """Generate a React component from a natural language prompt"""
 
     print(f"🎨 Generating component: {prompt}")
@@ -42,8 +47,16 @@ def generate(prompt: str, preview: bool, output: Optional[str], model: str):
 
         # Generate component
         print("🤖 Generating component code...")
-        generator = UIGenerator(model=model)
-        component_code = generator.generate_component(prompt, context)
+        generator = UIGenerator(model=model, project_path=os.getcwd())
+
+        if intelligent:
+            # Use intelligent generation with full context
+            component_code, intelligence_data = generator.generate_with_intelligence(
+                prompt
+            )
+        else:
+            # Use standard generation
+            component_code = generator.generate_component(prompt, context)
 
         if preview:
             print("\n" + "=" * 60)
