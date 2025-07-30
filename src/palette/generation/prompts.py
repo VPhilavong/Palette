@@ -1,14 +1,15 @@
 # Complete UI/UX AI Copilot System
 # This is a comprehensive system for prompt-to-production UI/UX code generation
 
-from typing import Dict, List, Tuple, Optional, Union
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional, Tuple, Union
 
 
 class FrameworkType(Enum):
     """Supported frontend frameworks"""
+
     REACT = "react"
     NEXTJS = "next.js"
     REMIX = "remix"
@@ -17,6 +18,7 @@ class FrameworkType(Enum):
 
 class StylingLibrary(Enum):
     """Supported styling libraries"""
+
     TAILWIND = "tailwind"
     STYLED_COMPONENTS = "styled-components"
     EMOTION = "emotion"
@@ -30,6 +32,7 @@ class StylingLibrary(Enum):
 
 class ComponentLibrary(Enum):
     """Supported component libraries"""
+
     SHADCN_UI = "shadcn/ui"
     MATERIAL_UI = "material-ui"
     CHAKRA_UI = "chakra-ui"
@@ -42,6 +45,7 @@ class ComponentLibrary(Enum):
 
 class GenerationType(Enum):
     """Types of generation modes"""
+
     SINGLE_COMPONENT = "single"
     MULTI_FILE_COMPONENT = "multi"
     PAGE = "page"
@@ -56,6 +60,7 @@ class GenerationType(Enum):
 @dataclass
 class GenerationRequest:
     """Represents a UI/UX generation request"""
+
     prompt: str
     generation_type: GenerationType
     framework: FrameworkType
@@ -71,45 +76,58 @@ class GenerationRequest:
 
 class UIUXCopilotPromptBuilder:
     """Advanced prompt builder for comprehensive UI/UX code generation"""
-    
+
     def __init__(self):
         self.styling_patterns = self._load_styling_patterns()
         self.framework_patterns = self._load_framework_patterns()
         self.utility_patterns = self._load_utility_patterns()
-    
+
     def build_generation_prompt(self, request: GenerationRequest, context: Dict) -> str:
         """Build a comprehensive prompt based on the generation request"""
-        
+
         # Extract design tokens and project info
         design_tokens = context.get("design_tokens", {})
         project_structure = context.get("project_structure", {})
         available_imports = context.get("available_imports", {})
         ast_analysis = context.get("ast_analysis", {})
-        
+
         # Build the base system prompt
         base_prompt = self._build_base_prompt(request, design_tokens)
-        
+
         # Add framework-specific instructions
-        framework_prompt = self._build_framework_instructions(request.framework, project_structure)
-        
+        framework_prompt = self._build_framework_instructions(
+            request.framework, project_structure
+        )
+
         # Add styling-specific instructions
-        styling_prompt = self._build_styling_instructions(request.styling, design_tokens)
-        
+        styling_prompt = self._build_styling_instructions(
+            request.styling, design_tokens
+        )
+
+        # Add gradient-specific instructions
+        gradient_prompt = self._build_gradient_instructions(request.prompt)
+
         # Add component library instructions
-        library_prompt = self._build_library_instructions(request.component_library, available_imports)
-        
+        library_prompt = self._build_library_instructions(
+            request.component_library, available_imports
+        )
+
         # Add generation type specific instructions
-        generation_prompt = self._build_generation_instructions(request.generation_type, request)
-        
+        generation_prompt = self._build_generation_instructions(
+            request.generation_type, request
+        )
+
         # Add utility instructions
         utility_prompt = self._build_utility_instructions(request)
-        
+
         # Combine all prompts
         full_prompt = f"""{base_prompt}
 
 {framework_prompt}
 
 {styling_prompt}
+
+{gradient_prompt}
 
 {library_prompt}
 
@@ -134,10 +152,12 @@ OUTPUT RULES:
 - For multiple files: Use the === FILE: path/to/file.ext === format
 - Include all necessary configuration updates
 - Provide clear file paths following project structure"""
-        
+
         return full_prompt
-    
-    def _build_base_prompt(self, request: GenerationRequest, design_tokens: Dict) -> str:
+
+    def _build_base_prompt(
+        self, request: GenerationRequest, design_tokens: Dict
+    ) -> str:
         """Build the base system prompt"""
         return f"""You are an expert UI/UX AI Copilot that generates production-ready frontend code.
 
@@ -155,7 +175,8 @@ CRITICAL: PROJECT DESIGN SYSTEM
 DESIGN TOKEN USAGE RULES:
 - MUST use project-specific colors over generic ones (e.g., use 'blue' or 'emerald' instead of 'gray')
 - MUST incorporate detected design tokens in every component
-- For gradients, use project colors (e.g., 'from-blue-500 to-emerald-500')
+- For accent gradients, use project colors (e.g., 'from-blue-500 to-emerald-500')
+- For background gradients, use subtle transitions (e.g., 'from-gray-50 to-white', 'from-gray-900 to-gray-800')
 - Maintain consistency with the existing design system
 
 QUALITY STANDARDS:
@@ -166,10 +187,12 @@ QUALITY STANDARDS:
 - SEO-friendly markup when applicable
 - Comprehensive error handling
 - Loading and empty states"""
-    
-    def _build_framework_instructions(self, framework: FrameworkType, structure: Dict) -> str:
+
+    def _build_framework_instructions(
+        self, framework: FrameworkType, structure: Dict
+    ) -> str:
         """Build framework-specific instructions"""
-        
+
         instructions = {
             FrameworkType.NEXTJS: """
 NEXT.JS 14+ APP ROUTER REQUIREMENTS:
@@ -189,7 +212,6 @@ File Structure:
 - lib/ or utils/ for utilities
 - hooks/ for custom hooks
 - types/ for TypeScript definitions""",
-            
             FrameworkType.REACT: """
 REACT 18+ REQUIREMENTS:
 - Use latest React features (Suspense, concurrent features)
@@ -200,7 +222,6 @@ REACT 18+ REQUIREMENTS:
 - useCallback/useMemo for expensive operations
 - Portals for modals/tooltips
 - Context API for state management when needed""",
-            
             FrameworkType.REMIX: """
 REMIX REQUIREMENTS:
 - Use Remix data loading patterns (loader/action)
@@ -211,7 +232,6 @@ REMIX REQUIREMENTS:
 - Meta exports for SEO
 - Optimistic UI patterns
 - Resource routes when needed""",
-            
             FrameworkType.VITE_REACT: """
 VITE + REACT REQUIREMENTS:
 - Fast HMR compatible code
@@ -220,9 +240,9 @@ VITE + REACT REQUIREMENTS:
 - Code splitting with React.lazy
 - Vite-specific optimizations
 - CSS modules or PostCSS setup
-- Proper build optimization patterns"""
+- Proper build optimization patterns""",
         }
-        
+
         return f"""FRAMEWORK: {framework.value.upper()}
 {instructions.get(framework, "Use modern React patterns and best practices")}
 
@@ -230,10 +250,10 @@ Project Structure Detected:
 - Components: {structure.get('components_dir', 'src/components')}
 - Pages/Routes: {structure.get('pages_dir', 'src/pages')}
 - Utilities: {structure.get('utils_dir', 'src/utils')}"""
-    
+
     def _build_styling_instructions(self, styling: StylingLibrary, tokens: Dict) -> str:
         """Build styling-specific instructions"""
-        
+
         instructions = {
             StylingLibrary.TAILWIND: f"""
 TAILWIND CSS REQUIREMENTS:
@@ -246,7 +266,6 @@ TAILWIND CSS REQUIREMENTS:
 - Custom utilities via @apply sparingly
 - Component variants with cn() or clsx()
 - Avoid arbitrary values when possible""",
-            
             StylingLibrary.STYLED_COMPONENTS: """
 STYLED COMPONENTS REQUIREMENTS:
 - Use styled-components v5+ patterns
@@ -257,7 +276,6 @@ STYLED COMPONENTS REQUIREMENTS:
 - Global styles setup
 - Server-side rendering compatibility
 - Animation with keyframes helper""",
-            
             StylingLibrary.EMOTION: """
 EMOTION REQUIREMENTS:
 - Use @emotion/react and @emotion/styled
@@ -267,7 +285,6 @@ EMOTION REQUIREMENTS:
 - Proper TypeScript setup
 - Server-side rendering with extractCritical
 - Use composition patterns""",
-            
             StylingLibrary.CSS_MODULES: """
 CSS MODULES REQUIREMENTS:
 - Use .module.css or .module.scss files
@@ -277,7 +294,6 @@ CSS MODULES REQUIREMENTS:
 - Proper TypeScript declarations
 - PostCSS integration if available
 - BEM-like naming for clarity""",
-            
             StylingLibrary.PANDA_CSS: """
 PANDA CSS REQUIREMENTS:
 - Use Panda's css() function
@@ -286,15 +302,54 @@ PANDA CSS REQUIREMENTS:
 - Token-based design system
 - Proper layer organization
 - Pattern functions
-- Responsive arrays and objects"""
+- Responsive arrays and objects""",
         }
-        
+
         return f"""STYLING: {styling.value.upper()}
 {instructions.get(styling, "Use appropriate styling patterns for the library")}"""
-    
-    def _build_library_instructions(self, library: ComponentLibrary, imports: Dict) -> str:
+
+    def _build_gradient_instructions(self, prompt: str) -> str:
+        """Build gradient-specific instructions based on the prompt."""
+        if "gradient" not in prompt.lower():
+            return ""
+
+        instructions = """
+GRADIENT BEST PRACTICES:
+1. Background Gradients (subtle):
+   - Use subtle transitions: from-gray-50 to-white, from-gray-100 to-gray-50
+   - Dark mode: from-gray-900 to-gray-800, from-black/5 to-transparent
+   - Avoid harsh contrasts for backgrounds
+   - Consider opacity: bg-gradient-to-br from-white/50 to-gray-50/30
+
+2. Accent Gradients (bold):
+   - Use project colors: from-blue-400 to-emerald-600
+   - Feature sections: from-primary-500 to-primary-700
+   - CTA elements: vibrant color transitions
+
+3. Gradient Patterns:
+   - bg-gradient-to-r (left to right)
+   - bg-gradient-to-br (top-left to bottom-right)
+   - bg-gradient-to-b (top to bottom)
+   - Use 'via' for three-color gradients: from-blue-400 via-purple-500 to-pink-500
+
+4. AVOID:
+   - Hard black to white transitions
+   - More than 3 colors in a gradient
+   - Opposing colors that create muddy centers
+   - Gradients that reduce text readability
+
+5. Overlay Patterns:
+   - Use backdrop-blur with gradients for glassmorphism
+   - Layer gradients with opacity for depth
+   - Consider pseudo-elements for gradient overlays"""
+
+        return instructions
+
+    def _build_library_instructions(
+        self, library: ComponentLibrary, imports: Dict
+    ) -> str:
         """Build component library instructions"""
-        
+
         if library == ComponentLibrary.NONE:
             return """
 COMPONENT APPROACH:
@@ -303,9 +358,9 @@ COMPONENT APPROACH:
 - Implement proper ARIA attributes
 - Create reusable, composable components
 - Follow atomic design principles where appropriate"""
-        
+
         available_components = imports.get("ui_components", {}).get(library.value, [])
-        
+
         instructions = {
             ComponentLibrary.SHADCN_UI: f"""
 SHADCN/UI INTEGRATION:
@@ -316,7 +371,6 @@ Available components: {', '.join(available_components[:10])}
 - Follow shadcn/ui patterns
 - Compose primitives for complex components
 - Use Radix UI primitives underneath""",
-            
             ComponentLibrary.MATERIAL_UI: """
 MUI INTEGRATION:
 - Use MUI v5 components and sx prop
@@ -325,7 +379,6 @@ MUI INTEGRATION:
 - Use MUI system props
 - Icon integration with @mui/icons-material
 - Follow Material Design principles""",
-            
             ComponentLibrary.CHAKRA_UI: """
 CHAKRA UI INTEGRATION:
 - Use Chakra component primitives
@@ -335,12 +388,16 @@ CHAKRA UI INTEGRATION:
 - Compose with Box, Flex, Grid
 - Color mode support""",
         }
-        
-        return instructions.get(library, f"Use {library.value} components appropriately")
-    
-    def _build_generation_instructions(self, gen_type: GenerationType, request: GenerationRequest) -> str:
+
+        return instructions.get(
+            library, f"Use {library.value} components appropriately"
+        )
+
+    def _build_generation_instructions(
+        self, gen_type: GenerationType, request: GenerationRequest
+    ) -> str:
         """Build generation type specific instructions"""
-        
+
         if gen_type == GenerationType.MULTI_FILE_COMPONENT:
             return self._build_multifile_component_instructions(request)
         elif gen_type == GenerationType.PAGE:
@@ -359,18 +416,20 @@ CHAKRA UI INTEGRATION:
             return self._build_store_instructions()
         else:
             return self._build_single_component_instructions()
-    
-    def _build_multifile_component_instructions(self, request: GenerationRequest) -> str:
+
+    def _build_multifile_component_instructions(
+        self, request: GenerationRequest
+    ) -> str:
         """Instructions for multi-file component generation"""
         files = ["index.ts", "Component.tsx", "Component.types.ts"]
-        
+
         if request.include_tests:
             files.append("Component.test.tsx")
         if request.include_storybook:
             files.append("Component.stories.tsx")
         if request.styling == StylingLibrary.CSS_MODULES:
             files.append("Component.module.css")
-        
+
         return f"""
 MULTI-FILE COMPONENT GENERATION:
 Generate a complete component package with proper separation of concerns.
@@ -397,7 +456,7 @@ ARCHITECTURAL PATTERNS:
 - Extract complex logic to hooks
 - Create sub-components in same directory
 - Use composition for flexibility"""
-    
+
     def _build_feature_generation_instructions(self, request: GenerationRequest) -> str:
         """Instructions for full feature generation"""
         return """
@@ -433,7 +492,7 @@ PATTERNS:
 - Dependency injection where appropriate
 - Feature-level error boundaries
 - Lazy loading for performance"""
-    
+
     def _build_page_generation_instructions(self, request: GenerationRequest) -> str:
         """Page generation instructions based on framework"""
         if request.framework == FrameworkType.NEXTJS:
@@ -479,16 +538,16 @@ export default function Error({ error, reset }) {
             return """
 PAGE GENERATION:
 Create complete page component with routing integration."""
-    
+
     def _build_edit_instructions(self, request: GenerationRequest) -> str:
         """Instructions for editing existing files"""
         edit_modes = {
-            'add': 'Add new functionality while preserving existing code',
-            'modify': 'Modify existing functionality with minimal changes',
-            'refactor': 'Improve code quality without changing functionality',
-            'enhance': 'Add improvements and new features'
+            "add": "Add new functionality while preserving existing code",
+            "modify": "Modify existing functionality with minimal changes",
+            "refactor": "Improve code quality without changing functionality",
+            "enhance": "Add improvements and new features",
         }
-        
+
         return f"""
 FILE EDITING MODE: {request.edit_mode}
 {edit_modes.get(request.edit_mode, 'Modify the file as requested')}
@@ -507,7 +566,7 @@ TARGET FILES:
 
 OUTPUT FORMAT:
 Show the COMPLETE updated file(s), not just the changes."""
-    
+
     def _build_utils_instructions(self) -> str:
         """Instructions for utility generation"""
         return """
@@ -532,7 +591,7 @@ utils/
   ├── validation.ts     # Validation utilities
   └── __tests__/        # Utility tests
 ```"""
-    
+
     def _build_hooks_instructions(self) -> str:
         """Instructions for custom hooks generation"""
         return """
@@ -555,7 +614,7 @@ COMMON PATTERNS:
 - Animation hooks
 - Form handling hooks
 - LocalStorage/SessionStorage hooks"""
-    
+
     def _build_context_instructions(self) -> str:
         """Instructions for React Context generation"""
         return """
@@ -581,7 +640,7 @@ PATTERNS:
 - Error handling for missing provider
 - Performance optimization
 - Split contexts when needed"""
-    
+
     def _build_store_instructions(self) -> str:
         """Instructions for state management generation"""
         return """
@@ -598,7 +657,7 @@ STORE PATTERNS:
 - Performance optimizations
 
 Choose the most appropriate based on project needs."""
-    
+
     def _build_single_component_instructions(self) -> str:
         """Default single component instructions"""
         return """
@@ -614,22 +673,25 @@ REQUIREMENTS:
 - Accessibility features
 - Performance optimizations
 - Clean, maintainable code"""
-    
+
     def _build_utility_instructions(self, request: GenerationRequest) -> str:
         """Build utility-specific instructions"""
         utilities = []
-        
+
         if request.responsive:
-            utilities.append("""
+            utilities.append(
+                """
 RESPONSIVE DESIGN:
 - Mobile-first approach
 - Breakpoints: 640px (sm), 768px (md), 1024px (lg), 1280px (xl)
 - Fluid typography and spacing
 - Touch-friendly interactive elements
-- Proper viewport handling""")
-        
+- Proper viewport handling"""
+            )
+
         if request.accessibility_level:
-            utilities.append(f"""
+            utilities.append(
+                f"""
 ACCESSIBILITY ({request.accessibility_level.upper()}-level):
 - Semantic HTML elements
 - ARIA labels and descriptions
@@ -638,135 +700,177 @@ ACCESSIBILITY ({request.accessibility_level.upper()}-level):
 - Screen reader compatibility
 - Color contrast compliance
 - Error announcements
-- Loading state announcements""")
-        
+- Loading state announcements"""
+            )
+
         return "\n\n".join(utilities)
-    
+
     def _format_design_tokens(self, tokens: Dict) -> str:
         """Format design tokens for the prompt"""
         sections = []
-        
-        if tokens.get('colors'):
-            colors = tokens['colors']
+
+        if tokens.get("colors"):
+            colors = tokens["colors"]
             if isinstance(colors, dict):
                 color_list = list(colors.keys())[:8]
             else:
                 color_list = colors[:8]
             sections.append(f"Colors: {', '.join(color_list)}")
-        
-        if tokens.get('spacing'):
-            spacing_list = tokens['spacing'][:8] if isinstance(tokens['spacing'], list) else list(tokens['spacing'].keys())[:8]
+
+        if tokens.get("spacing"):
+            spacing_list = (
+                tokens["spacing"][:8]
+                if isinstance(tokens["spacing"], list)
+                else list(tokens["spacing"].keys())[:8]
+            )
             sections.append(f"Spacing: {', '.join(str(s) for s in spacing_list)}")
-        
-        if tokens.get('typography'):
-            type_list = tokens['typography'][:6] if isinstance(tokens['typography'], list) else list(tokens['typography'].keys())[:6]
+
+        if tokens.get("typography"):
+            type_list = (
+                tokens["typography"][:6]
+                if isinstance(tokens["typography"], list)
+                else list(tokens["typography"].keys())[:6]
+            )
             sections.append(f"Typography: {', '.join(str(t) for t in type_list)}")
-        
+
         return "\n".join(sections) if sections else "No specific design tokens detected"
-    
+
     def _format_design_tokens_enhanced(self, tokens: Dict) -> str:
         """Format design tokens with emphasis for better adherence"""
         sections = []
-        
-        if tokens.get('colors'):
-            colors = tokens['colors']
+
+        if tokens.get("colors"):
+            colors = tokens["colors"]
             if isinstance(colors, dict):
                 color_list = list(colors.keys())[:10]
             else:
                 color_list = colors[:10]
-            
-            # Exclude generic colors and emphasize project-specific ones
-            project_colors = [c for c in color_list if c not in ['black', 'white', 'gray']]
-            
+
+            # Separate project-specific and neutral colors
+            project_colors = [
+                c for c in color_list if c not in ["black", "white", "gray"]
+            ]
+            neutral_colors = [c for c in color_list if c in ["black", "white", "gray"]]
+
             sections.append(f"PROJECT COLORS (USE THESE!): {', '.join(project_colors)}")
-            sections.append(f"Available shades: {'-'.join([f'{c}-500' for c in project_colors[:3]])}")
-            
-            # Add gradient examples
+            if neutral_colors:
+                sections.append(f"Neutral colors: {', '.join(neutral_colors)}")
+
+            sections.append(
+                f"Available shades: {'-'.join([f'{c}-500' for c in project_colors[:3]])}"
+            )
+
+            # Add gradient examples for both accent and background gradients
             if len(project_colors) >= 2:
-                sections.append(f"Gradient examples: from-{project_colors[0]}-400 to-{project_colors[1]}-600")
-        
-        if tokens.get('spacing'):
-            spacing_list = tokens['spacing'][:8] if isinstance(tokens['spacing'], list) else list(tokens['spacing'].keys())[:8]
+                sections.append(
+                    f"Accent gradient examples: from-{project_colors[0]}-400 to-{project_colors[1]}-600"
+                )
+
+            # Add subtle background gradient examples
+            if neutral_colors:
+                sections.append(
+                    f"Background gradient examples: from-gray-50 to-white, from-gray-900 to-gray-800, from-white to-gray-50"
+                )
+
+        if tokens.get("spacing"):
+            spacing_list = (
+                tokens["spacing"][:8]
+                if isinstance(tokens["spacing"], list)
+                else list(tokens["spacing"].keys())[:8]
+            )
             sections.append(f"Spacing scale: {', '.join(str(s) for s in spacing_list)}")
-        
-        if tokens.get('typography'):
-            type_list = tokens['typography'][:6] if isinstance(tokens['typography'], list) else list(tokens['typography'].keys())[:6]
+
+        if tokens.get("typography"):
+            type_list = (
+                tokens["typography"][:6]
+                if isinstance(tokens["typography"], list)
+                else list(tokens["typography"].keys())[:6]
+            )
             sections.append(f"Typography scale: {', '.join(str(t) for t in type_list)}")
-        
+
         if not sections:
             return "No specific design tokens detected - use standard Tailwind classes"
-        
+
         return "\n".join(sections)
-    
+
     def _format_project_context(self, context: Dict, ast_analysis: Dict) -> str:
         """Format project context for the prompt"""
         sections = []
-        
+
         # Add detected patterns
-        if ast_analysis and 'common_patterns' in ast_analysis:
-            patterns = ast_analysis['common_patterns']
-            if patterns.get('common_props'):
-                sections.append(f"Common props: {', '.join(list(patterns['common_props'].keys())[:5])}")
-            if patterns.get('common_imports'):
-                sections.append(f"Common imports: {', '.join(list(patterns['common_imports'].keys())[:5])}")
-        
+        if ast_analysis and "common_patterns" in ast_analysis:
+            patterns = ast_analysis["common_patterns"]
+            if patterns.get("common_props"):
+                sections.append(
+                    f"Common props: {', '.join(list(patterns['common_props'].keys())[:5])}"
+                )
+            if patterns.get("common_imports"):
+                sections.append(
+                    f"Common imports: {', '.join(list(patterns['common_imports'].keys())[:5])}"
+                )
+
         # Add project structure
-        structure = context.get('project_structure', {})
+        structure = context.get("project_structure", {})
         if structure:
-            sections.append(f"Component directory: {structure.get('components_dir', 'unknown')}")
-        
+            sections.append(
+                f"Component directory: {structure.get('components_dir', 'unknown')}"
+            )
+
         return "\n".join(sections) if sections else "Standard React project structure"
-    
+
     def _load_styling_patterns(self) -> Dict:
         """Load styling-specific patterns"""
         return {
             StylingLibrary.TAILWIND: {
-                'utility_examples': ['flex items-center justify-between', 'grid grid-cols-1 md:grid-cols-2'],
-                'responsive_pattern': 'sm:px-6 md:px-8 lg:px-10',
-                'state_pattern': 'hover:bg-blue-600 focus:ring-2 active:scale-95'
+                "utility_examples": [
+                    "flex items-center justify-between",
+                    "grid grid-cols-1 md:grid-cols-2",
+                ],
+                "responsive_pattern": "sm:px-6 md:px-8 lg:px-10",
+                "state_pattern": "hover:bg-blue-600 focus:ring-2 active:scale-95",
             },
             StylingLibrary.STYLED_COMPONENTS: {
-                'component_pattern': 'const Button = styled.button`...`',
-                'props_pattern': '${props => props.primary && css`...`}',
-                'theme_pattern': '${({ theme }) => theme.colors.primary}'
-            }
+                "component_pattern": "const Button = styled.button`...`",
+                "props_pattern": "${props => props.primary && css`...`}",
+                "theme_pattern": "${({ theme }) => theme.colors.primary}",
+            },
         }
-    
+
     def _load_framework_patterns(self) -> Dict:
         """Load framework-specific patterns"""
         return {
             FrameworkType.NEXTJS: {
-                'data_fetching': 'async function with fetch',
-                'routing': 'file-based with app directory',
-                'api_routes': 'route.ts files'
+                "data_fetching": "async function with fetch",
+                "routing": "file-based with app directory",
+                "api_routes": "route.ts files",
             },
             FrameworkType.REACT: {
-                'routing': 'react-router-dom',
-                'state': 'useState, useReducer, Context',
-                'data_fetching': 'useEffect, react-query, SWR'
-            }
+                "routing": "react-router-dom",
+                "state": "useState, useReducer, Context",
+                "data_fetching": "useEffect, react-query, SWR",
+            },
         }
-    
+
     def _load_utility_patterns(self) -> Dict:
         """Load utility patterns"""
         return {
-            'form_validation': {
-                'libraries': ['react-hook-form', 'formik', 'react-final-form'],
-                'patterns': ['yup', 'zod', 'joi']
+            "form_validation": {
+                "libraries": ["react-hook-form", "formik", "react-final-form"],
+                "patterns": ["yup", "zod", "joi"],
             },
-            'animation': {
-                'libraries': ['framer-motion', 'react-spring', 'auto-animate'],
-                'css': ['transitions', 'animations', 'transforms']
+            "animation": {
+                "libraries": ["framer-motion", "react-spring", "auto-animate"],
+                "css": ["transitions", "animations", "transforms"],
             },
-            'data_fetching': {
-                'libraries': ['swr', 'react-query', 'apollo-client'],
-                'patterns': ['suspense', 'error boundaries', 'loading states']
-            }
+            "data_fetching": {
+                "libraries": ["swr", "react-query", "apollo-client"],
+                "patterns": ["suspense", "error boundaries", "loading states"],
+            },
         }
-    
+
     def build_ui_system_prompt(self, context: Dict) -> str:
         """Build a focused system prompt for clean component generation."""
-        
+
         return f"""You are a senior React developer. Generate clean, production-ready React components.
 
 CRITICAL OUTPUT REQUIREMENTS:
@@ -786,15 +890,47 @@ TECHNICAL SPECIFICATIONS:
 - Follow React best practices
 
 Generate only the component code, nothing else."""
-    
+
     def build_user_prompt(self, prompt: str, context: Dict) -> str:
         """Build a focused user prompt."""
-        return f"""Create a React component: {prompt}
+        # Extract component type hint from prompt or context
+        prompt_lower = prompt.lower()
+        component_type_hint = ""
+
+        # Check if we have parsed requirements in context
+        if context.get("parsed_requirements"):
+            req = context["parsed_requirements"]
+            comp_type = req.get("component_type", "")
+            expected_name = req.get("expected_name", "")
+
+            if comp_type == "product_grid":
+                component_type_hint = f"\nIMPORTANT: Generate a GRID of PRODUCT CARDS named {expected_name}, not a hero section or single component."
+            elif comp_type == "dashboard_header":
+                component_type_hint = f"\nIMPORTANT: Generate a DASHBOARD HEADER named {expected_name} with all requested features."
+            elif comp_type == "pricing_section":
+                component_type_hint = f"\nIMPORTANT: Generate a PRICING SECTION named {expected_name} with multiple pricing tiers/cards."
+            elif comp_type == "hero_section":
+                component_type_hint = f"\nIMPORTANT: Generate a HERO SECTION named {expected_name} for a landing page."
+        else:
+            # Fallback to original detection
+            if "product card grid" in prompt_lower or "product grid" in prompt_lower:
+                component_type_hint = "\nIMPORTANT: Generate a GRID of PRODUCT CARDS, not a hero section or single component."
+            elif "dashboard header" in prompt_lower:
+                component_type_hint = "\nIMPORTANT: Generate a DASHBOARD HEADER component with all requested features."
+            elif "pricing" in prompt_lower and "section" in prompt_lower:
+                component_type_hint = "\nIMPORTANT: Generate a PRICING SECTION with multiple pricing tiers/cards."
+            elif "hero" in prompt_lower:
+                component_type_hint = (
+                    "\nIMPORTANT: Generate a HERO SECTION for a landing page."
+                )
+
+        return f"""Create a React component: {prompt}{component_type_hint}
 
 Requirements:
 - Complete, working TypeScript component
 - Responsive and accessible
 - Follow project conventions
+- Include usage example showing required props
 - Output code only, no explanations"""
 
 
@@ -804,18 +940,18 @@ def create_generation_request(
     framework: str = "next.js",
     styling: str = "tailwind",
     component_library: str = "shadcn/ui",
-    generation_type: str = "single"
+    generation_type: str = "single",
 ) -> GenerationRequest:
     """Helper function to create a generation request"""
-    
+
     # Map strings to enums
     framework_map = {
         "react": FrameworkType.REACT,
         "next.js": FrameworkType.NEXTJS,
         "remix": FrameworkType.REMIX,
-        "vite": FrameworkType.VITE_REACT
+        "vite": FrameworkType.VITE_REACT,
     }
-    
+
     styling_map = {
         "tailwind": StylingLibrary.TAILWIND,
         "styled-components": StylingLibrary.STYLED_COMPONENTS,
@@ -823,18 +959,18 @@ def create_generation_request(
         "css-modules": StylingLibrary.CSS_MODULES,
         "sass": StylingLibrary.SASS,
         "css": StylingLibrary.VANILLA_CSS,
-        "panda-css": StylingLibrary.PANDA_CSS
+        "panda-css": StylingLibrary.PANDA_CSS,
     }
-    
+
     library_map = {
         "shadcn/ui": ComponentLibrary.SHADCN_UI,
         "material-ui": ComponentLibrary.MATERIAL_UI,
         "chakra-ui": ComponentLibrary.CHAKRA_UI,
         "ant-design": ComponentLibrary.ANT_DESIGN,
         "headless-ui": ComponentLibrary.HEADLESS_UI,
-        "none": ComponentLibrary.NONE
+        "none": ComponentLibrary.NONE,
     }
-    
+
     type_map = {
         "single": GenerationType.SINGLE_COMPONENT,
         "multi": GenerationType.MULTI_FILE_COMPONENT,
@@ -844,9 +980,9 @@ def create_generation_request(
         "utils": GenerationType.UTILS,
         "hooks": GenerationType.HOOKS,
         "context": GenerationType.CONTEXT,
-        "store": GenerationType.STORE
+        "store": GenerationType.STORE,
     }
-    
+
     return GenerationRequest(
         prompt=prompt,
         generation_type=type_map.get(generation_type, GenerationType.SINGLE_COMPONENT),
@@ -856,5 +992,5 @@ def create_generation_request(
         include_tests=True,
         include_storybook=False,
         responsive=True,
-        accessibility_level="aa"
+        accessibility_level="aa",
     )
