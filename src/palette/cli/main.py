@@ -257,56 +257,16 @@ def analyze():
 @click.option("--ui-lib", help="UI library (shadcn, none)")
 @click.option("--components", is_flag=True, help="Include component templates")
 @click.option("--utils", is_flag=True, help="Include utility templates")
-@click.option("--wireframe", help="Path to SVG wireframe file")
+@click.option("--wireframe", help="Path to wireframe file (SVG or JSON)")
 @click.option("--wireframe-prompt", help="Description of what to build from wireframe")
 def init(type: Optional[str], styling: Optional[str], ui_lib: Optional[str], components: bool, utils: bool, wireframe: Optional[str], wireframe_prompt: Optional[str]):
     """Initialize a new project with Palette templates"""
     
-    # Template prompts
-    templates = {
-        'button': "Create a Button component with variants (primary, secondary, outline), sizes (sm, md, lg), loading state, and icon support",
-        'card': "Create a Card component with header, body, footer sections, hover effects, and optional image",
-        'form': "Create a Form component with validation, error handling, loading state, and accessible field components",
-        'modal': "Create a Modal component with backdrop, close button, keyboard handling (ESC), and focus trap",
-        'table': "Create a Table component with sorting, pagination, row selection, and responsive design",
-        'navigation': "Create a Navigation component with mobile menu, active states, and keyboard navigation"
-    }
-    
-    prompt = templates[component_type]
-    if name:
-        prompt = prompt.replace("component", f"{name} component")
-    
-    # Forward to generate command
-    gen_type = 'multi' if multi else 'single'
-    ctx = click.get_current_context()
-    ctx.invoke(generate, prompt=prompt, type=gen_type)
-
-
-@main.command()
-@click.argument("component_type",
-                type=click.Choice(['button', 'card', 'form', 'modal', 'table', 'navigation']))
-@click.option("--name", "-n", help="Component name")
-@click.option("--multi", is_flag=True, help="Generate as multi-file component")
-def template(component_type: str, name: Optional[str], multi: bool):
-    """Generate from pre-defined component templates"""
-
-
-@main.command()
-def config():
-    """Configure UI/UX Copilot settings"""
-    
     console.print(Panel(
-        "[bold green]⚙️ Configuration[/bold green]",
-        title="Settings",
-        border_style="green",
+        "[bold blue]🚀 Palette Project Initializer[/bold blue]",
+        title="Initializing",
+        border_style="blue",
     ))
-    
-    # Interactive configuration
-    framework = click.prompt(
-        "Default framework",
-        type=click.Choice(['react', 'next.js', 'remix', 'vite']),
-        default='react'
-    )
     
     try:
         # Interactive prompts if not provided via flags
@@ -378,8 +338,56 @@ def config():
         sys.exit(1)
 
 
-def _create_project_structure(project_name: str, framework: str, styling: str, ui_lib: str, components: bool, utils: bool):
-    """Create the project structure with templates"""
+@main.command()
+@click.argument("component_type",
+                type=click.Choice(['button', 'card', 'form', 'modal', 'table', 'navigation']))
+@click.option("--name", "-n", help="Component name")
+@click.option("--multi", is_flag=True, help="Generate as multi-file component")
+def template(component_type: str, name: Optional[str], multi: bool):
+    """Generate from pre-defined component templates"""
+    
+    # Template prompts
+    templates = {
+        'button': "Create a Button component with variants (primary, secondary, outline), sizes (sm, md, lg), loading state, and icon support",
+        'card': "Create a Card component with header, body, footer sections, hover effects, and optional image",
+        'form': "Create a Form component with validation, error handling, loading state, and accessible field components",
+        'modal': "Create a Modal component with backdrop, close button, keyboard handling (ESC), and focus trap",
+        'table': "Create a Table component with sorting, pagination, row selection, and responsive design",
+        'navigation': "Create a Navigation component with mobile menu, active states, and keyboard navigation"
+    }
+    
+    prompt = templates[component_type]
+    if name:
+        prompt = prompt.replace("component", f"{name} component")
+    
+    # Forward to generate command
+    gen_type = 'multi' if multi else 'single'
+    ctx = click.get_current_context()
+    ctx.invoke(generate, prompt=prompt, type=gen_type)
+
+
+@main.command()
+def config():
+    """Configure UI/UX Copilot settings"""
+    
+    console.print(Panel(
+        "[bold green]⚙️ Configuration[/bold green]",
+        title="Settings",
+        border_style="green",
+    ))
+    
+    # Interactive configuration
+    framework = click.prompt(
+        "Default framework",
+        type=click.Choice(['react', 'next.js', 'remix', 'vite']),
+        default='react'
+    )
+    
+    styling = click.prompt(
+        "Default styling",
+        type=click.Choice(['tailwind', 'styled-components', 'emotion', 'css-modules']),
+        default='tailwind'
+    )
     
     ui_lib = click.prompt(
         "Default UI library",
@@ -401,6 +409,372 @@ def _create_project_structure(project_name: str, framework: str, styling: str, u
         json.dump(config_data, f, indent=2)
     
     console.print(f"[green]✓[/green] Configuration saved to {config_path}")
+    
+    # Show current configuration
+    console.print("\n[bold]Current Configuration:[/bold]")
+    console.print(f"  Framework: {framework}")
+    console.print(f"  Styling: {styling}")
+    console.print(f"  UI Library: {ui_lib}")
+
+
+def _create_project_structure(project_name: str, framework: str, styling: str, ui_lib: str, components: bool, utils: bool):
+    """Create the project structure with templates"""
+    
+    # Create package.json
+    _create_package_json(project_name, framework, styling, ui_lib)
+    
+    # Create project structure based on framework
+    if framework == "react":
+        _create_react_structure(os.path.join(project_name, "src"), styling, ui_lib)
+        _create_react_public_files(project_name)
+    elif framework == "nextjs":
+        _create_nextjs_structure(project_name, styling, ui_lib)
+    elif framework == "vue":
+        _create_vue_structure(os.path.join(project_name, "src"), styling, ui_lib)
+    
+    # Create configuration files
+    _create_config_files(project_name, framework, styling)
+    
+    # Create component templates if requested
+    if components:
+        _create_component_templates(os.path.join(project_name, "src"), framework)
+    
+    # Create utility templates if requested
+    if utils:
+        _create_utility_templates(os.path.join(project_name, "src"))
+
+
+def _create_package_json(base_path: str, framework: str, styling: str, ui_lib: str):
+    """Create package.json file"""
+    package_json = {
+        "name": os.path.basename(base_path),
+        "version": "0.1.0",
+        "private": True,
+        "dependencies": {},
+        "devDependencies": {},
+        "scripts": {}
+    }
+    
+    # Add framework-specific dependencies
+    if framework == "react":
+        package_json["dependencies"].update({
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0"
+        })
+        package_json["devDependencies"].update({
+            "@types/react": "^18.2.0",
+            "@types/react-dom": "^18.2.0",
+            "typescript": "^4.9.5",
+            "react-scripts": "^5.0.1"
+        })
+        package_json["scripts"].update({
+            "start": "react-scripts start",
+            "build": "react-scripts build",
+            "test": "react-scripts test",
+            "eject": "react-scripts eject",
+            "dev": "react-scripts start"
+        })
+        package_json["browserslist"] = {
+            "production": [
+                ">0.2%",
+                "not dead",
+                "not op_mini all"
+            ],
+            "development": [
+                "last 1 chrome version",
+                "last 1 firefox version",
+                "last 1 safari version"
+            ]
+        }
+    elif framework == "nextjs":
+        package_json["dependencies"].update({
+            "next": "^13.0.0",
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0"
+        })
+        package_json["devDependencies"].update({
+            "@types/node": "^18.0.0",
+            "@types/react": "^18.2.0",
+            "@types/react-dom": "^18.2.0",
+            "typescript": "^4.9.5"
+        })
+        package_json["scripts"].update({
+            "dev": "next dev",
+            "build": "next build",
+            "start": "next start",
+            "lint": "next lint"
+        })
+    elif framework == "vue":
+        package_json["dependencies"].update({
+            "vue": "^3.3.0"
+        })
+        package_json["devDependencies"].update({
+            "@vitejs/plugin-vue": "^4.0.0",
+            "vite": "^4.0.0",
+            "typescript": "^4.9.5"
+        })
+        package_json["scripts"].update({
+            "dev": "vite",
+            "build": "vite build",
+            "preview": "vite preview"
+        })
+    
+    # Add styling dependencies
+    if styling == "tailwind":
+        package_json["devDependencies"].update({
+            "tailwindcss": "^3.3.0",
+            "autoprefixer": "^10.4.0",
+            "postcss": "^8.4.0"
+        })
+    
+    # Add UI library dependencies
+    if ui_lib == "shadcn":
+        package_json["devDependencies"].update({
+            "@types/node": "^18.0.0"
+        })
+    
+    # Write package.json
+    with open(os.path.join(base_path, "package.json"), "w") as f:
+        json.dump(package_json, f, indent=2)
+
+
+def _create_react_structure(src_path: str, styling: str, ui_lib: str):
+    """Create React project structure"""
+    
+    # Create src directory
+    os.makedirs(src_path, exist_ok=True)
+    
+    # Create main App component
+    if styling == "tailwind":
+        app_content = '''import React from 'react';
+
+function App() {
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">Welcome to React</h1>
+        <p className="text-gray-600">Edit src/App.tsx and save to reload.</p>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+'''
+    else:
+        app_content = '''import React from 'react';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>Welcome to React</h1>
+        <p>Edit src/App.tsx and save to reload.</p>
+      </header>
+    </div>
+  );
+}
+
+export default App;
+'''
+    
+    with open(os.path.join(src_path, "App.tsx"), "w") as f:
+        f.write(app_content)
+    
+    # Create index file
+    index_content = '''import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+'''
+    
+    with open(os.path.join(src_path, "index.tsx"), "w") as f:
+        f.write(index_content)
+    
+    # Create CSS files
+    if styling == "tailwind":
+        css_content = '''@tailwind base;
+@tailwind components;
+@tailwind utilities;
+'''
+    else:
+        css_content = '''body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+}
+'''
+    
+    with open(os.path.join(src_path, "index.css"), "w") as f:
+        f.write(css_content)
+    
+    if styling != "tailwind":
+        with open(os.path.join(src_path, "App.css"), "w") as f:
+            f.write(css_content)
+
+
+def _create_react_public_files(base_path: str):
+    """Create React public files"""
+    
+    # Create public directory
+    public_path = os.path.join(base_path, "public")
+    os.makedirs(public_path, exist_ok=True)
+    
+    # Create index.html
+    index_html = '''<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Web site created using create-react-app"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <title>React App</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+'''
+    
+    with open(os.path.join(public_path, "index.html"), "w") as f:
+        f.write(index_html)
+    
+    # Create manifest.json
+    manifest_json = '''{
+  "short_name": "React App",
+  "name": "Sample React App",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
+'''
+    
+    with open(os.path.join(public_path, "manifest.json"), "w") as f:
+        f.write(manifest_json)
+
+
+def _create_nextjs_structure(base_path: str, styling: str, ui_lib: str):
+    """Create Next.js project structure"""
+    # Implementation for Next.js structure
+    pass
+
+
+def _create_vue_structure(src_path: str, styling: str, ui_lib: str):
+    """Create Vue project structure"""
+    # Implementation for Vue structure
+    pass
+
+
+def _create_component_templates(src_path: str, framework: str):
+    """Create component templates"""
+    # Implementation for component templates
+    pass
+
+
+def _create_utility_templates(src_path: str):
+    """Create utility templates"""
+    # Implementation for utility templates
+    pass
+
+
+def _create_config_files(base_path: str, framework: str, styling: str):
+    """Create configuration files"""
+    
+    # Create TypeScript config
+    if framework in ["react", "nextjs"]:
+        tsconfig = '''{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es6"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src"
+  ]
+}
+'''
+        with open(os.path.join(base_path, "tsconfig.json"), "w") as f:
+            f.write(tsconfig)
+    
+    # Create Tailwind config
+    if styling == "tailwind":
+        tailwind_config = '''/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+'''
+        with open(os.path.join(base_path, "tailwind.config.js"), "w") as f:
+            f.write(tailwind_config)
+        
+        postcss_config = '''module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+'''
+        with open(os.path.join(base_path, "postcss.config.js"), "w") as f:
+            f.write(postcss_config)
 
 
 def _show_configuration(framework: str, styling: str, ui: str, type: str):
@@ -481,13 +855,13 @@ def _show_summary(saved_files: List[str]):
 
 
 def _generate_wireframe_components(project_name: str, wireframe_path: str, wireframe_description: str, framework: str, styling: str, ui_lib: str):
-    """Generate components based on SVG wireframe analysis"""
+    """Generate components based on wireframe analysis (supports SVG and JSON)"""
     
     console.print(f"[yellow]Analyzing wireframe: {wireframe_path}[/yellow]")
     
     try:
-        # Parse SVG wireframe
-        wireframe_data = _parse_svg_wireframe(wireframe_path)
+        # Parse wireframe based on file type
+        wireframe_data = _parse_wireframe(wireframe_path)
         
         console.print(f"[green]✓[/green] Wireframe analyzed successfully")
         console.print(f"[yellow]Generating components based on wireframe...[/yellow]")
@@ -514,6 +888,147 @@ def _generate_wireframe_components(project_name: str, wireframe_path: str, wiref
     except Exception as e:
         console.print(f"[red]Error generating wireframe components:[/red] {str(e)}")
         console.print("[yellow]Continuing with standard project setup...[/yellow]")
+
+
+def _parse_wireframe(wireframe_path: str) -> dict:
+    """Universal wireframe parser supporting SVG and JSON formats"""
+    
+    file_ext = Path(wireframe_path).suffix.lower()
+    
+    if file_ext == '.svg':
+        return _parse_svg_wireframe(wireframe_path)
+    elif file_ext == '.json':
+        return _parse_json_wireframe(wireframe_path)
+    else:
+        raise ValueError(f"Unsupported wireframe format: {file_ext}. Supported formats: .svg, .json")
+
+
+def _parse_json_wireframe(json_path: str) -> dict:
+    """Parse JSON wireframe file and extract design information"""
+    
+    try:
+        with open(json_path, 'r') as f:
+            json_data = json.load(f)
+        
+        # Convert JSON structure to match SVG parser output format
+        wireframe_data = {
+            "type": json_data.get("type", "unknown"),
+            "layout": {
+                "rectangles": [],
+                "circles": [],
+                "text": [],
+                "paths": []
+            },
+            "colors": set(),
+            "fonts": set(),
+            "metadata": json_data.get("metadata", {}),
+            "styling": json_data.get("styling", {})
+        }
+        
+        # Extract colors from styling
+        if "styling" in json_data and "colors" in json_data["styling"]:
+            wireframe_data["colors"].update(json_data["styling"]["colors"])
+        
+        # Extract fonts from styling
+        if "styling" in json_data and "fonts" in json_data["styling"]:
+            wireframe_data["fonts"].update(json_data["styling"]["fonts"])
+        
+        # Process layout elements
+        if "layout" in json_data:
+            _process_json_layout(json_data["layout"], wireframe_data)
+        
+        # Convert sets to lists for JSON serialization
+        wireframe_data["colors"] = list(wireframe_data["colors"])
+        wireframe_data["fonts"] = list(wireframe_data["fonts"])
+        
+        return wireframe_data
+        
+    except Exception as e:
+        raise Exception(f"Failed to parse JSON wireframe file: {str(e)}")
+
+
+def _process_json_layout(layout: dict, wireframe_data: dict):
+    """Process JSON layout structure and convert to wireframe data format"""
+    
+    def extract_colors_from_styling(styling: dict):
+        """Extract colors from styling object"""
+        if not styling:
+            return
+        
+        color_props = ["background", "color", "fill", "stroke"]
+        for prop in color_props:
+            if prop in styling and styling[prop]:
+                wireframe_data["colors"].add(styling[prop])
+    
+    def process_element(element: dict, parent_position: dict = None):
+        """Recursively process layout elements"""
+        element_type = element.get("type", "")
+        position = element.get("position", {})
+        styling = element.get("styling", {})
+        
+        # Extract colors from styling
+        extract_colors_from_styling(styling)
+        
+        # Convert element to wireframe format based on type
+        if element_type in ["logo", "text", "label"]:
+            text_data = {
+                "x": position.get("x", 0),
+                "y": position.get("y", 0),
+                "content": element.get("text", ""),
+                "font-family": styling.get("font-family", "Arial"),
+                "font-size": styling.get("font-size", "16px"),
+                "fill": styling.get("color", "black")
+            }
+            wireframe_data["layout"]["text"].append(text_data)
+            wireframe_data["fonts"].add(text_data["font-family"])
+        
+        elif element_type in ["stat-card", "card", "section"]:
+            # Convert cards to rectangles
+            rect_data = {
+                "x": position.get("x", 0),
+                "y": position.get("y", 0),
+                "width": styling.get("width", 120),
+                "height": styling.get("height", 40),
+                "fill": styling.get("background", "white"),
+                "stroke": styling.get("border", "none"),
+                "stroke-width": "1"
+            }
+            wireframe_data["layout"]["rectangles"].append(rect_data)
+        
+        elif element_type in ["nav-item", "menu-item"]:
+            # Convert nav items to rectangles with text
+            rect_data = {
+                "x": position.get("x", 0),
+                "y": position.get("y", 0),
+                "width": styling.get("width", 180),
+                "height": styling.get("height", 40),
+                "fill": styling.get("background", "white"),
+                "stroke": styling.get("border", "#e2e8f0"),
+                "stroke-width": "1"
+            }
+            wireframe_data["layout"]["rectangles"].append(rect_data)
+            
+            # Add text for nav items
+            if "text" in element:
+                text_data = {
+                    "x": position.get("x", 0) + 10,
+                    "y": position.get("y", 0) + 25,
+                    "content": element["text"],
+                    "font-family": "Arial",
+                    "font-size": "12px",
+                    "fill": styling.get("color", "#2d3748")
+                }
+                wireframe_data["layout"]["text"].append(text_data)
+        
+        # Process nested elements
+        if "elements" in element:
+            for nested_element in element["elements"]:
+                process_element(nested_element, position)
+        
+        # Process sections
+        if "sections" in element:
+            for section in element["sections"]:
+                process_element(section, position)
 
 
 def _parse_svg_wireframe(svg_path: str) -> dict:

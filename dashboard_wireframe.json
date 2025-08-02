@@ -1,0 +1,244 @@
+{
+    "type": "dashboard",
+    "layout": {
+        "header": {
+            "type": "navigation",
+            "position": {
+                "x": 0,
+                "y": 0
+            },
+            "elements": [
+                {
+                    "type": "text",
+                    "text": "E-commerce Dashboard",
+                    "position": {
+                        "x": 20,
+                        "y": 20
+                    },
+                    "styling": {
+                        "color": "white",
+                        "font-size": "18px",
+                        "font-family": "Arial"
+                    }
+                }
+            ],
+            "styling": {
+                "background": "#2d3748",
+                "height": "60px",
+                "width": "100%"
+            }
+        },
+        "sidebar": {
+            "type": "menu",
+            "position": {
+                "x": 0,
+                "y": 60
+            },
+            "elements": [
+                {
+                    "type": "nav-item",
+                    "text": "Dashboard",
+                    "position": {
+                        "x": 10,
+                        "y": 110
+                    },
+                    "styling": {
+                        "background": "#4299e1",
+                        "color": "white",
+                        "width": "180px",
+                        "height": "40px"
+                    }
+                },
+                {
+                    "type": "nav-item",
+                    "text": "Products",
+                    "position": {
+                        "x": 10,
+                        "y": 160
+                    },
+                    "styling": {
+                        "background": "white",
+                        "color": "#2d3748",
+                        "width": "180px",
+                        "height": "40px"
+                    }
+                },
+                {
+                    "type": "nav-item",
+                    "text": "Orders",
+                    "position": {
+                        "x": 10,
+                        "y": 210
+                    },
+                    "styling": {
+                        "background": "white",
+                        "color": "#2d3748",
+                        "width": "180px",
+                        "height": "40px"
+                    }
+                }
+            ],
+            "styling": {
+                "background": "#f7fafc",
+                "width": "200px",
+                "height": "540px"
+            }
+        },
+        "main": {
+            "type": "content",
+            "position": {
+                "x": 220,
+                "y": 80
+            },
+            "sections": [
+                {
+                    "type": "stats-section",
+                    "title": "Sales Overview",
+                    "position": {
+                        "x": 240,
+                        "y": 120
+                    },
+                    "elements": [
+                        {
+                            "type": "stat-card",
+                            "text": "$12,450",
+                            "position": {
+                                "x": 240,
+                                "y": 120
+                            },
+                            "styling": {
+                                "background": "#48bb78",
+                                "color": "white",
+                                "width": "120px",
+                                "height": "40px"
+                            }
+                        },
+                        {
+                            "type": "stat-card",
+                            "text": "156 Orders",
+                            "position": {
+                                "x": 380,
+                                "y": 120
+                            },
+                            "styling": {
+                                "background": "#ed8936",
+                                "color": "white",
+                                "width": "120px",
+                                "height": "40px"
+                            }
+                        },
+                        {
+                            "type": "stat-card",
+                            "text": "89 Customers",
+                            "position": {
+                                "x": 520,
+                                "y": 120
+                            },
+                            "styling": {
+                                "background": "#9f7aea",
+                                "color": "white",
+                                "width": "120px",
+                                "height": "40px"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "chart-section",
+                    "title": "Revenue Chart",
+                    "position": {
+                        "x": 240,
+                        "y": 200
+                    },
+                    "elements": [
+                        {
+                            "type": "chart-placeholder",
+                            "text": "Chart placeholder",
+                            "position": {
+                                "x": 480,
+                                "y": 310
+                            },
+                            "styling": {
+                                "color": "#a0aec0",
+                                "font-size": "14px"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "table-section",
+                    "title": "Recent Orders",
+                    "position": {
+                        "x": 240,
+                        "y": 420
+                    },
+                    "elements": [
+                        {
+                            "type": "table-row",
+                            "text": "Order #1234 - $299.99",
+                            "position": {
+                                "x": 250,
+                                "y": 460
+                            },
+                            "styling": {
+                                "background": "#f7fafc",
+                                "color": "#2d3748",
+                                "width": "520px",
+                                "height": "25px"
+                            }
+                        },
+                        {
+                            "type": "table-row",
+                            "text": "Order #1235 - $149.50",
+                            "position": {
+                                "x": 250,
+                                "y": 490
+                            },
+                            "styling": {
+                                "background": "white",
+                                "color": "#2d3748",
+                                "width": "520px",
+                                "height": "25px"
+                            }
+                        },
+                        {
+                            "type": "table-row",
+                            "text": "Order #1236 - $89.99",
+                            "position": {
+                                "x": 250,
+                                "y": 520
+                            },
+                            "styling": {
+                                "background": "#f7fafc",
+                                "color": "#2d3748",
+                                "width": "520px",
+                                "height": "25px"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "styling": {
+        "theme": "light",
+        "colors": [
+            "#2d3748",
+            "#4299e1",
+            "#48bb78",
+            "#ed8936",
+            "#9f7aea",
+            "#f7fafc",
+            "white"
+        ],
+        "fonts": [
+            "Arial",
+            "sans-serif"
+        ]
+    },
+    "metadata": {
+        "description": "E-commerce dashboard with sales overview and order management",
+        "version": "1.0",
+        "created": "2025-01-30"
+    }
+}
