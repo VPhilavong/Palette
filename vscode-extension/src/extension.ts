@@ -9,8 +9,4 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-PalettePanel.currentPanel?.sendToWebview([
-  'Hello! Ask me to generate a React component!'
-]);
-
 export function deactivate() {}

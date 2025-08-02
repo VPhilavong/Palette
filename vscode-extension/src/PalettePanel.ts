@@ -6,6 +6,7 @@ export class PalettePanel {
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
+  private readonly _disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -29,7 +30,30 @@ export class PalettePanel {
         null,
         []
       );
+      this._panel.webview.onDidReceiveMessage(
+        message => {
+          switch (message.command) {
+            case 'selectSuggestion':
+              vscode.window.showInformationMessage(`You selected: ${message.text}`);
+              break;
+            case 'userMessage':
+              vscode.window.showInformationMessage(`User asked: ${message.text}`);
+              this.sendToWebview(`You said: ${message.text}`);
+              break;
+            case 'imageUpload':
+              const info = `📷 Received image "${message.name}" (${message.type})`;
+              vscode.window.showInformationMessage(info);
+              this.sendToWebview(info);
+              break;
+          }
+        },
+        undefined,
+        this._disposables
+      );
+      
+      
     }
+
 
   public static createOrShow(extensionUri: vscode.Uri) {
     const column = vscode.ViewColumn.Beside;
@@ -51,8 +75,8 @@ export class PalettePanel {
     }
   }
 
-  public sendToWebview(suggestions: string[]) {
-    this._panel.webview.postMessage({ type: 'output', suggestions });
+  public sendToWebview(suggestion: string) {
+      this._panel.webview.postMessage({ type: 'output', suggestions: [suggestion] });
   }
 
   
