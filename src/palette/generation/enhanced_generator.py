@@ -7,6 +7,7 @@ from typing import Dict, Optional, Tuple, List, Any
 import asyncio
 import os
 from pathlib import Path
+from ..utils.async_utils import safe_run_async
 from ..mcp.client import MCPClient
 from ..mcp.registry import MCPServerRegistry
 from .generator import UIGenerator
@@ -471,8 +472,8 @@ Return only the fixed component code.
     ) -> Tuple[str, QualityReport]:
         """Override parent method to use MCP enhancement."""
         
-        # Run the async version in a sync wrapper
-        return asyncio.run(self._generate_component_with_qa_async(prompt, context, target_path))
+        # Run the async version with safe async handling
+        return safe_run_async(self._generate_component_with_qa_async(prompt, context, target_path))
     
     async def _generate_component_with_qa_async(
         self,

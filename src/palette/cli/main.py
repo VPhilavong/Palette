@@ -32,12 +32,6 @@ try:
 except ImportError:
     KNOWLEDGE_AVAILABLE = False
 
-# Try to import enhanced generator (legacy, now disabled)
-try:
-    from ..generation.enhanced_generator import EnhancedUIGenerator
-    ENHANCED_AVAILABLE = True
-except ImportError:
-    ENHANCED_AVAILABLE = False
 
 console = Console()
 
@@ -100,13 +94,6 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
             generator = UIGenerator(project_path=output, quality_assurance=True)
             console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
         
-        # Legacy MCP integration (temporarily disabled)
-        # TODO: Remove after confirming knowledge base works well
-        # if ENHANCED_AVAILABLE and (mcp_in_cwd or mcp_in_palette):
-        #     generator = EnhancedUIGenerator(project_path=output, quality_assurance=True)
-        #     console.print("[green]✨ Using Enhanced Generator with Professional MCP[/green]")
-        #     if mcp_in_palette and not mcp_in_cwd:
-        #         console.print(f"[dim]   MCP servers loaded from: {palette_dir / 'mcp-servers'}[/dim]")
         
         # Auto-detect settings from project if not specified
         if not framework:
@@ -364,6 +351,56 @@ def template(component_type: str, name: Optional[str], multi: bool):
     gen_type = 'multi' if multi else 'single'
     ctx = click.get_current_context()
     ctx.invoke(generate, prompt=prompt, type=gen_type)
+
+
+@main.command()
+def knowledge_status():
+    """Show knowledge base status and statistics"""
+    
+    console.print(Panel(
+        "[bold blue]🧠 Knowledge Base Status[/bold blue]",
+        title="Status",
+        border_style="blue",
+    ))
+    
+    if KNOWLEDGE_AVAILABLE:
+        from ..generation.knowledge_generator import KnowledgeUIGenerator
+        generator = KnowledgeUIGenerator()
+        status = generator.get_knowledge_status()
+        
+        if status["available"]:
+            console.print("[green]✅ Local knowledge base is available[/green]")
+            
+            # Create status table
+            table = Table(title="Knowledge Base Statistics")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="green")
+            
+            table.add_row("Type", status.get("type", "unknown"))
+            table.add_row("Rate Limits", "No" if not status.get("rate_limits", True) else "Yes")
+            table.add_row("Total Chunks", str(status.get("total_chunks", 0)))
+            table.add_row("Embedding Model", status.get("embedding_model", "unknown"))
+            table.add_row("Storage Path", status.get("storage_path", "unknown"))
+            
+            console.print(table)
+            
+            # Show categories if available
+            categories = status.get("categories", {})
+            if categories:
+                cat_table = Table(title="Knowledge Categories")
+                cat_table.add_column("Category", style="yellow")
+                cat_table.add_column("Count", style="green")
+                
+                for category, count in categories.items():
+                    cat_table.add_row(category, str(count))
+                
+                console.print(cat_table)
+        else:
+            console.print(f"[red]❌ Knowledge base not available: {status.get('reason', 'Unknown error')}[/red]")
+            console.print("[yellow]Install dependencies: pip install sentence-transformers faiss-cpu numpy[/yellow]")
+    else:
+        console.print("[red]❌ Knowledge enhancement not available[/red]")
+        console.print("[yellow]Install dependencies: pip install sentence-transformers faiss-cpu numpy[/yellow]")
 
 
 @main.command()

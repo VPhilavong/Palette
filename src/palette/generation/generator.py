@@ -1,28 +1,35 @@
 import os
 import subprocess
 import tempfile
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import anthropic
 from openai import OpenAI
 
-from .prompts import UIUXCopilotPromptBuilder
-from .enhanced_prompts import EnhancedPromptBuilder
-from ..quality import ComponentValidator, QualityReport
 from ..analysis.project_structure import ProjectStructureDetector
+from ..quality import ComponentValidator, QualityReport
 from ..quality.zero_fix_pipeline import ZeroFixPipeline
-from ..mcp.registry import MCPServerRegistry
+from ..utils.async_utils import safe_run_async
+from .enhanced_prompts import EnhancedPromptBuilder
+from .prompt_parser import PromptParser, extract_component_name_from_requirements
+from .prompts import UIUXCopilotPromptBuilder
 
 
 class UIGenerator:
     """Core UI generation logic using LLM APIs"""
 
-    def __init__(self, model: str = None, project_path: str = None, enhanced_mode: bool = True, quality_assurance: bool = True):
+    def __init__(
+        self,
+        model: str = None,
+        project_path: str = None,
+        enhanced_mode: bool = True,
+        quality_assurance: bool = True,
+    ):
         # Use environment variable or provided model or fallback
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.project_path = project_path
         self.quality_assurance = quality_assurance
-        
+
         # Initialize prompt builder (enhanced or basic)
         if enhanced_mode and project_path:
             try:
@@ -46,10 +53,13 @@ class UIGenerator:
         else:
             self.validator = None
 
+        # Initialize prompt parser
+        self.prompt_parser = PromptParser()
+
         # Initialize API clients
         self.openai_client = None
         self.anthropic_client = None
-        
+
         # Initialize project context
         self._project_context = None
         if project_path:
@@ -68,11 +78,26 @@ class UIGenerator:
     def generate_component(self, prompt: str, context: Dict) -> str:
         """Generate a React component from a prompt and project context"""
 
+        # Parse the prompt to understand requirements
+        requirements = self.prompt_parser.parse(prompt)
+
+        # Add parsed requirements to context for better generation
+        context["parsed_requirements"] = {
+            "component_type": requirements.component_type,
+            "features": requirements.features,
+            "styling": requirements.styling_requirements,
+            "expected_name": extract_component_name_from_requirements(requirements),
+        }
+
         # Build prompts using enhanced or basic builder
         if isinstance(self.prompt_builder, EnhancedPromptBuilder):
             # Use enhanced prompts with few-shot learning and RAG
-            system_prompt = self.prompt_builder.build_enhanced_system_prompt(context, prompt)
-            user_prompt = self.prompt_builder.build_rag_enhanced_user_prompt(prompt, context)
+            system_prompt = self.prompt_builder.build_enhanced_system_prompt(
+                context, prompt
+            )
+            user_prompt = self.prompt_builder.build_rag_enhanced_user_prompt(
+                prompt, context
+            )
         else:
             # Use basic prompts
             system_prompt = self.prompt_builder.build_ui_system_prompt(context)
@@ -80,118 +105,164 @@ class UIGenerator:
 
         # Choose API based on model
         if self.model.startswith("gpt"):
-            return self._generate_with_openai(system_prompt, user_prompt)
+            component_code = self._generate_with_openai(system_prompt, user_prompt)
         elif self.model.startswith("claude"):
-            return self._generate_with_anthropic(system_prompt, user_prompt)
+            component_code = self._generate_with_anthropic(system_prompt, user_prompt)
         else:
             raise ValueError(f"Unsupported model: {self.model}")
 
-    def generate_component_with_qa(self, prompt: str, context: Dict, target_path: str = None) -> Tuple[str, QualityReport]:
+        # Add usage example to the component
+        usage_example = self._generate_usage_example(component_code, prompt)
+        return component_code + usage_example
+
+    def generate_component_with_qa(
+        self, prompt: str, context: Dict, target_path: str = None
+    ) -> Tuple[str, QualityReport]:
         """Generate component with comprehensive quality assurance and traditional validation."""
         print("🎨 Generating component with traditional quality assurance...")
-        
+
         # Step 1: Generate initial component
         component_code = self.generate_component(prompt, context)
-        
+
         # Clean the response first
         component_code = self.clean_response(component_code)
-        
+
         # Step 2: If QA is disabled, return without validation
         if not self.validator:
             print("⚠️ Quality assurance disabled, skipping validation")
             # Create dummy report
             from ..quality.validator import QualityReport, ValidationLevel
+
             dummy_report = QualityReport(
-                score=75.0, issues=[], passed_checks=["Generation"],
-                failed_checks=[], auto_fixes_applied=[],
-                compilation_success=True, rendering_success=True,
-                accessibility_score=75.0, performance_score=75.0
+                score=75.0,
+                issues=[],
+                passed_checks=["Generation"],
+                failed_checks=[],
+                auto_fixes_applied=[],
+                compilation_success=True,
+                rendering_success=True,
+                accessibility_score=75.0,
+                performance_score=75.0,
             )
             return component_code, dummy_report
-        
-        # Step 3: Use traditional validation (Zero-Fix Pipeline temporarily disabled)
-        # TODO: Re-enable Zero-Fix Pipeline after fixing async event loop issues
-        print("🔄 Using traditional quality assurance...")
-        
-        # Skip Zero-Fix Pipeline to avoid async issues
-        # try:
-        #     import asyncio
-        #     
-        #     # Initialize Zero-Fix Pipeline with auto-discovered MCP servers
-        #     from ..mcp.client import MCPClient
-        #     mcp_client = None
-            
-        #     # Use auto-discovered MCP servers if available
-        #     if hasattr(self, '_mcp_discovery') and self._mcp_discovery.get('enabled'):
-        #         try:
-        #             mcp_registry = MCPServerRegistry()
-        #             enabled_servers = mcp_registry.get_enabled_servers()
-        #             if enabled_servers:
-        #                 mcp_client = MCPClient(servers=enabled_servers)
-        #                 print(f"🎯 Zero-Fix Pipeline using {len(enabled_servers)} MCP servers")
-        #         except Exception as e:
-        #             print(f"⚠️ MCP client initialization failed: {e}")
-        #     
-        #     zero_fix_pipeline = ZeroFixPipeline(
-        #         project_path=self.project_path,
-        #         mcp_client=mcp_client
-        #     )
-        #     
-        #     # Run the pipeline
-        #     pipeline_result = asyncio.run(zero_fix_pipeline.process(
-        #         component_code, 
-        #         context, 
-        #         target_path or "Component.tsx"
-        #     ))
-        #     
-        #     # Convert ZeroFixResult to QualityReport format
-        #     quality_report = self._convert_zero_fix_to_quality_report(pipeline_result)
-        #     
-        #     # Display pipeline summary
-        #     self._display_zero_fix_summary(pipeline_result)
-        #     
-        #     # Use the pipeline result as the final code
-        #     final_code = pipeline_result.final_code
-        #     
-        #     # Step 4: Final formatting (after all fixes)
-        #     print("🎨 Final formatting pass...")
-        #     formatted_code = self.format_and_lint_code(final_code, self.project_path or os.getcwd())
-        #     
-        #     return formatted_code, quality_report
-        #     
-        # except Exception as e:
-        #     print(f"⚠️ Zero-Fix Pipeline failed, fallingback to traditional QA: {e}")
-        #     
+
+        # Step 3: Use Zero-Fix Pipeline for advanced validation
+        print("🚀 Using Zero-Fix Pipeline for advanced quality assurance...")
+
+        try:
+            # Initialize Zero-Fix Pipeline (without MCP dependencies)
+            zero_fix_pipeline = ZeroFixPipeline(
+                project_path=self.project_path,
+                mcp_client=None,  # No MCP since we removed it
+            )
+
+            # Run the pipeline with safe async handling
+            pipeline_result = safe_run_async(
+                zero_fix_pipeline.process(
+                    component_code, context, target_path or "Component.tsx", prompt
+                )
+            )
+
+            # Convert ZeroFixResult to QualityReport format
+            quality_report = self._convert_zero_fix_to_quality_report(pipeline_result)
+
+            # Display pipeline summary
+            self._display_zero_fix_summary(pipeline_result)
+
+            # Use the pipeline result as the final code
+            final_code = pipeline_result.final_code
+
+            # Step 4: Final formatting (after all fixes)
+            print("🎨 Final formatting pass...")
+            formatted_code = self.format_and_lint_code(
+                final_code, self.project_path or os.getcwd()
+            )
+
+            return formatted_code, quality_report
+
+        except Exception as e:
+            print(f"⚠️ Zero-Fix Pipeline failed, falling back to traditional QA: {e}")
+            # Fall through to traditional validation
+
         # Traditional validation
         target_file = target_path or "Component.tsx"
         refined_code, quality_report = self.validator.iterative_refinement(
             component_code, target_file, max_iterations=3
         )
-        
+
+        # Add design token validation
+        if context.get("design_tokens"):
+            uses_tokens, token_issues, token_score = (
+                self.validator.validate_design_token_usage(
+                    refined_code, context["design_tokens"]
+                )
+            )
+
+            # Add design token score to report
+            print(f"🎨 Design Token Usage: {token_score:.1f}%")
+
+            if token_issues:
+                from ..quality.validator import ValidationIssue, ValidationLevel
+
+                for issue in token_issues:
+                    quality_report.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.WARNING,
+                            category="design_tokens",
+                            message=issue,
+                            suggestion="Use project-specific design tokens instead of generic colors",
+                        )
+                    )
+
+            # Add to checks with score
+            if uses_tokens:
+                quality_report.passed_checks.append(
+                    f"Design token usage ({token_score:.0f}%)"
+                )
+            else:
+                quality_report.failed_checks.append(
+                    f"Design token usage ({token_score:.0f}%)"
+                )
+
+            # Adjust overall score based on token usage (max 5 point impact)
+            token_impact = (token_score / 100) * 5
+            quality_report.score = min(100, quality_report.score + token_impact - 2.5)
+
         # Display quality summary
         self._display_quality_summary(quality_report)
-        
+
         # Final formatting
         print("🎨 Final formatting pass...")
-        formatted_code = self.format_and_lint_code(refined_code, self.project_path or os.getcwd())
-        
+        formatted_code = self.format_and_lint_code(
+            refined_code, self.project_path or os.getcwd()
+        )
+
         return formatted_code, quality_report
-    
+
     def _convert_zero_fix_to_quality_report(self, zero_fix_result):
         """Convert ZeroFixResult to QualityReport format for compatibility."""
         from ..quality.validator import QualityReport, ValidationLevel
-        
+
         # Calculate overall score based on success and confidence
         if zero_fix_result.success:
             overall_score = zero_fix_result.confidence_score * 100
         else:
-            overall_score = max(0, (1 - zero_fix_result.final_issues / max(1, zero_fix_result.original_issues)) * 50)
-        
+            overall_score = max(
+                0,
+                (
+                    1
+                    - zero_fix_result.final_issues
+                    / max(1, zero_fix_result.original_issues)
+                )
+                * 50,
+            )
+
         # Convert pipeline fixes to auto_fixes_applied format
         auto_fixes = zero_fix_result.openai_fixes + [
-            f"Pipeline Stage {i+1}" for i in range(len(zero_fix_result.validation_reports))
+            f"Pipeline Stage {i+1}"
+            for i in range(len(zero_fix_result.validation_reports))
         ]
-        
+
         return QualityReport(
             score=overall_score,
             issues=[],  # Zero-fix pipeline handles issues internally
@@ -201,9 +272,9 @@ class UIGenerator:
             compilation_success=zero_fix_result.final_issues == 0,
             rendering_success=zero_fix_result.success,
             accessibility_score=zero_fix_result.confidence_score * 100,
-            performance_score=zero_fix_result.confidence_score * 100
+            performance_score=zero_fix_result.confidence_score * 100,
         )
-    
+
     def _display_zero_fix_summary(self, pipeline_result):
         """Display Zero-Fix Pipeline summary."""
         print(f"\n🚀 Zero-Fix Pipeline Results:")
@@ -212,20 +283,20 @@ class UIGenerator:
         print(f"Original Issues: {pipeline_result.original_issues}")
         print(f"Final Issues: {pipeline_result.final_issues}")
         print(f"Confidence Score: {pipeline_result.confidence_score:.2%}")
-        
+
         if pipeline_result.openai_fixes:
             print(f"\n🔧 AI Fixes Applied: {len(pipeline_result.openai_fixes)}")
             for i, fix in enumerate(pipeline_result.openai_fixes[:3]):  # Show first 3
                 print(f"  {i+1}. {fix}")
             if len(pipeline_result.openai_fixes) > 3:
                 print(f"  ... and {len(pipeline_result.openai_fixes) - 3} more fixes")
-        
+
         if pipeline_result.mcp_validations:
             print(f"\n🎨 MCP Validations: {len(pipeline_result.mcp_validations)}")
-            
+
         if pipeline_result.validation_reports:
             print(f"📊 Validation Stages: {len(pipeline_result.validation_reports)}")
-        
+
         if pipeline_result.error:
             print(f"❌ Error: {pipeline_result.error}")
 
@@ -233,30 +304,30 @@ class UIGenerator:
         """Display quality assurance summary."""
         print(f"\n📊 Quality Report:")
         print(f"Overall Score: {report.score:.1f}/100")
-        
+
         if report.compilation_success:
             print("✅ TypeScript compilation: PASSED")
         else:
             print("❌ TypeScript compilation: FAILED")
-        
+
         if report.rendering_success:
-            print("✅ Component rendering: PASSED") 
+            print("✅ Component rendering: PASSED")
         else:
             print("❌ Component rendering: FAILED")
-        
+
         print(f"🛡️ Accessibility: {report.accessibility_score:.1f}/100")
         print(f"⚡ Performance: {report.performance_score:.1f}/100")
-        
+
         if report.issues:
             print(f"\n⚠️ Issues Found: {len(report.issues)}")
             for issue in report.issues[:5]:  # Show first 5 issues
                 level_emoji = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}
                 emoji = level_emoji.get(issue.level.value, "•")
                 print(f"  {emoji} {issue.category}: {issue.message}")
-            
+
             if len(report.issues) > 5:
                 print(f"  ... and {len(report.issues) - 5} more issues")
-        
+
         if report.auto_fixes_applied:
             print(f"\n🔧 Auto-fixes Applied: {len(report.auto_fixes_applied)}")
             for fix in report.auto_fixes_applied:
@@ -314,26 +385,204 @@ class UIGenerator:
             if len(parts) >= 3:
                 # Take the content of the first code block (index 1)
                 code_content = parts[1]
-                
+
                 # Remove language specifier from first line if present
-                lines = code_content.split('\n')
-                if lines and lines[0].strip() in ['tsx', 'typescript', 'javascript', 'jsx', 'ts', 'js']:
+                lines = code_content.split("\n")
+                if lines and lines[0].strip() in [
+                    "tsx",
+                    "typescript",
+                    "javascript",
+                    "jsx",
+                    "ts",
+                    "js",
+                ]:
                     lines = lines[1:]
-                
-                response = '\n'.join(lines).strip()
-        
+
+                response = "\n".join(lines).strip()
+
         # Additional cleanup - remove any remaining markdown artifacts
-        lines = response.split('\n')
+        lines = response.split("\n")
         cleaned_lines = []
         for line in lines:
             # Skip lines that are pure markdown artifacts
             stripped = line.strip()
-            if stripped in ['```tsx', '```typescript', '```javascript', '```jsx', '```ts', '```js', '```']:
+            if stripped in [
+                "```tsx",
+                "```typescript",
+                "```javascript",
+                "```jsx",
+                "```ts",
+                "```js",
+                "```",
+            ]:
                 continue
             cleaned_lines.append(line)
-        
-        response = '\n'.join(cleaned_lines)
+
+        response = "\n".join(cleaned_lines)
         return response.strip()
+
+    def _generate_usage_example(self, component_code: str, prompt: str) -> str:
+        """Generate a usage example for the component based on its props."""
+        import re
+
+        # Extract component name
+        component_match = re.search(
+            r"(?:export\s+default\s+)?(?:function|const)\s+(\w+)", component_code
+        )
+        component_name = component_match.group(1) if component_match else "Component"
+
+        # Try to find interface or type definition with improved regex
+        # Handle multiline interfaces and nested types
+        props_match = re.search(
+            r"interface\s+\w*Props\s*{([^}]+(?:{[^}]*}[^}]*)*)}",
+            component_code,
+            re.DOTALL,
+        )
+        if not props_match:
+            # Try type alias format
+            props_match = re.search(
+                r"type\s+\w*Props\s*=\s*{([^}]+(?:{[^}]*}[^}]*)*)}",
+                component_code,
+                re.DOTALL,
+            )
+
+        prompt_lower = prompt.lower()
+
+        # Generate specific examples based on component type
+        if "dashboard header" in prompt_lower:
+            return f"""
+
+// Usage example:
+<{component_name}
+  breadcrumbs={{[
+    {{ label: 'Home', href: '/' }},
+    {{ label: 'Dashboard' }}
+  ]}}
+  userName="John Doe"
+  notificationCount={{3}}
+  avatarSrc="/images/avatar.jpg"
+/>"""
+        elif "product card grid" in prompt_lower or "product grid" in prompt_lower:
+            return f"""
+
+// Usage example:
+const products = [
+  {{ id: 1, name: 'Product 1', price: 29.99, image: '/product1.jpg', rating: 4.5, discount: 10 }},
+  {{ id: 2, name: 'Product 2', price: 49.99, image: '/product2.jpg', rating: 5, discount: 0 }},
+  // ... more products
+];
+
+<{component_name} products={{products}} />"""
+        elif props_match:
+            props_content = props_match.group(1)
+            # Parse props more accurately
+            props_info = self._parse_typescript_props(props_content)
+
+            if props_info:
+                # Generate example with proper values
+                props_examples = []
+                for prop_name, prop_type, is_optional in props_info:
+                    example_value = self._generate_prop_example_value(
+                        prop_name, prop_type
+                    )
+                    if not is_optional or len(props_examples) < 3:  # Show first 3 props
+                        props_examples.append(f"  {prop_name}={{{example_value}}}")
+
+                if props_examples:
+                    props_str = "\n".join(props_examples)
+                    return f"""
+
+// Usage example:
+<{component_name}
+{props_str}
+/>"""
+
+        return f"""
+
+// Usage example:
+<{component_name} />"""
+
+    def _parse_typescript_props(
+        self, props_content: str
+    ) -> List[Tuple[str, str, bool]]:
+        """Parse TypeScript props to extract name, type, and optionality."""
+        import re
+
+        props = []
+        # Clean up the content
+        props_content = props_content.strip()
+
+        # Split by semicolon or newline, handling nested objects
+        lines = re.split(r"[;\n]", props_content)
+
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("//"):
+                continue
+
+            # Match prop pattern: propName?: type or propName: type
+            match = re.match(r"^\s*(\w+)\s*(\?)?:\s*(.+)$", line)
+            if match:
+                prop_name = match.group(1)
+                is_optional = bool(match.group(2))
+                prop_type = match.group(3).strip()
+
+                # Clean up the type (remove trailing semicolons, etc.)
+                prop_type = prop_type.rstrip(";,")
+
+                props.append((prop_name, prop_type, is_optional))
+
+        return props
+
+    def _generate_prop_example_value(self, prop_name: str, prop_type: str) -> str:
+        """Generate an example value based on prop name and type."""
+        prop_name_lower = prop_name.lower()
+        prop_type_lower = prop_type.lower()
+
+        # Common prop patterns
+        if "onclick" in prop_name_lower or "onchange" in prop_name_lower:
+            return '() => console.log("' + prop_name + '")'
+        elif "children" in prop_name_lower:
+            return '"Example content"'
+        elif "classname" in prop_name_lower:
+            return '"custom-class"'
+        elif "src" in prop_name_lower or "url" in prop_name_lower:
+            return '"/example-image.jpg"'
+        elif "href" in prop_name_lower:
+            return '"#"'
+        elif "id" in prop_name_lower:
+            return '"example-id"'
+        elif (
+            "name" in prop_name_lower
+            or "title" in prop_name_lower
+            or "label" in prop_name_lower
+        ):
+            return '"Example ' + prop_name + '"'
+        elif "count" in prop_name_lower:
+            return "5"
+        elif "price" in prop_name_lower or "amount" in prop_name_lower:
+            return "29.99"
+        elif "rating" in prop_name_lower:
+            return "4.5"
+        elif "discount" in prop_name_lower or "percentage" in prop_name_lower:
+            return "10"
+
+        # Type-based defaults
+        if "string" in prop_type_lower:
+            return '"example"'
+        elif "number" in prop_type_lower:
+            return "42"
+        elif "boolean" in prop_type_lower:
+            return "true"
+        elif "array" in prop_type_lower or prop_type.startswith("["):
+            return "[]"
+        elif prop_type.startswith("{") or "object" in prop_type_lower:
+            return "{}"
+        elif "=>" in prop_type or "function" in prop_type_lower:
+            return "() => {}"
+        else:
+            # Default fallback
+            return "/* " + prop_type + " */"
 
     def validate_component(self, code: str) -> bool:
         """Basic validation of generated component code"""
@@ -603,16 +852,16 @@ class UIGenerator:
                 return "eslint" in dependencies
         except (json.JSONDecodeError, Exception):
             return False
-    
+
     @property
     def project_context(self) -> Dict:
         """Get project analysis context."""
         return self._project_context or {}
-    
+
     def _analyze_project(self, project_path: str):
         """Analyze project structure and patterns."""
         from ..analysis.context import ProjectAnalyzer
-        
+
         try:
             analyzer = ProjectAnalyzer()
             self._project_context = analyzer.analyze_project(project_path)
@@ -621,115 +870,123 @@ class UIGenerator:
             # Use intelligent fallback with basic framework detection
             fallback_framework = self._detect_framework_fallback(project_path)
             self._project_context = {
-                'framework': fallback_framework,
-                'styling': 'tailwind',
-                'component_library': 'none',
-                'typescript': True,
-                'project_path': project_path
+                "framework": fallback_framework,
+                "styling": "tailwind",
+                "component_library": "none",
+                "typescript": True,
+                "project_path": project_path,
             }
-    
+
     def _detect_framework_fallback(self, project_path: str) -> str:
         """Basic framework detection for fallback scenarios."""
         import json
         import os
-        
+
         # Check for Next.js first
-        next_config_files = ['next.config.js', 'next.config.ts', 'next.config.mjs']
-        if any(os.path.exists(os.path.join(project_path, config)) for config in next_config_files):
-            return 'next.js'
-        
+        next_config_files = ["next.config.js", "next.config.ts", "next.config.mjs"]
+        if any(
+            os.path.exists(os.path.join(project_path, config))
+            for config in next_config_files
+        ):
+            return "next.js"
+
         # Check package.json for framework dependencies
-        package_json_path = os.path.join(project_path, 'package.json')
+        package_json_path = os.path.join(project_path, "package.json")
         if os.path.exists(package_json_path):
             try:
-                with open(package_json_path, 'r') as f:
+                with open(package_json_path, "r") as f:
                     package_data = json.load(f)
                 dependencies = {
-                    **package_data.get('dependencies', {}),
-                    **package_data.get('devDependencies', {})
+                    **package_data.get("dependencies", {}),
+                    **package_data.get("devDependencies", {}),
                 }
-                
+
                 # Check for framework-specific dependencies
-                if 'next' in dependencies:
-                    return 'next.js'
-                elif '@remix-run/dev' in dependencies or '@remix-run/node' in dependencies:
-                    return 'remix'
-                elif 'vite' in dependencies:
-                    return 'vite'
-                elif 'react' in dependencies:
-                    return 'react'
+                if "next" in dependencies:
+                    return "next.js"
+                elif (
+                    "@remix-run/dev" in dependencies
+                    or "@remix-run/node" in dependencies
+                ):
+                    return "remix"
+                elif "vite" in dependencies:
+                    return "vite"
+                elif "react" in dependencies:
+                    return "react"
             except Exception:
                 pass
-        
+
         # Check for Vite config
-        if os.path.exists(os.path.join(project_path, 'vite.config.js')) or os.path.exists(os.path.join(project_path, 'vite.config.ts')):
-            return 'vite'
-        
+        if os.path.exists(
+            os.path.join(project_path, "vite.config.js")
+        ) or os.path.exists(os.path.join(project_path, "vite.config.ts")):
+            return "vite"
+
         # Check for Remix config
-        if os.path.exists(os.path.join(project_path, 'remix.config.js')):
-            return 'remix'
-        
+        if os.path.exists(os.path.join(project_path, "remix.config.js")):
+            return "remix"
+
         # Default to react if nothing else is detected
-        return 'react'
-    
+        return "react"
+
     def _detect_generation_type(self, prompt: str) -> str:
         """Detect generation type from prompt."""
         prompt_lower = prompt.lower()
-        
+
         # Check for multi-file patterns
-        if any(word in prompt_lower for word in ['multi', 'multiple', 'files', 'separate']):
-            return 'multi'
-        
+        if any(
+            word in prompt_lower for word in ["multi", "multiple", "files", "separate"]
+        ):
+            return "multi"
+
         # Check for page patterns
-        if any(word in prompt_lower for word in ['page', 'route', 'screen']):
-            return 'page'
-        
+        if any(word in prompt_lower for word in ["page", "route", "screen"]):
+            return "page"
+
         # Check for feature patterns
-        if any(word in prompt_lower for word in ['feature', 'module', 'system']):
-            return 'feature'
-        
+        if any(word in prompt_lower for word in ["feature", "module", "system"]):
+            return "feature"
+
         # Check for utility patterns
-        if any(word in prompt_lower for word in ['util', 'helper', 'function']):
-            return 'utils'
-        
+        if any(word in prompt_lower for word in ["util", "helper", "function"]):
+            return "utils"
+
         # Check for hook patterns
-        if any(word in prompt_lower for word in ['hook', 'use']):
-            return 'hooks'
-        
+        if any(word in prompt_lower for word in ["hook", "use"]):
+            return "hooks"
+
         # Default to single component
-        return 'single'
+        return "single"
 
     def generate(self, request) -> Dict[str, str]:
         """Generate component(s) based on a GenerationRequest."""
         # Convert request to context format
         context = {
-            'framework': request.framework.value,
-            'styling': request.styling.value,
-            'component_library': request.component_library.value,
-            'typescript': True,
-            'project_path': self.project_path
+            "framework": request.framework.value,
+            "styling": request.styling.value,
+            "component_library": request.component_library.value,
+            "typescript": True,
+            "project_path": self.project_path,
         }
-        
+
         # Add project context if available
         if self._project_context:
             context.update(self._project_context)
-        
+
         # Generate the component
-        if hasattr(self, 'validator') and self.validator and self.quality_assurance:
+        if hasattr(self, "validator") and self.validator and self.quality_assurance:
             component_code, quality_report = self.generate_component_with_qa(
-                request.prompt, 
-                context,
-                target_path="Component.tsx"
+                request.prompt, context, target_path="Component.tsx"
             )
         else:
             component_code = self.generate_component(request.prompt, context)
-        
+
         # Determine the correct file path using smart project structure detection
         file_path = self._determine_file_path_smart(request)
-        
+
         # Return in the expected format
         return {file_path: component_code}
-    
+
     def _determine_file_path_smart(self, request) -> str:
         """Use ProjectStructureDetector to determine the correct file path."""
         if not self.project_path:
@@ -737,7 +994,7 @@ class UIGenerator:
             project_path = os.getcwd()
         else:
             project_path = self.project_path
-            
+
         try:
             detector = ProjectStructureDetector(project_path)
             return detector.generate_file_path(request.prompt)
@@ -745,44 +1002,36 @@ class UIGenerator:
             print(f"⚠️ Smart path detection failed: {e}")
             # Fallback to simple component naming
             return self._fallback_file_path(request.prompt)
-    
+
     def _fallback_file_path(self, prompt: str) -> str:
         """Fallback file path generation when smart detection fails."""
         prompt_lower = prompt.lower()
-        
-        # Simple name extraction
-        if 'hero' in prompt_lower:
-            name = 'HeroSection'
-        elif 'pricing' in prompt_lower:
-            name = 'PricingSection'  
-        elif 'nav' in prompt_lower:
-            name = 'Navigation'
-        elif 'card' in prompt_lower:
-            name = 'Card'
-        elif 'button' in prompt_lower:
-            name = 'Button'
+
+        # Check compound types first for better accuracy
+        if "product card grid" in prompt_lower or "product grid" in prompt_lower:
+            name = "ProductCardGrid"
+        elif "dashboard header" in prompt_lower:
+            name = "DashboardHeader"
+        elif "pricing section" in prompt_lower or "pricing tier" in prompt_lower:
+            name = "PricingSection"
+        elif "hero" in prompt_lower:
+            name = "HeroSection"
+        elif "pricing" in prompt_lower:
+            name = "PricingSection"
+        elif "nav" in prompt_lower:
+            name = "Navigation"
+        elif "card" in prompt_lower:
+            name = "Card"
+        elif "button" in prompt_lower:
+            name = "Button"
         else:
-            name = 'Component'
-        
+            name = "Component"
+
         # Default to components directory with TypeScript extension
         return f"components/{name}.tsx"
-    
+
     def _auto_discover_mcp_servers(self, project_path: str):
         """Auto-discover and configure MCP servers based on project setup."""
-        try:
-            # Initialize MCP registry
-            mcp_registry = MCPServerRegistry()
-            
-            # Run auto-discovery
-            discovery_result = mcp_registry.auto_discover_servers(project_path)
-            
-            # Store discovery results for potential use in Zero-Fix Pipeline
-            self._mcp_discovery = discovery_result
-            
-            if discovery_result['enabled']:
-                print(f"🎯 MCP integration enabled with {len(discovery_result['enabled'])} servers")
-            
-        except Exception as e:
-            print(f"⚠️ MCP auto-discovery failed: {e}")
-            # Don't fail the entire initialization if MCP discovery fails
-            self._mcp_discovery = {"discovered": [], "enabled": []}
+        # MCP support has been removed in favor of local knowledge base
+        # Initialize empty discovery results
+        self._mcp_discovery = {"discovered": [], "enabled": []}

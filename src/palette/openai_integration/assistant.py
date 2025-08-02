@@ -11,13 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openai import OpenAI, AsyncOpenAI
+from ..utils.async_utils import safe_run_async
 
 
 @dataclass
 class AssistantConfig:
     """Configuration for the Palette Assistant."""
     name: str = "Palette UI/UX Generator"
-    model: str = "gpt-4-turbo-preview"
+    model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     instructions: str = """You are an expert UI/UX developer assistant specialized in generating 
     high-quality React components. You have deep knowledge of:
     - React and TypeScript best practices
@@ -222,7 +223,7 @@ class PaletteAssistant:
         use_code_interpreter: bool = True
     ) -> Tuple[str, Dict[str, Any]]:
         """Synchronous wrapper for component generation."""
-        return asyncio.run(self.generate_component_async(prompt, context, use_code_interpreter))
+        return safe_run_async(self.generate_component_async(prompt, context, use_code_interpreter))
     
     async def validate_with_interpreter(self, code: str) -> Dict[str, Any]:
         """Use Code Interpreter to validate component code."""

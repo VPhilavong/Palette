@@ -198,11 +198,8 @@ class PaletteKnowledgeBase:
             name=f"palette_project_{project_name}"
         )
         
-        # TODO: Upload relevant project files
-        # - README.md
-        # - Design system files
-        # - Existing components
-        # - Style guides
+        # Project-specific files would be uploaded here when implementing
+        # file search functionality for project knowledge bases
         
         self.vector_stores[kb_name] = vector_store.id
         self._save_config()
