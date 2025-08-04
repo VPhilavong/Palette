@@ -40,6 +40,9 @@ class ComponentPattern:
     imports: List[str] = None
     export_type: str = "default"
     has_typescript: bool = False
+    description: Optional[str] = None
+    purpose: Optional[str] = None
+    examples: List[str] = None
     
     def __post_init__(self):
         if self.props is None:
@@ -48,6 +51,8 @@ class ComponentPattern:
             self.styling_patterns = []
         if self.imports is None:
             self.imports = []
+        if self.examples is None:
+            self.examples = []
 
 
 class TreeSitterAnalyzer:
@@ -360,6 +365,10 @@ class TreeSitterAnalyzer:
             export_type = self._determine_export_type_from_ast(root_node, source_code)
             is_functional = self._is_functional_component(root_node, source_code)
             
+            # Extract documentation
+            description, purpose = self._extract_component_documentation(root_node, source_code, component_name)
+            examples = self._extract_usage_examples(root_node, source_code)
+            
             return ComponentPattern(
                 name=component_name,
                 file_path=str(file_path),
@@ -368,7 +377,10 @@ class TreeSitterAnalyzer:
                 imports=imports,
                 styling_patterns=styling_patterns,
                 export_type=export_type,
-                has_typescript=has_typescript
+                has_typescript=has_typescript,
+                description=description,
+                purpose=purpose,
+                examples=examples
             )
             
         except Exception as e:
@@ -1058,6 +1070,115 @@ class TreeSitterAnalyzer:
         
         return None
     
+    def _extract_component_documentation(self, root_node, source_code: str, component_name: str) -> Tuple[Optional[str], Optional[str]]:
+        """Extract component documentation from JSDoc comments and other sources"""
+        description = None
+        purpose = None
+        
+        # Look for JSDoc comment before the component
+        jsdoc_pattern = r'/\*\*\s*\n((?:\s*\*[^\n]*\n)*)\s*\*/'
+        matches = list(re.finditer(jsdoc_pattern, source_code[:1000]))  # Check first 1000 chars
+        
+        if matches:
+            last_jsdoc = matches[-1]
+            jsdoc_content = last_jsdoc.group(1)
+            lines = jsdoc_content.split('\n')
+            
+            desc_lines = []
+            for line in lines:
+                line = line.strip().lstrip('*').strip()
+                if line and not line.startswith('@'):
+                    desc_lines.append(line)
+                elif line.startswith('@description'):
+                    desc_lines.append(line.replace('@description', '').strip())
+                elif line.startswith('@purpose'):
+                    purpose = line.replace('@purpose', '').strip()
+            
+            if desc_lines:
+                description = ' '.join(desc_lines)
+        
+        # If no JSDoc, try to find inline comments
+        if not description:
+            # Look for comment right after component declaration
+            component_pattern = rf'(?:const|function)\s+{component_name}'
+            match = re.search(component_pattern, source_code)
+            if match:
+                after_component = source_code[match.end():match.end() + 200]
+                comment_match = re.search(r'//\s*(.+)', after_component)
+                if comment_match:
+                    description = comment_match.group(1).strip()
+        
+        # Infer purpose from component name if not found
+        if not purpose:
+            purpose = self._infer_purpose_from_name(component_name)
+        
+        return description, purpose
+    
+    def _extract_usage_examples(self, root_node, source_code: str) -> List[str]:
+        """Extract usage examples from comments or JSDoc @example tags"""
+        examples = []
+        
+        # Look for @example tags in JSDoc
+        example_pattern = r'@example\s*\n\s*\*\s*(.+?)(?=\n\s*\*\s*@|\n\s*\*/)'
+        matches = re.findall(example_pattern, source_code, re.DOTALL)
+        
+        for match in matches:
+            example_lines = match.strip().split('\n')
+            example_code = []
+            for line in example_lines:
+                cleaned_line = line.strip().lstrip('*').strip()
+                if cleaned_line:
+                    example_code.append(cleaned_line)
+            if example_code:
+                examples.append('\n'.join(example_code))
+        
+        return examples
+    
+    def _infer_purpose_from_name(self, component_name: str) -> str:
+        """Infer component purpose from its name"""
+        name_lower = component_name.lower()
+        
+        # Common component purposes
+        purposes = {
+            "button": "Interactive button for user actions",
+            "card": "Content container with consistent styling",
+            "modal": "Overlay dialog for focused interactions",
+            "form": "Data input and submission form",
+            "header": "Page or section header component",
+            "footer": "Page or section footer component",
+            "nav": "Navigation menu component",
+            "sidebar": "Side navigation or content panel",
+            "table": "Data table for displaying structured information",
+            "list": "List container for displaying items",
+            "input": "User input field component",
+            "select": "Dropdown selection component",
+            "checkbox": "Checkbox input component",
+            "radio": "Radio button input component",
+            "toggle": "Toggle switch component",
+            "tab": "Tabbed interface component",
+            "accordion": "Collapsible content sections",
+            "tooltip": "Hover information tooltip",
+            "dropdown": "Dropdown menu component",
+            "avatar": "User profile image component",
+            "badge": "Small labeling component",
+            "alert": "Alert message component",
+            "toast": "Temporary notification component",
+            "progress": "Progress indicator component",
+            "spinner": "Loading spinner component",
+            "skeleton": "Loading placeholder component",
+            "slider": "Range slider component",
+            "pagination": "Page navigation component",
+            "breadcrumb": "Navigation breadcrumb component",
+        }
+        
+        # Check for matches
+        for key, purpose in purposes.items():
+            if key in name_lower:
+                return purpose
+        
+        # Default purpose
+        return f"{component_name} component for the application"
+
     def _extract_common_patterns(self, components: List[ComponentPattern]) -> Dict[str, Any]:
         """Extract common patterns across components."""
         if not components:

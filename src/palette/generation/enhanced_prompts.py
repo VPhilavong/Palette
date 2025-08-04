@@ -418,34 +418,55 @@ class EnhancedPromptBuilder(UIUXCopilotPromptBuilder):
         return max(0, score)
 
     def build_enhanced_system_prompt(self, context: Dict, user_request: str) -> str:
-        """Build enhanced system prompt with few-shot examples and RAG context."""
+        """Build enhanced system prompt with frontend engineer persona and component library."""
+        # Start with frontend engineer persona
+        persona = self._build_frontend_engineer_persona()
+        
+        # Build component library section FIRST
+        component_library = self._build_component_library_section(context)
+        
         # Get base system prompt
         base_prompt = self.build_ui_system_prompt(context)
-
+        
+        # Build design system section
+        design_system = self._build_design_system_section(context)
+        
         # Find relevant component examples
         examples = self._find_relevant_examples(user_request, context)
-
-        if not examples:
-            return base_prompt
+        
+        # Build composition examples if we have components
+        composition_examples = ""
+        if context.get("available_imports", {}).get("ui_components"):
+            composition_examples = self._build_composition_examples(context)
 
         # Build few-shot learning section
-        few_shot_section = self._build_few_shot_section(examples)
+        few_shot_section = ""
+        if examples:
+            few_shot_section = self._build_few_shot_section(examples)
 
-        # Enhance the prompt with examples
-        enhanced_prompt = f"""{base_prompt}
+        # Construct the complete enhanced prompt
+        enhanced_prompt = f"""{persona}
+
+{component_library}
+
+{design_system}
+
+STRICT COMPONENT DEVELOPMENT RULES:
+1. ALWAYS check the component library above FIRST before creating anything new
+2. IMPORT and COMPOSE existing components to build the requested UI
+3. Only create new base components if absolutely no existing component can fulfill the need
+4. Follow the EXACT import patterns shown in the component library
+5. Use the project's design tokens and styling patterns
+6. Your code should look like it was written by a team member who knows this codebase
+
+{base_prompt}
+
+{composition_examples}
 
 {few_shot_section}
 
-CRITICAL: Follow the exact patterns shown in the examples above. 
-Pay special attention to:
-- Import statements and their exact paths
-- TypeScript interface patterns
-- Component structure and naming conventions
-- Styling approaches and className patterns
-- Props handling and destructuring patterns
-- Export patterns
-
-Your generated component should feel like it belongs in this codebase."""
+REMEMBER: You are a frontend engineer on this team. Use the existing components and patterns. 
+Your goal is to create UIs that seamlessly integrate with the existing codebase."""
 
         return enhanced_prompt
 
@@ -656,6 +677,181 @@ Use the context above to ensure your component follows the same patterns and con
                 f"- {comp.name}: {len(comp.props)} props, {', '.join(comp.styling_patterns[:3])}"
             )
 
+        return "\n".join(sections)
+    
+    def _build_frontend_engineer_persona(self) -> str:
+        """Build the frontend engineer persona section"""
+        return """YOU ARE A FRONTEND ENGINEER ON THIS PROJECT TEAM
+
+You have deep knowledge of this codebase and always follow the team's established patterns.
+You prioritize code reuse and consistency over creating new components from scratch.
+You think in terms of composition - combining existing components to create new UIs.
+You know the import paths, component APIs, and design patterns used in this project."""
+    
+    def _build_component_library_section(self, context: Dict) -> str:
+        """Build comprehensive component library section with import paths"""
+        sections = ["AVAILABLE COMPONENTS IN THIS PROJECT:"]
+        
+        # Get UI components from context
+        ui_components = context.get("available_imports", {}).get("ui_components", {})
+        
+        # Process shadcn/ui components
+        if ui_components.get("shadcn_ui"):
+            sections.append("\n## shadcn/ui Components (Installed):")
+            for comp_info in ui_components["shadcn_ui"]:
+                if isinstance(comp_info, dict):
+                    name = comp_info.get("name", "Unknown")
+                    import_path = comp_info.get("import_path", f"@/components/ui/{name}")
+                    purpose = comp_info.get("purpose", "")
+                    sections.append(f"- {name}: import {{ {name} }} from '{import_path}' - {purpose}")
+                else:
+                    # Fallback for old format
+                    sections.append(f"- {comp_info}: import {{ {comp_info} }} from '@/components/ui/{comp_info}'")
+        
+        # Process custom components
+        if ui_components.get("custom"):
+            sections.append("\n## Custom Project Components:")
+            # Group by type
+            components_by_type = defaultdict(list)
+            for comp_info in ui_components["custom"]:
+                if isinstance(comp_info, dict):
+                    comp_type = comp_info.get("type", "component")
+                    components_by_type[comp_type].append(comp_info)
+                else:
+                    # Fallback for old format
+                    components_by_type["component"].append({
+                        "name": comp_info,
+                        "import_path": f"@/components/{comp_info}",
+                        "purpose": f"Custom {comp_info} component"
+                    })
+            
+            # Display by type
+            type_order = ["button", "form", "container", "navigation", "layout", "data-display", "feedback", "overlay", "section", "user", "component"]
+            for comp_type in type_order:
+                if comp_type in components_by_type:
+                    type_title = comp_type.replace("-", " ").title()
+                    sections.append(f"\n### {type_title} Components:")
+                    for comp_info in components_by_type[comp_type]:
+                        name = comp_info.get("name", "Unknown")
+                        import_path = comp_info.get("import_path", f"@/components/{name}")
+                        purpose = comp_info.get("purpose", "")
+                        sections.append(f"- {name}: import {{ {name} }} from '{import_path}' - {purpose}")
+        
+        # Add third-party libraries if available
+        if ui_components.get("third_party"):
+            sections.append("\n## Third-Party UI Libraries:")
+            for lib in ui_components["third_party"]:
+                if lib == "mui":
+                    sections.append("- Material-UI: import { Button, Card, TextField, etc. } from '@mui/material'")
+                elif lib == "antd":
+                    sections.append("- Ant Design: import { Button, Card, Input, etc. } from 'antd'")
+                elif lib == "chakra-ui":
+                    sections.append("- Chakra UI: import { Button, Box, Input, etc. } from '@chakra-ui/react'")
+        
+        # Add utility functions
+        utilities = context.get("available_imports", {}).get("utilities", {})
+        if utilities:
+            sections.append("\n## Utility Functions:")
+            if utilities.get("cn"):
+                sections.append("- cn: import { cn } from '@/lib/utils' - Class name utility for conditional classes")
+            if utilities.get("clsx"):
+                sections.append("- clsx: import clsx from 'clsx' - Class name concatenation")
+            if utilities.get("classnames"):
+                sections.append("- classNames: import classNames from 'classnames' - Dynamic class names")
+        
+        return "\n".join(sections)
+    
+    def _build_design_system_section(self, context: Dict) -> str:
+        """Build design system section with actual project tokens"""
+        sections = ["PROJECT DESIGN SYSTEM:"]
+        
+        tokens = context.get("design_tokens", {})
+        
+        # Colors
+        if tokens.get("colors") or tokens.get("semantic_colors"):
+            sections.append("\n## Color Palette:")
+            if tokens.get("semantic_colors"):
+                for color_name, color_value in tokens["semantic_colors"].items():
+                    sections.append(f"- {color_name}: {color_value}")
+            elif tokens.get("colors"):
+                for color in tokens["colors"][:10]:  # Limit to top 10
+                    sections.append(f"- {color}")
+        
+        # Spacing
+        if tokens.get("spacing"):
+            sections.append("\n## Spacing System:")
+            spacing_values = tokens["spacing"][:8] if isinstance(tokens["spacing"], list) else list(tokens["spacing"].items())[:8]
+            sections.append(f"Values: {', '.join(str(s) for s in spacing_values)}")
+        
+        # Typography
+        if tokens.get("typography"):
+            sections.append("\n## Typography:")
+            for i, font in enumerate(tokens["typography"][:5]):
+                sections.append(f"- {font}")
+        
+        # Styling approach
+        styling = context.get("styling", "")
+        if styling:
+            sections.append(f"\n## Styling Approach: {styling}")
+            if styling == "tailwind":
+                sections.append("Use Tailwind CSS classes for all styling. Prefer utility classes over custom CSS.")
+            elif styling == "styled-components":
+                sections.append("Use styled-components for component styling. Create styled components for reusable elements.")
+            elif styling == "css":
+                sections.append("Use CSS modules or plain CSS files. Follow BEM naming convention for classes.")
+        
+        return "\n".join(sections)
+    
+    def _build_composition_examples(self, context: Dict) -> str:
+        """Build examples showing how to compose existing components"""
+        sections = ["COMPONENT COMPOSITION EXAMPLES:"]
+        
+        # Show common patterns
+        sections.append("""
+Example 1 - Composing a User Profile Card:
+```tsx
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { Avatar } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+
+export function UserProfileCard({ user }) {
+  return (
+    <Card>
+      <CardHeader>
+        <Avatar src={user.avatar} alt={user.name} />
+        <h3>{user.name}</h3>
+      </CardHeader>
+      <CardContent>
+        <p>{user.bio}</p>
+        <Button variant="outline">View Profile</Button>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+Example 2 - Building a Form with Existing Components:
+```tsx
+import { Form } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+
+export function ContactForm() {
+  return (
+    <Form onSubmit={handleSubmit}>
+      <div>
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" type="email" required />
+      </div>
+      <Button type="submit">Send Message</Button>
+    </Form>
+  )
+}
+```
+
+ALWAYS COMPOSE LIKE THIS - Import existing components and combine them!""")
+        
         return "\n".join(sections)
 
 
