@@ -2216,8 +2216,8 @@ class ProjectAnalyzer:
 
         return styling
 
-    def _scan_shadcn_ui_components(self, project_path: str) -> List[str]:
-        """Scan for available shadcn/ui components"""
+    def _scan_shadcn_ui_components(self, project_path: str) -> List[Dict]:
+        """Scan for available shadcn/ui components with detailed information"""
 
         components = []
         ui_paths = [
@@ -2235,13 +2235,29 @@ class ProjectAnalyzer:
                             .replace(".jsx", "")
                             .replace(".js", "")
                         )
-                        components.append(component_name)
+                        
+                        # Build import path for shadcn/ui components
+                        rel_path = os.path.relpath(ui_path, project_path)
+                        import_path = self._build_import_path(rel_path, component_name)
+                        
+                        # Extract component info
+                        file_path = os.path.join(ui_path, file)
+                        component_info = {
+                            "name": component_name,
+                            "file_path": file_path,
+                            "import_path": import_path,
+                            "purpose": self._get_shadcn_component_purpose(component_name),
+                            "type": self._infer_component_type(component_name),
+                            "is_shadcn": True
+                        }
+                        
+                        components.append(component_info)
                 break
 
         return components
 
-    def _scan_custom_components(self, project_path: str) -> List[str]:
-        """Scan for custom components"""
+    def _scan_custom_components(self, project_path: str) -> List[Dict]:
+        """Scan for custom components with detailed information"""
 
         components = []
         component_paths = [
@@ -2264,11 +2280,228 @@ class ProjectAnalyzer:
                                 .replace(".jsx", "")
                                 .replace(".js", "")
                             )
-                            if component_name not in components:
-                                components.append(component_name)
+                            
+                            # Build import path
+                            rel_path = os.path.relpath(root, project_path)
+                            import_path = self._build_import_path(rel_path, component_name)
+                            
+                            # Extract component info
+                            file_path = os.path.join(root, file)
+                            component_info = {
+                                "name": component_name,
+                                "file_path": file_path,
+                                "import_path": import_path,
+                                "purpose": self._analyze_component_purpose(file_path, component_name),
+                                "type": self._infer_component_type(component_name),
+                            }
+                            
+                            # Avoid duplicates
+                            if not any(c["name"] == component_name for c in components):
+                                components.append(component_info)
                 break
 
-        return components[:10]  # Limit to 10 components
+        return components  # No limit - return all components
+
+    def _build_import_path(self, rel_path: str, component_name: str) -> str:
+        """Build the import path for a component"""
+        # Convert file system path to import path
+        path_parts = rel_path.split(os.sep)
+        
+        # Common import path patterns
+        if path_parts[0] == "src" and len(path_parts) > 1:
+            # @/components/ComponentName or ~/components/ComponentName
+            import_base = "/".join(path_parts[1:])
+            return f"@/{import_base}/{component_name}"
+        elif path_parts[0] in ["components", "app"]:
+            # Direct from root: /components/ComponentName
+            import_base = "/".join(path_parts)
+            return f"@/{import_base}/{component_name}"
+        else:
+            # Relative import
+            import_base = "/".join(path_parts)
+            return f"./{import_base}/{component_name}"
+    
+    def _analyze_component_purpose(self, file_path: str, component_name: str) -> str:
+        """Analyze component purpose from file content and name"""
+        purpose = ""
+        
+        # First, infer from component name
+        name_lower = component_name.lower()
+        
+        # Common component patterns
+        if "button" in name_lower:
+            purpose = "Interactive button element"
+        elif "card" in name_lower:
+            purpose = "Content container with styling"
+        elif "modal" in name_lower or "dialog" in name_lower:
+            purpose = "Overlay dialog for focused content"
+        elif "header" in name_lower:
+            purpose = "Page or section header"
+        elif "footer" in name_lower:
+            purpose = "Page or section footer"
+        elif "nav" in name_lower or "navigation" in name_lower:
+            purpose = "Navigation menu or links"
+        elif "form" in name_lower:
+            purpose = "User input form"
+        elif "input" in name_lower or "field" in name_lower:
+            purpose = "Form input field"
+        elif "list" in name_lower:
+            purpose = "List container for items"
+        elif "table" in name_lower:
+            purpose = "Data table display"
+        elif "avatar" in name_lower:
+            purpose = "User profile image"
+        elif "badge" in name_lower:
+            purpose = "Status or count indicator"
+        elif "alert" in name_lower:
+            purpose = "Alert or notification message"
+        elif "spinner" in name_lower or "loader" in name_lower:
+            purpose = "Loading state indicator"
+        elif "tabs" in name_lower:
+            purpose = "Tabbed content navigation"
+        elif "dropdown" in name_lower or "select" in name_lower:
+            purpose = "Dropdown selection menu"
+        elif "sidebar" in name_lower:
+            purpose = "Side navigation or content panel"
+        elif "hero" in name_lower:
+            purpose = "Hero section for landing pages"
+        elif "profile" in name_lower:
+            purpose = "User profile display"
+        elif "search" in name_lower:
+            purpose = "Search input and functionality"
+        elif "menu" in name_lower:
+            purpose = "Menu navigation or options"
+        elif "tooltip" in name_lower:
+            purpose = "Hover tooltip information"
+        elif "toggle" in name_lower or "switch" in name_lower:
+            purpose = "Toggle switch control"
+        elif "accordion" in name_lower:
+            purpose = "Expandable content sections"
+        elif "breadcrumb" in name_lower:
+            purpose = "Navigation breadcrumb trail"
+        elif "pagination" in name_lower:
+            purpose = "Page navigation controls"
+        elif "progress" in name_lower:
+            purpose = "Progress indicator bar"
+        elif "slider" in name_lower:
+            purpose = "Value slider control"
+        elif "grid" in name_lower:
+            purpose = "Grid layout container"
+        elif "layout" in name_lower:
+            purpose = "Page layout wrapper"
+        elif "container" in name_lower:
+            purpose = "Content container wrapper"
+        
+        # Try to read file for JSDoc or comments
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read(500)  # Read first 500 chars
+                
+                # Look for JSDoc comments
+                jsdoc_match = re.search(r'/\*\*\s*\n\s*\*\s*(.+?)(?:\n|\*/)', content)
+                if jsdoc_match:
+                    doc_line = jsdoc_match.group(1).strip()
+                    if not doc_line.startswith('@'):  # Skip JSDoc tags
+                        purpose = doc_line
+                
+                # Look for leading comments
+                elif content.strip().startswith('//'):
+                    comment_match = re.match(r'//\s*(.+)', content.strip())
+                    if comment_match:
+                        purpose = comment_match.group(1).strip()
+                        
+        except Exception:
+            pass
+        
+        return purpose or f"Custom {component_name} component"
+    
+    def _infer_component_type(self, component_name: str) -> str:
+        """Infer the component type from its name"""
+        name_lower = component_name.lower()
+        
+        if any(keyword in name_lower for keyword in ["button", "btn", "action"]):
+            return "button"
+        elif any(keyword in name_lower for keyword in ["card", "panel", "tile"]):
+            return "container"
+        elif any(keyword in name_lower for keyword in ["modal", "dialog", "popup"]):
+            return "overlay"
+        elif any(keyword in name_lower for keyword in ["form", "input", "field", "select", "checkbox", "radio"]):
+            return "form"
+        elif any(keyword in name_lower for keyword in ["nav", "menu", "sidebar", "header", "footer"]):
+            return "navigation"
+        elif any(keyword in name_lower for keyword in ["list", "table", "grid"]):
+            return "data-display"
+        elif any(keyword in name_lower for keyword in ["hero", "banner", "section"]):
+            return "section"
+        elif any(keyword in name_lower for keyword in ["layout", "container", "wrapper"]):
+            return "layout"
+        elif any(keyword in name_lower for keyword in ["loading", "spinner", "skeleton"]):
+            return "feedback"
+        elif any(keyword in name_lower for keyword in ["avatar", "profile", "user"]):
+            return "user"
+        else:
+            return "component"
+    
+    def _get_shadcn_component_purpose(self, component_name: str) -> str:
+        """Get specific purpose for shadcn/ui components"""
+        name_lower = component_name.lower()
+        
+        # shadcn/ui specific component purposes
+        shadcn_purposes = {
+            "accordion": "Collapsible content sections with animations",
+            "alert": "Alert messages with variant styles",
+            "alert-dialog": "Modal dialog for important alerts",
+            "aspect-ratio": "Maintain aspect ratio for media content",
+            "avatar": "User profile image with fallback",
+            "badge": "Small count and labeling component",
+            "button": "Interactive button with variants and sizes",
+            "calendar": "Date picker calendar component",
+            "card": "Card container with header, content, and footer",
+            "carousel": "Image/content carousel slider",
+            "checkbox": "Checkbox input with label",
+            "collapsible": "Collapsible content area",
+            "command": "Command menu with search and keyboard navigation",
+            "context-menu": "Right-click context menu",
+            "dialog": "Modal dialog overlay",
+            "drawer": "Sliding panel from screen edge",
+            "dropdown-menu": "Dropdown menu with keyboard navigation",
+            "form": "Form control with validation",
+            "hover-card": "Card shown on hover",
+            "input": "Text input field with styling",
+            "label": "Form label element",
+            "menubar": "Application menubar",
+            "navigation-menu": "Navigation with dropdowns",
+            "pagination": "Page navigation controls",
+            "popover": "Floating content panel",
+            "progress": "Progress bar indicator",
+            "radio-group": "Radio button group",
+            "scroll-area": "Custom scrollable area",
+            "select": "Select dropdown with search",
+            "separator": "Visual separator line",
+            "sheet": "Side panel overlay",
+            "skeleton": "Loading placeholder",
+            "slider": "Range slider input",
+            "switch": "Toggle switch control",
+            "table": "Data table with features",
+            "tabs": "Tabbed interface component",
+            "textarea": "Multi-line text input",
+            "toast": "Toast notification popup",
+            "toggle": "Toggle button component",
+            "toggle-group": "Group of toggle buttons",
+            "tooltip": "Hover tooltip component",
+        }
+        
+        # Check for exact match first
+        if name_lower in shadcn_purposes:
+            return shadcn_purposes[name_lower]
+        
+        # Check for hyphenated version
+        hyphenated = name_lower.replace("-", "")
+        if hyphenated in shadcn_purposes:
+            return shadcn_purposes[hyphenated]
+        
+        # Fall back to general purpose analysis
+        return self._analyze_component_purpose("", component_name)
 
     def _find_components_directory(self, project_path: str) -> Optional[str]:
         """Find the main components directory"""
