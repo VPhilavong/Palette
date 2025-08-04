@@ -32,77 +32,43 @@ export class PaletteService {
     private async findPaletteCLI(): Promise<string> {
         // First try the configured path
         if (this.palettePath !== 'palette') {
-            if (fs.existsSync(this.palettePath)) {
-                this.outputChannel.appendLine(`✅ Using configured palette path: ${this.palettePath}`);
-                return this.palettePath;
-            } else {
-                this.outputChannel.appendLine(`⚠️  Configured palette path not found: ${this.palettePath}`);
-            }
+            return this.palettePath;
         }
 
         // Try to find palette in common locations
         const possiblePaths = [
-            // First check the local venv relative to VS Code extension
-            path.join(__dirname, '..', '..', '..', 'venv', 'bin', 'palette'),
-            // Then check user's home directory project
-            path.join(process.env.HOME || '', 'Projects', 'Palette', 'venv', 'bin', 'palette'),
-            // Then check system-wide installations
+            'palette',
             path.join(process.env.HOME || '', '.local', 'bin', 'palette'),
+            path.join(process.env.HOME || '', 'Projects', 'Palette', 'venv', 'bin', 'palette'),
             '/usr/local/bin/palette',
             '/usr/bin/palette'
         ];
 
-        this.outputChannel.appendLine('🔍 Searching for Palette CLI in the following locations:');
-        
         for (const palettePath of possiblePaths) {
-            this.outputChannel.appendLine(`  Checking: ${palettePath}`);
-            
-            if (fs.existsSync(palettePath)) {
-                try {
-                    // Test that it actually works by checking version
-                    await this.execCommand(`"${palettePath}" --version`);
-                    this.outputChannel.appendLine(`✅ Found working Palette CLI: ${palettePath}`);
-                    return palettePath;
-                } catch (error) {
-                    this.outputChannel.appendLine(`⚠️  Found file but execution failed: ${error}`);
-                }
+            try {
+                await this.execCommand(`which ${palettePath}`);
+                return palettePath;
+            } catch {
+                // Continue to next path
             }
         }
 
-        // Try using 'which' as final fallback for PATH-based installations
-        try {
-            const whichResult = await this.execCommand('which palette');
-            if (whichResult.trim()) {
-                this.outputChannel.appendLine(`✅ Found Palette CLI in PATH: ${whichResult.trim()}`);
-                return whichResult.trim();
-            }
-        } catch {
-            // Continue to error
-        }
-
-        this.outputChannel.appendLine('❌ Palette CLI not found in any location');
-        throw new Error('Palette CLI not found. Please install it or configure the path in VS Code settings (palette.cliPath).');
+        throw new Error('Palette CLI not found. Please install it or configure the path in settings.');
     }
 
     private execCommand(command: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            // Create environment with API keys from both env vars and VS Code settings
-            const processEnv = { ...process.env };
-            
-            // Get API keys from VS Code settings if not in environment
-            const openaiKey = process.env.OPENAI_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('openaiApiKey');
-            const anthropicKey = process.env.ANTHROPIC_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('anthropicApiKey');
-            
-            if (openaiKey) {
-                processEnv.OPENAI_API_KEY = openaiKey;
-            }
-            if (anthropicKey) {
-                processEnv.ANTHROPIC_API_KEY = anthropicKey;
+            // Prepend environment variables to the command for Unix-like systems
+            let fullCommand = command;
+            if (process.env.OPENAI_API_KEY) {
+                fullCommand = `OPENAI_API_KEY="${process.env.OPENAI_API_KEY}" ${command}`;
+            } else if (process.env.ANTHROPIC_API_KEY) {
+                fullCommand = `ANTHROPIC_API_KEY="${process.env.ANTHROPIC_API_KEY}" ${command}`;
             }
             
-            exec(command, { 
+            exec(fullCommand, { 
                 cwd: this.workspaceRoot,
-                env: processEnv
+                env: { ...process.env }  // Also pass in exec options for Windows compatibility
             }, (error, stdout, stderr) => {
                 if (error) {
                     reject(new Error(`Command failed: ${error.message}\n${stderr}`));
@@ -114,42 +80,22 @@ export class PaletteService {
     }
 
     async checkInstallation(): Promise<boolean> {
-        this.outputChannel.appendLine('🔍 Checking Palette installation...');
-        
         try {
-            // Check CLI availability
             const palettePath = await this.findPaletteCLI();
-            const version = await this.execCommand(`"${palettePath}" --version`);
+            const version = await this.execCommand(`${palettePath} --version`);
             this.outputChannel.appendLine(`✅ Palette CLI found: ${version}`);
             
-            // Check for API keys from both environment and VS Code settings
-            const hasOpenAI = !!(process.env.OPENAI_API_KEY || vscode.workspace.getConfiguration('palette').get('openaiApiKey'));
-            const hasAnthropic = !!(process.env.ANTHROPIC_API_KEY || vscode.workspace.getConfiguration('palette').get('anthropicApiKey'));
-            
-            if (!hasOpenAI && !hasAnthropic) {
-                this.outputChannel.appendLine('⚠️  Warning: No API keys found');
-                this.outputChannel.appendLine('  Please set either:');
-                this.outputChannel.appendLine('  - OPENAI_API_KEY or ANTHROPIC_API_KEY environment variables');
-                this.outputChannel.appendLine('  - Configure keys in VS Code settings (palette.openaiApiKey or palette.anthropicApiKey)');
-                return false;
+            // Check for API keys
+            if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+                this.outputChannel.appendLine('⚠️  Warning: No API keys found in environment');
+                this.outputChannel.appendLine('  Set OPENAI_API_KEY or ANTHROPIC_API_KEY in your .env file');
             } else {
-                const provider = hasOpenAI ? 'OpenAI' : 'Anthropic';
-                this.outputChannel.appendLine(`✅ ${provider} API key configured`);
+                this.outputChannel.appendLine('✅ API key found in environment');
             }
             
-            // Test a simple CLI command to ensure everything works
-            try {
-                await this.execCommand(`"${palettePath}" --help`);
-                this.outputChannel.appendLine('✅ CLI execution test passed');
-            } catch (testError) {
-                this.outputChannel.appendLine(`⚠️  CLI execution test failed: ${testError}`);
-                return false;
-            }
-            
-            this.outputChannel.appendLine('🎉 All checks passed! Palette is ready to use.');
             return true;
         } catch (error) {
-            this.outputChannel.appendLine(`❌ Installation check failed: ${error}`);
+            this.outputChannel.appendLine(`❌ Palette CLI not found: ${error}`);
             return false;
         }
     }
@@ -213,6 +159,16 @@ export class PaletteService {
 
         // Don't add --json flag as it doesn't exist in the CLI
         // command += ' --json';
+        
+        // Check if quality assurance is enabled in settings
+        const config = vscode.workspace.getConfiguration('palette');
+        const enableQA = config.get<boolean>('enableQualityAssurance', true);
+        
+        if (!enableQA) {
+            // Only add --basic-mode flag when QA is disabled
+            // QA is enabled by default in the CLI, so no flag needed when true
+            command += ' --basic-mode';
+        }
 
         this.outputChannel.appendLine(`Running: ${command}`);
         this.outputChannel.show();
@@ -268,24 +224,16 @@ export class PaletteService {
 
     streamGenerate(options: GenerateOptions, onData: (data: string) => void, onError: (error: string) => void): Promise<void> {
         return new Promise(async (resolve, reject) => {
-            console.log('streamGenerate called with options:', options);
-            console.log('workspaceRoot:', this.workspaceRoot);
-            
             if (!this.workspaceRoot) {
                 const error = 'No workspace folder open';
-                console.error('streamGenerate error:', error);
                 onError(error);
                 reject(new Error(error));
                 return;
             }
 
             // Check for API keys before starting
-            const hasOpenAI = !!(process.env.OPENAI_API_KEY || vscode.workspace.getConfiguration('palette').get('openaiApiKey'));
-            const hasAnthropic = !!(process.env.ANTHROPIC_API_KEY || vscode.workspace.getConfiguration('palette').get('anthropicApiKey'));
-            
-            if (!hasOpenAI && !hasAnthropic) {
-                const error = 'No API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in environment variables or VS Code settings';
-                this.outputChannel.appendLine(`❌ ${error}`);
+            if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+                const error = 'No API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in your .env file';
                 onError(error);
                 reject(new Error(error));
                 return;
@@ -311,25 +259,28 @@ export class PaletteService {
                     args.push('--output', options.outputPath);
                 }
 
-                // Create environment with API keys from both env vars and VS Code settings
+                // Debug: Log environment variables being passed
+                this.outputChannel.appendLine('Environment variables being passed to CLI:');
+                this.outputChannel.appendLine(`  OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? 'Set (hidden)' : 'Not set'}`);
+                this.outputChannel.appendLine(`  ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'Set (hidden)' : 'Not set'}`);
+                
+                // Get quality assurance setting
+                const config = vscode.workspace.getConfiguration('palette');
+                const enableQA = config.get<boolean>('enableQualityAssurance', true);
+                const showStages = config.get<boolean>('showValidationStages', true);
+                this.outputChannel.appendLine(`  Quality Assurance: ${enableQA ? 'Enabled' : 'Disabled'}`);
+                this.outputChannel.appendLine(`  Show Validation Stages: ${showStages ? 'Yes' : 'No'}`);
+
+                // Create environment with API keys explicitly set
                 const processEnv = { ...process.env };
                 
-                // Get API keys from VS Code settings if not in environment
-                const openaiKey = process.env.OPENAI_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('openaiApiKey');
-                const anthropicKey = process.env.ANTHROPIC_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('anthropicApiKey');
-                
-                if (openaiKey) {
-                    processEnv.OPENAI_API_KEY = openaiKey;
+                // Ensure API keys are in the environment
+                if (process.env.OPENAI_API_KEY) {
+                    processEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
                 }
-                if (anthropicKey) {
-                    processEnv.ANTHROPIC_API_KEY = anthropicKey;
+                if (process.env.ANTHROPIC_API_KEY) {
+                    processEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
                 }
-
-                // Debug: Log environment variables being passed (without exposing keys)
-                this.outputChannel.appendLine('Environment variables being passed to CLI:');
-                this.outputChannel.appendLine(`  OPENAI_API_KEY: ${processEnv.OPENAI_API_KEY ? 'Set (***' + processEnv.OPENAI_API_KEY.slice(-4) + ')' : 'Not set'}`);
-                this.outputChannel.appendLine(`  ANTHROPIC_API_KEY: ${processEnv.ANTHROPIC_API_KEY ? 'Set (***' + processEnv.ANTHROPIC_API_KEY.slice(-4) + ')' : 'Not set'}`);
-                this.outputChannel.appendLine(`  Working Directory: ${this.workspaceRoot}`);
 
                 // For shell execution, we need to build the full command as a string
                 // to properly handle quotes and spaces in the prompt
@@ -345,6 +296,12 @@ export class PaletteService {
                 
                 if (options.outputPath) {
                     fullCommand += ` --output "${options.outputPath}"`;
+                }
+                
+                // Add basic mode flag only when QA is disabled
+                if (!enableQA) {
+                    // QA is enabled by default, so only add flag to disable it
+                    fullCommand += ' --basic-mode';
                 }
                 
                 this.outputChannel.appendLine(`Executing command: ${fullCommand}`);
@@ -363,8 +320,21 @@ export class PaletteService {
                     const text = data.toString();
                     buffer += text;
                     
-                    // Send only the new text, not the entire buffer
-                    onData(text);
+                    // Debug: Log raw output
+                    this.outputChannel.appendLine('[STDOUT]: ' + text);
+                    
+                    // Always pass through important messages to show progress
+                    if (text.includes('🎨') || text.includes('✅') || text.includes('🚀') || 
+                        text.includes('Stage') || text.includes('Pipeline') || text.includes('Generating')) {
+                        onData(text);
+                    } else if (text.includes('│') && text.includes('✓ Created')) {
+                        // This is the file creation table, send it
+                        onData(text);
+                    } else if (text.includes('Error:') || text.includes('Failed')) {
+                        // Always show errors
+                        onData(text);
+                    }
+                    
                     this.outputChannel.append(text);
                 });
 
@@ -380,8 +350,73 @@ export class PaletteService {
                     this.outputChannel.append(`[STDERR] ${text}`);
                 });
 
-                proc.on('close', (code) => {
+                proc.on('close', async (code) => {
                     if (code === 0) {
+                        // First, send a success message
+                        onData('\n✨ CLI execution completed successfully!');
+                        // Parse the output to find all generated files
+                        // The CLI outputs a table like: "│ path/to/file.tsx │ ✓ Created │"
+                        const tableRowRegex = /│\s*([^\u2502]+\.(tsx?|jsx?))\s*│\s*✓\s*Created\s*│/gi;
+                        const fileMatches = buffer.matchAll(tableRowRegex);
+                        const generatedFiles = [];
+                        
+                        for (const match of fileMatches) {
+                            const filePath = match[1].trim();
+                            generatedFiles.push(filePath);
+                            this.outputChannel.appendLine(`Found generated file: ${filePath}`);
+                        }
+                        
+                        // Read and display the main component file (usually the first one)
+                        if (generatedFiles.length > 0) {
+                            const mainFile = generatedFiles[0];
+                            let fullPath: string;
+                            
+                            // Check if it's an absolute path or relative
+                            if (path.isAbsolute(mainFile)) {
+                                fullPath = mainFile;
+                            } else {
+                                fullPath = path.join(this.workspaceRoot!, mainFile);
+                            }
+                            
+                            try {
+                                // Read the generated file
+                                const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+                                
+                                // Send the actual component code
+                                onData('\n\n📄 Generated Component:\n\n```typescript\n' + fileContent + '\n```\n');
+                                
+                                // Also show where it was saved
+                                onData(`\n✅ Saved to: ${mainFile}`);
+                                
+                                // If there are additional files, list them
+                                if (generatedFiles.length > 1) {
+                                    onData('\n📁 Additional files created:');
+                                    for (let i = 1; i < generatedFiles.length; i++) {
+                                        onData(`   • ${generatedFiles[i]}`);
+                                    }
+                                }
+                            } catch (readError) {
+                                this.outputChannel.appendLine(`Failed to read generated file: ${readError}`);
+                                // Fallback: show what we captured from the CLI
+                                onData('\n⚠️ Could not read generated file. Check the output directory.');
+                            }
+                        } else {
+                            // No files found in output, but generation succeeded
+                            // This might happen if the CLI output format changed
+                            this.outputChannel.appendLine('Warning: Could not parse generated file paths from CLI output');
+                            this.outputChannel.appendLine('Looking for pattern: "│ file.tsx │ ✓ Created │"');
+                            this.outputChannel.appendLine('Buffer sample: ' + buffer.substring(buffer.length - 500));
+                            
+                            // Try a simpler pattern as fallback
+                            const simpleMatches = buffer.match(/([\w\-\/]+\.(tsx?|jsx?)).*✓\s*Created/gi);
+                            if (simpleMatches) {
+                                this.outputChannel.appendLine('Found files with simple pattern: ' + simpleMatches.join(', '));
+                            }
+                            
+                            // Show a message to the user
+                            onData('\n✅ Component generated successfully! Check your project files.');
+                        }
+                        
                         resolve();
                     } else {
                         const errorMsg = errorBuffer || `Process exited with code ${code}`;

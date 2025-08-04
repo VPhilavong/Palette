@@ -1,0 +1,53 @@
+/* Palette Extension Styles */
+/* This file provides additional styling for the Palette webview */
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-family: var(--vscode-font-family, "Segoe UI", sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+/* Additional VS Code theme integration */
+.message {
+  border-color: var(--vscode-panel-border, #333);
+}
+
+.message.error {
+  background-color: var(--vscode-inputValidation-errorBackground, #5a1e1e);
+  border-color: var(--vscode-inputValidation-errorBorder, #f14c4c);
+  color: var(--vscode-inputValidation-errorForeground, #f48771);
+}
+
+.message.stream {
+  background-color: var(--vscode-textCodeBlock-background, #1e2e3e);
+  border-color: var(--vscode-focusBorder, #0e639c);
+  color: var(--vscode-textLink-foreground, #4fc3f7);
+}
+
+#input {
+  background-color: var(--vscode-input-background, #252526);
+  color: var(--vscode-input-foreground, white);
+  border: 1px solid var(--vscode-input-border, transparent);
+}
+
+#input:focus {
+  border-color: var(--vscode-focusBorder, #0e639c);
+  outline: none;
+}
+
+#sendBtn, #uploadBtn {
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, white);
+  border: none;
+}
+
+#sendBtn:hover, #uploadBtn:hover {
+  background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.input-box {
+  border-top-color: var(--vscode-panel-border, #333);
+}

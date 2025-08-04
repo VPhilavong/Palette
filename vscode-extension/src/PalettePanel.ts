@@ -31,6 +31,8 @@ export class PalettePanel {
               break;
             case 'userMessage':
               // Handle user message - generate component
+              console.log('Received userMessage:', message.text);
+              this.sendToWebview('💬 Message received, starting generation...');
               this.handleGenerate(message.text);
               break;
             case 'imageUpload':
@@ -90,26 +92,40 @@ export class PalettePanel {
       
       // Send initial message
       this.sendToWebview(`🚀 Generating component for: "${prompt}"`);
+      this.sendToWebview(`📡 Starting Palette CLI...`);
       
       let hasReceivedData = false;
+      let messageCount = 0;
       
-      // Stream the generation
-      await this._paletteService.streamGenerate(
-        { prompt: prompt.trim() },
-        (data) => {
-          hasReceivedData = true;
-          // Send streaming data to webview
-          this._panel.webview.postMessage({ type: 'stream', data });
-        },
-        (error) => {
-          // Send error to webview
-          this._panel.webview.postMessage({ type: 'error', error });
-        }
-      );
+      // Add timeout to prevent hanging
+      const timeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Generation timed out after 3 minutes')), 180000);
+      });
       
-      // Send completion message only if we received data
+      // Stream the generation with timeout
+      await Promise.race([
+        this._paletteService.streamGenerate(
+          { prompt: prompt.trim() },
+          (data) => {
+            hasReceivedData = true;
+            messageCount++;
+            // Send streaming data to webview
+            this._panel.webview.postMessage({ type: 'stream', data });
+          },
+          (error) => {
+            // Send error to webview
+            this._panel.webview.postMessage({ type: 'error', error });
+          }
+        ),
+        timeout
+      ]);
+      
+      // Send completion message
       if (hasReceivedData) {
-        this.sendToWebview('✅ Component generated successfully!');
+        this.sendToWebview(`✅ Generation complete! (${messageCount} messages received)`);
+      } else {
+        this.sendToWebview('⚠️ Generation completed but no output was captured.');
+        this.sendToWebview('🔍 Check the Output panel (View > Output > Code Palette) for details.');
       }
       
     } catch (error: any) {
@@ -148,18 +164,25 @@ export class PalettePanel {
     }
   }
 
-  private sendWelcomeMessage() {
-    setTimeout(() => {
+  private async sendWelcomeMessage() {
+    setTimeout(async () => {
       this.sendToWebview('👋 Welcome to Palette!');
       this.sendToWebview('I can help you generate React components with AI.');
       this.sendToWebview('Try: "create a modern hero section with gradient background"');
       
-      // Show API status
-      if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
-        const provider = process.env.OPENAI_API_KEY ? 'OpenAI' : 'Anthropic';
-        this.sendToWebview(`✅ Connected to ${provider} API`);
-      } else {
-        this.sendToWebview('⚠️  No API key found. Please check the Output panel for details.');
+      // Run installation check and show status
+      this.sendToWebview('🔍 Checking installation...');
+      
+      try {
+        const isInstalled = await this._paletteService.checkInstallation();
+        if (isInstalled) {
+          this.sendToWebview('✅ Palette is ready! You can start generating components.');
+        } else {
+          this.sendToWebview('❌ Setup incomplete. Please check the Output panel for details.');
+          this.sendToWebview('💡 View → Output → Code Palette for troubleshooting info.');
+        }
+      } catch (error) {
+        this.sendToWebview('❌ Installation check failed. Please check the Output panel.');
       }
     }, 500);
   }

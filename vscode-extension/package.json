@@ -98,6 +98,18 @@
           "default": "",
           "description": "Anthropic API key (alternative to .env file)",
           "markdownDescription": "Your Anthropic API key. Can also be set in `.env` file as `ANTHROPIC_API_KEY`"
+        },
+        "palette.enableQualityAssurance": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable quality assurance and validation stages",
+          "markdownDescription": "Enable comprehensive quality checks and auto-fixing (Zero-Fix Pipeline) for generated components"
+        },
+        "palette.showValidationStages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show validation progress in the chat",
+          "markdownDescription": "Display validation stages (🎨 Generating, ✅ Validating, 🚀 Zero-Fix Pipeline) in the chat interface"
         }
       }
     }
