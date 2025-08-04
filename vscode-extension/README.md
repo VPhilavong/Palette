@@ -69,6 +69,24 @@ Configure the extension in VS Code Settings:
 
 - **Palette: CLI Path** - Path to palette command (default: "palette")
 - **Palette: Default Model** - AI model to use (default: "gpt-4o-2024-08-06")
+- **Palette: OpenAI API Key** - Your OpenAI API key (alternative to .env file)
+- **Palette: Anthropic API Key** - Your Anthropic API key (alternative to .env file)
+
+### API Key Configuration
+
+You have two options for configuring API keys:
+
+1. **VS Code Settings** (Recommended for single projects):
+   - Open VS Code Settings (`Ctrl+,`)
+   - Search for "palette"
+   - Enter your API key in the appropriate field
+
+2. **.env File** (Recommended for multiple projects):
+   - Create a `.env` file in your project root
+   - Add: `OPENAI_API_KEY=your-key-here`
+   - The extension will automatically load it
+
+**Note**: VS Code settings take priority over .env files.
 
 ## Requirements
 

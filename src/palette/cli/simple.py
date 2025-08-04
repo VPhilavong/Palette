@@ -9,6 +9,10 @@ import sys
 from typing import Optional
 
 import click
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(verbose=False)
 
 from ..analysis.context import ProjectAnalyzer
 from ..generation.generator import UIGenerator

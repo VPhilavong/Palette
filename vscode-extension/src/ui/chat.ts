@@ -46,6 +46,19 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
           white-space: pre-wrap;
           font-family: monospace;
         }
+        
+        .message.error {
+          background: #5a1e1e;
+          border: 1px solid #f14c4c;
+          color: #f48771;
+        }
+        
+        .message.stream {
+          background: #1e2e3e;
+          border: 1px solid #0e639c;
+          color: #4fc3f7;
+          font-size: 12px;
+        }
 
         .input-box {
           display: flex;
@@ -133,34 +146,71 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
 
       <script>
         const vscode = acquireVsCodeApi();
+        let currentStreamMessage = null;
 
-        function appendMessage(author, text) {
+        function appendMessage(author, text, className = '') {
           const chat = document.getElementById('chat');
           const message = document.createElement('div');
-          message.className = 'message';
+          message.className = 'message' + (className ? ' ' + className : '');
           message.innerText = author + ': ' + text;
           chat.appendChild(message);
           chat.scrollTop = chat.scrollHeight;
+          return message;
+        }
+
+        function updateStreamMessage(text) {
+          if (!currentStreamMessage) {
+            currentStreamMessage = appendMessage('🤖 Palette', text, 'stream');
+          } else {
+            currentStreamMessage.innerText = '🤖 Palette: ' + text;
+          }
         }
 
         window.addEventListener('message', event => {
-          const { type, suggestions } = event.data;
-          if (type === 'output') {
-            if (Array.isArray(suggestions)) {
-              suggestions.forEach(s => appendMessage('🤖 Palette', s));
-            } else {
-              appendMessage('🤖 Palette', suggestions);
-            }
+          const message = event.data;
+          
+          switch (message.type) {
+            case 'output':
+              // Reset stream message when new output arrives
+              currentStreamMessage = null;
+              if (Array.isArray(message.suggestions)) {
+                message.suggestions.forEach(s => appendMessage('🤖 Palette', s));
+              } else if (message.suggestions) {
+                appendMessage('🤖 Palette', message.suggestions);
+              }
+              break;
+              
+            case 'stream':
+              if (message.data) {
+                updateStreamMessage(message.data);
+              }
+              break;
+              
+            case 'error':
+              currentStreamMessage = null;
+              appendMessage('❌ Error', message.error || 'An error occurred', 'error');
+              break;
+              
+            default:
+              console.log('Unknown message type:', message.type);
           }
         });
 
-        document.getElementById('sendBtn').addEventListener('click', () => {
+        function sendMessage() {
           const input = document.getElementById('input');
           const value = input.value.trim();
           if (value) {
             appendMessage('🧑‍💻 You', value);
             vscode.postMessage({ command: 'userMessage', text: value });
             input.value = '';
+          }
+        }
+
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        
+        document.getElementById('input').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            sendMessage();
           }
         });
 

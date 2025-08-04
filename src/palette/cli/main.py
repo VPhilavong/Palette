@@ -14,6 +14,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.prompt import Prompt, Confirm
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# Look for .env in current directory and parent directories
+load_dotenv(verbose=False)
 
 from ..generation.generator import UIGenerator
 from ..generation.prompts import (
