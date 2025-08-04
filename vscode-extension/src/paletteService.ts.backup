@@ -1,0 +1,457 @@
+import * as vscode from 'vscode';
+import { exec, spawn } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+
+export interface GenerateOptions {
+    prompt: string;
+    outputPath?: string;
+    framework?: string;
+    model?: string;
+}
+
+export interface AnalyzeResult {
+    framework?: string;
+    styling?: string;
+    hasTypeScript?: boolean;
+    hasTailwind?: boolean;
+    componentsPath?: string;
+}
+
+export class PaletteService {
+    private workspaceRoot: string | undefined;
+    private palettePath: string;
+    private outputChannel: vscode.OutputChannel;
+
+    constructor() {
+        this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        this.palettePath = vscode.workspace.getConfiguration('palette').get('cliPath', 'palette');
+        this.outputChannel = vscode.window.createOutputChannel('Code Palette');
+    }
+
+    private async findPaletteCLI(): Promise<string> {
+        // First try the configured path
+        if (this.palettePath !== 'palette') {
+            return this.palettePath;
+        }
+
+        // Try to find palette in common locations
+        const possiblePaths = [
+            'palette',
+            path.join(process.env.HOME || '', '.local', 'bin', 'palette'),
+            path.join(process.env.HOME || '', 'Projects', 'Palette', 'venv', 'bin', 'palette'),
+            '/usr/local/bin/palette',
+            '/usr/bin/palette'
+        ];
+
+        for (const palettePath of possiblePaths) {
+            try {
+                await this.execCommand(`which ${palettePath}`);
+                return palettePath;
+            } catch {
+                // Continue to next path
+            }
+        }
+
+        throw new Error('Palette CLI not found. Please install it or configure the path in settings.');
+    }
+
+    private execCommand(command: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            // Prepend environment variables to the command for Unix-like systems
+            let fullCommand = command;
+            if (process.env.OPENAI_API_KEY) {
+                fullCommand = `OPENAI_API_KEY="${process.env.OPENAI_API_KEY}" ${command}`;
+            } else if (process.env.ANTHROPIC_API_KEY) {
+                fullCommand = `ANTHROPIC_API_KEY="${process.env.ANTHROPIC_API_KEY}" ${command}`;
+            }
+            
+            exec(fullCommand, { 
+                cwd: this.workspaceRoot,
+                env: { ...process.env }  // Also pass in exec options for Windows compatibility
+            }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Command failed: ${error.message}\n${stderr}`));
+                } else {
+                    resolve(stdout.trim());
+                }
+            });
+        });
+    }
+
+    async checkInstallation(): Promise<boolean> {
+        try {
+            const palettePath = await this.findPaletteCLI();
+            const version = await this.execCommand(`${palettePath} --version`);
+            this.outputChannel.appendLine(`✅ Palette CLI found: ${version}`);
+            
+            // Check for API keys
+            if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+                this.outputChannel.appendLine('⚠️  Warning: No API keys found in environment');
+                this.outputChannel.appendLine('  Set OPENAI_API_KEY or ANTHROPIC_API_KEY in your .env file');
+            } else {
+                this.outputChannel.appendLine('✅ API key found in environment');
+            }
+            
+            return true;
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ Palette CLI not found: ${error}`);
+            return false;
+        }
+    }
+
+    async analyzeProject(): Promise<AnalyzeResult> {
+        if (!this.workspaceRoot) {
+            throw new Error('No workspace folder open');
+        }
+
+        try {
+            const palettePath = await this.findPaletteCLI();
+            const output = await this.execCommand(`cd "${this.workspaceRoot}" && ${palettePath} analyze --json`);
+            
+            // Try to parse JSON output
+            try {
+                return JSON.parse(output);
+            } catch {
+                // Fallback to parsing text output
+                const result: AnalyzeResult = {};
+                
+                if (output.includes('Next.js')) result.framework = 'next.js';
+                else if (output.includes('React')) result.framework = 'react';
+                else if (output.includes('Vue')) result.framework = 'vue';
+                
+                if (output.includes('Tailwind')) result.hasTailwind = true;
+                if (output.includes('TypeScript')) result.hasTypeScript = true;
+                if (output.includes('CSS Modules')) result.styling = 'css-modules';
+                else if (output.includes('styled-components')) result.styling = 'styled-components';
+                else if (output.includes('Tailwind')) result.styling = 'tailwind';
+                
+                return result;
+            }
+        } catch (error) {
+            this.outputChannel.appendLine(`Analysis failed: ${error}`);
+            throw error;
+        }
+    }
+
+    async generateComponent(options: GenerateOptions): Promise<string> {
+        if (!this.workspaceRoot) {
+            throw new Error('No workspace folder open');
+        }
+
+        const palettePath = await this.findPaletteCLI();
+        
+        // Build command with properly escaped prompt
+        const escapedPrompt = options.prompt.replace(/"/g, '\\"');
+        let command = `cd "${this.workspaceRoot}" && "${palettePath}" generate "${escapedPrompt}"`;
+        
+        if (options.framework) {
+            command += ` --framework ${options.framework}`;
+        }
+        
+        if (options.model) {
+            command += ` --model ${options.model}`;
+        }
+        
+        if (options.outputPath) {
+            command += ` --output "${options.outputPath}"`;
+        }
+
+        // Don't add --json flag as it doesn't exist in the CLI
+        // command += ' --json';
+        
+        // Check if quality assurance is enabled in settings
+        const config = vscode.workspace.getConfiguration('palette');
+        const enableQA = config.get<boolean>('enableQualityAssurance', true);
+        
+        if (!enableQA) {
+            // Only add --basic-mode flag when QA is disabled
+            // QA is enabled by default in the CLI, so no flag needed when true
+            command += ' --basic-mode';
+        }
+
+        this.outputChannel.appendLine(`Running: ${command}`);
+        this.outputChannel.show();
+
+        try {
+            const output = await this.execCommand(command);
+            
+            // Try to parse JSON response
+            try {
+                const result = JSON.parse(output);
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                return result.component || result.output || output;
+            } catch {
+                // Return raw output if not JSON
+                return output;
+            }
+        } catch (error) {
+            this.outputChannel.appendLine(`Generation failed: ${error}`);
+            throw error;
+        }
+    }
+
+    async generateWithProgress(options: GenerateOptions): Promise<string> {
+        return vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Generating component...",
+            cancellable: false
+        }, async (progress) => {
+            progress.report({ increment: 0, message: "Analyzing project..." });
+            
+            // First analyze the project if framework not specified
+            if (!options.framework) {
+                try {
+                    const analysis = await this.analyzeProject();
+                    options.framework = analysis.framework;
+                    progress.report({ increment: 30, message: "Detected " + (analysis.framework || 'React') });
+                } catch {
+                    // Continue without framework detection
+                }
+            }
+            
+            progress.report({ increment: 50, message: "Generating with AI..." });
+            
+            const result = await this.generateComponent(options);
+            
+            progress.report({ increment: 100, message: "Complete!" });
+            
+            return result;
+        });
+    }
+
+    streamGenerate(options: GenerateOptions, onData: (data: string) => void, onError: (error: string) => void): Promise<void> {
+        return new Promise(async (resolve, reject) => {
+            if (!this.workspaceRoot) {
+                const error = 'No workspace folder open';
+                onError(error);
+                reject(new Error(error));
+                return;
+            }
+
+            // Check for API keys before starting
+            if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+                const error = 'No API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in your .env file';
+                onError(error);
+                reject(new Error(error));
+                return;
+            }
+
+            try {
+                const palettePath = await this.findPaletteCLI();
+                this.outputChannel.appendLine(`Using Palette CLI: ${palettePath}`);
+                
+                // Build command arguments
+                // The prompt needs to be properly quoted for the CLI
+                const args = ['generate', options.prompt];
+                
+                if (options.framework) {
+                    args.push('--framework', options.framework);
+                }
+                
+                if (options.model) {
+                    args.push('--model', options.model);
+                }
+                
+                if (options.outputPath) {
+                    args.push('--output', options.outputPath);
+                }
+
+                // Debug: Log environment variables being passed
+                this.outputChannel.appendLine('Environment variables being passed to CLI:');
+                this.outputChannel.appendLine(`  OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? 'Set (hidden)' : 'Not set'}`);
+                this.outputChannel.appendLine(`  ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'Set (hidden)' : 'Not set'}`);
+                
+                // Get quality assurance setting
+                const config = vscode.workspace.getConfiguration('palette');
+                const enableQA = config.get<boolean>('enableQualityAssurance', true);
+                const showStages = config.get<boolean>('showValidationStages', true);
+                this.outputChannel.appendLine(`  Quality Assurance: ${enableQA ? 'Enabled' : 'Disabled'}`);
+                this.outputChannel.appendLine(`  Show Validation Stages: ${showStages ? 'Yes' : 'No'}`);
+
+                // Create environment with API keys explicitly set
+                const processEnv = { ...process.env };
+                
+                // Ensure API keys are in the environment
+                if (process.env.OPENAI_API_KEY) {
+                    processEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+                }
+                if (process.env.ANTHROPIC_API_KEY) {
+                    processEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+                }
+
+                // For shell execution, we need to build the full command as a string
+                // to properly handle quotes and spaces in the prompt
+                let fullCommand = `"${palettePath}" generate "${options.prompt.replace(/"/g, '\\"')}"`;
+                
+                if (options.framework) {
+                    fullCommand += ` --framework ${options.framework}`;
+                }
+                
+                if (options.model) {
+                    fullCommand += ` --model ${options.model}`;
+                }
+                
+                if (options.outputPath) {
+                    fullCommand += ` --output "${options.outputPath}"`;
+                }
+                
+                // Add basic mode flag only when QA is disabled
+                if (!enableQA) {
+                    // QA is enabled by default, so only add flag to disable it
+                    fullCommand += ' --basic-mode';
+                }
+                
+                this.outputChannel.appendLine(`Executing command: ${fullCommand}`);
+
+                // Spawn the process with shell to handle the command properly
+                const proc = spawn(fullCommand, [], {
+                    cwd: this.workspaceRoot,
+                    env: processEnv,
+                    shell: true  // Use shell to handle quotes properly
+                });
+
+                let buffer = '';
+                let errorBuffer = '';
+
+                proc.stdout.on('data', (data) => {
+                    const text = data.toString();
+                    buffer += text;
+                    
+                    // Debug: Log raw output
+                    this.outputChannel.appendLine('[STDOUT]: ' + text);
+                    
+                    // Always pass through important messages to show progress
+                    if (text.includes('🎨') || text.includes('✅') || text.includes('🚀') || 
+                        text.includes('Stage') || text.includes('Pipeline') || text.includes('Generating')) {
+                        onData(text);
+                    } else if (text.includes('│') && text.includes('✓ Created')) {
+                        // This is the file creation table, send it
+                        onData(text);
+                    } else if (text.includes('Error:') || text.includes('Failed')) {
+                        // Always show errors
+                        onData(text);
+                    }
+                    
+                    this.outputChannel.append(text);
+                });
+
+                proc.stderr.on('data', (data) => {
+                    const text = data.toString();
+                    errorBuffer += text;
+                    
+                    // Only send to UI if it's a real error, not just info
+                    if (text.toLowerCase().includes('error') || text.toLowerCase().includes('failed')) {
+                        onError(text);
+                    }
+                    
+                    this.outputChannel.append(`[STDERR] ${text}`);
+                });
+
+                proc.on('close', async (code) => {
+                    if (code === 0) {
+                        // First, send a success message
+                        onData('\n✨ CLI execution completed successfully!');
+                        // Parse the output to find all generated files
+                        // The CLI outputs a table like: "│ path/to/file.tsx │ ✓ Created │"
+                        const tableRowRegex = /│\s*([^\u2502]+\.(tsx?|jsx?))\s*│\s*✓\s*Created\s*│/gi;
+                        const fileMatches = buffer.matchAll(tableRowRegex);
+                        const generatedFiles = [];
+                        
+                        for (const match of fileMatches) {
+                            const filePath = match[1].trim();
+                            generatedFiles.push(filePath);
+                            this.outputChannel.appendLine(`Found generated file: ${filePath}`);
+                        }
+                        
+                        // Read and display the main component file (usually the first one)
+                        if (generatedFiles.length > 0) {
+                            const mainFile = generatedFiles[0];
+                            let fullPath: string;
+                            
+                            // Check if it's an absolute path or relative
+                            if (path.isAbsolute(mainFile)) {
+                                fullPath = mainFile;
+                            } else {
+                                fullPath = path.join(this.workspaceRoot!, mainFile);
+                            }
+                            
+                            try {
+                                // Read the generated file
+                                const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+                                
+                                // Send the actual component code
+                                onData('\n\n📄 Generated Component:\n\n```typescript\n' + fileContent + '\n```\n');
+                                
+                                // Also show where it was saved
+                                onData(`\n✅ Saved to: ${mainFile}`);
+                                
+                                // If there are additional files, list them
+                                if (generatedFiles.length > 1) {
+                                    onData('\n📁 Additional files created:');
+                                    for (let i = 1; i < generatedFiles.length; i++) {
+                                        onData(`   • ${generatedFiles[i]}`);
+                                    }
+                                }
+                            } catch (readError) {
+                                this.outputChannel.appendLine(`Failed to read generated file: ${readError}`);
+                                // Fallback: show what we captured from the CLI
+                                onData('\n⚠️ Could not read generated file. Check the output directory.');
+                            }
+                        } else {
+                            // No files found in output, but generation succeeded
+                            // This might happen if the CLI output format changed
+                            this.outputChannel.appendLine('Warning: Could not parse generated file paths from CLI output');
+                            this.outputChannel.appendLine('Looking for pattern: "│ file.tsx │ ✓ Created │"');
+                            this.outputChannel.appendLine('Buffer sample: ' + buffer.substring(buffer.length - 500));
+                            
+                            // Try a simpler pattern as fallback
+                            const simpleMatches = buffer.match(/([\w\-\/]+\.(tsx?|jsx?)).*✓\s*Created/gi);
+                            if (simpleMatches) {
+                                this.outputChannel.appendLine('Found files with simple pattern: ' + simpleMatches.join(', '));
+                            }
+                            
+                            // Show a message to the user
+                            onData('\n✅ Component generated successfully! Check your project files.');
+                        }
+                        
+                        resolve();
+                    } else {
+                        const errorMsg = errorBuffer || `Process exited with code ${code}`;
+                        onError(`Generation failed: ${errorMsg}`);
+                        reject(new Error(errorMsg));
+                    }
+                });
+
+                proc.on('error', (err) => {
+                    onError(`Failed to start process: ${err.message}`);
+                    reject(err);
+                });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    async testEnvironment(): Promise<void> {
+        this.outputChannel.appendLine('=== Testing Environment Variables ===');
+        this.outputChannel.appendLine(`Node process.env.OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? 'Set' : 'Not set'}`);
+        this.outputChannel.appendLine(`Node process.env.ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'Set' : 'Not set'}`);
+        
+        try {
+            // Test with Python script
+            const testScript = path.join(__dirname, '..', '..', '..', 'test_env.py');
+            const output = await this.execCommand(`python3 ${testScript}`);
+            this.outputChannel.appendLine('Python subprocess output:');
+            this.outputChannel.appendLine(output);
+        } catch (error) {
+            this.outputChannel.appendLine(`Test failed: ${error}`);
+        }
+    }
+
+    getOutputChannel(): vscode.OutputChannel {
+        return this.outputChannel;
+    }
+}

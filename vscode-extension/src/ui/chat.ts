@@ -5,8 +5,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
     vscode.Uri.joinPath(extensionUri, 'media', 'style.css')
   );
 
-  return `
-    <!DOCTYPE html>
+  return `<!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8" />
@@ -45,6 +44,40 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
           margin-bottom: 1rem;
           white-space: pre-wrap;
           font-family: monospace;
+          overflow-x: auto;
+        }
+        
+        .message pre {
+          margin: 0;
+          overflow-x: auto;
+        }
+        
+        .message code {
+          background: #1e1e1e;
+          padding: 0.125rem 0.25rem;
+          border-radius: 3px;
+        }
+        
+        .message pre code {
+          display: block;
+          padding: 1rem;
+          background: #1e1e1e;
+          border: 1px solid #333;
+          border-radius: 6px;
+          overflow-x: auto;
+        }
+        
+        .message.error {
+          background: #5a1e1e;
+          border: 1px solid #f14c4c;
+          color: #f48771;
+        }
+        
+        .message.stream {
+          background: #1e2e3e;
+          border: 1px solid #0e639c;
+          color: #4fc3f7;
+          font-size: 12px;
         }
 
         .input-box {
@@ -133,34 +166,102 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
 
       <script>
         const vscode = acquireVsCodeApi();
+        let currentStreamMessage = null;
 
-        function appendMessage(author, text) {
+        function appendMessage(author, text, className = '') {
           const chat = document.getElementById('chat');
           const message = document.createElement('div');
-          message.className = 'message';
-          message.innerText = author + ': ' + text;
+          message.className = 'message' + (className ? ' ' + className : '');
+          
+          // Simple text content for now (code block parsing can be added later)
+          message.textContent = author + ': ' + text;
+          
           chat.appendChild(message);
           chat.scrollTop = chat.scrollHeight;
+          return message;
+        }
+        
+        function escapeHtml(text) {
+          const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+          };
+          return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function updateStreamMessage(text) {
+          // Check if this is a validation stage message
+          if (text.includes('🎨') || text.includes('✅') || text.includes('🚀') || 
+              text.includes('validation') || text.includes('quality')) {
+            // Create a new message for each validation stage
+            appendMessage('🤖 Palette', text, 'stream');
+            currentStreamMessage = null;
+          } else if (text.includes('code')) {
+            // This is a code block, create a new message
+            appendMessage('🤖 Palette', text);
+            currentStreamMessage = null;
+          } else if (!currentStreamMessage) {
+            currentStreamMessage = appendMessage('🤖 Palette', text, 'stream');
+          } else {
+            // For regular streaming updates
+            currentStreamMessage.textContent = '🤖 Palette: ' + text;
+          }
         }
 
         window.addEventListener('message', event => {
-          const { type, suggestions } = event.data;
-          if (type === 'output') {
-            if (Array.isArray(suggestions)) {
-              suggestions.forEach(s => appendMessage('🤖 Palette', s));
-            } else {
-              appendMessage('🤖 Palette', suggestions);
-            }
+          const message = event.data;
+          
+          switch (message.type) {
+            case 'output':
+              // Reset stream message when new output arrives
+              currentStreamMessage = null;
+              if (Array.isArray(message.suggestions)) {
+                message.suggestions.forEach(s => appendMessage('🤖 Palette', s));
+              } else if (message.suggestions) {
+                appendMessage('🤖 Palette', message.suggestions);
+              }
+              break;
+              
+            case 'stream':
+              if (message.data) {
+                updateStreamMessage(message.data);
+              }
+              break;
+              
+            case 'error':
+              currentStreamMessage = null;
+              appendMessage('❌ Error', message.error || 'An error occurred', 'error');
+              break;
+              
+            default:
+              console.log('Unknown message type:', message.type);
           }
         });
 
-        document.getElementById('sendBtn').addEventListener('click', () => {
+        function sendMessage() {
           const input = document.getElementById('input');
           const value = input.value.trim();
+          console.log('sendMessage called with value:', value);
           if (value) {
             appendMessage('🧑‍💻 You', value);
+            console.log('Sending message to VS Code:', { command: 'userMessage', text: value });
             vscode.postMessage({ command: 'userMessage', text: value });
             input.value = '';
+          } else {
+            console.log('Empty value, not sending message');
+          }
+        }
+
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        
+        document.getElementById('input').addEventListener('keypress', (e) => {
+          console.log('Key pressed:', e.key);
+          if (e.key === 'Enter') {
+            console.log('Enter key detected, calling sendMessage');
+            sendMessage();
           }
         });
 
