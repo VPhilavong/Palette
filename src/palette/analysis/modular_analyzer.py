@@ -8,12 +8,16 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from ..interfaces import (
-    IAnalyzer, AnalysisResult, ComponentInfo,
+    IAnalyzer, ICache, AnalysisResult, ComponentInfo,
     DesignTokens, ProjectStructure
 )
 from .framework_detector import FrameworkDetector
 from .design_token_extractor import DesignTokenExtractor
 from .component_scanner import ComponentScanner
+from .strategies import AnalysisStrategy, HybridStrategy
+from ..cache.decorators import cache_result
+from ..errors import AnalysisError
+from ..errors.decorators import handle_errors, retry_on_error
 
 
 class ModularAnalyzer(IAnalyzer):
@@ -22,13 +26,19 @@ class ModularAnalyzer(IAnalyzer):
     Delegates specific responsibilities to focused components.
     """
     
-    def __init__(self):
+    def __init__(self, strategy: Optional[AnalysisStrategy] = None, cache: Optional[ICache] = None):
         # Initialize sub-components
         self.framework_detector = FrameworkDetector()
         self.token_extractor = DesignTokenExtractor()
         self.component_scanner = ComponentScanner()
         
-        # Optional AST analyzer
+        # Analysis strategy (default to hybrid)
+        self.strategy = strategy or HybridStrategy()
+        
+        # Cache for expensive operations
+        self.cache = cache
+        
+        # Optional AST analyzer (for backward compatibility)
         self.ast_analyzer = None
         self._init_ast_analyzer()
     
@@ -41,7 +51,61 @@ class ModularAnalyzer(IAnalyzer):
         except ImportError:
             print("Warning: TreeSitter analyzer not available")
     
+    @handle_errors(reraise=True)
     def analyze(self, project_path: str) -> AnalysisResult:
+        """
+        Analyze a project and extract all relevant information.
+        Uses caching for expensive operations when available.
+        
+        Args:
+            project_path: Path to the project directory
+            
+        Returns:
+            AnalysisResult containing all extracted information
+            
+        Raises:
+            AnalysisError: If project path doesn't exist or analysis fails
+        """
+        # Validate project path
+        if not os.path.exists(project_path):
+            raise AnalysisError(
+                f"Project path does not exist: {project_path}",
+                file_path=project_path
+            )
+        
+        if not os.path.isdir(project_path):
+            raise AnalysisError(
+                f"Project path is not a directory: {project_path}",
+                file_path=project_path
+            )
+        
+        # Try cache first if available
+        if self.cache:
+            cache_key = f"analysis:{project_path}"
+            cached_result = self.cache.get(cache_key)
+            if cached_result and isinstance(cached_result, AnalysisResult):
+                return cached_result
+        
+        try:
+            # Perform analysis
+            result = self._perform_analysis(project_path)
+            
+            # Cache result if available
+            if self.cache and result:
+                self.cache.set(cache_key, result, ttl=3600)  # 1 hour TTL
+            
+            return result
+        except Exception as e:
+            if isinstance(e, AnalysisError):
+                raise
+            else:
+                raise AnalysisError(
+                    f"Failed to analyze project: {str(e)}",
+                    file_path=project_path,
+                    cause=e
+                )
+    
+    def _perform_analysis(self, project_path: str) -> AnalysisResult:
         """
         Analyze a project and extract all relevant information.
         
@@ -57,8 +121,14 @@ class ModularAnalyzer(IAnalyzer):
         # Extract design tokens
         design_tokens = self.extract_design_tokens(project_path)
         
-        # Scan components
-        components = self.component_scanner.scan(project_path)
+        # Scan components using strategy
+        strategy_components = self.strategy.analyze_components(Path(project_path))
+        
+        # Also use component scanner for comprehensive discovery
+        scanner_components = self.component_scanner.scan(project_path)
+        
+        # Merge components from both sources
+        components = self._merge_components(strategy_components, scanner_components)
         
         # Get available imports
         available_imports = self._get_available_imports(project_path, project_structure, components)
@@ -66,27 +136,10 @@ class ModularAnalyzer(IAnalyzer):
         # Analyze component patterns
         component_patterns = self._analyze_component_patterns(components)
         
-        # Run AST analysis if available
+        # Run AST analysis if available (with caching)
         ast_analysis = None
         if self.ast_analyzer:
-            try:
-                print("Info: Running AST analysis...")
-                ast_analysis = self.ast_analyzer.analyze_project(project_path)
-                
-                # Merge AST-discovered components with scanner results
-                if "components" in ast_analysis:
-                    ast_components = self._convert_ast_components(ast_analysis["components"])
-                    # Merge without duplicates
-                    existing_names = {c.name for c in components}
-                    for ast_comp in ast_components:
-                        if ast_comp.name not in existing_names:
-                            components.append(ast_comp)
-                    
-                    print(f"Info: Found {len(ast_analysis['components'])} components via AST")
-                    
-            except Exception as e:
-                print(f"Warning: AST analysis failed: {e}")
-                ast_analysis = {"error": str(e)}
+            ast_analysis = self._run_ast_analysis_cached(project_path, components)
         
         # Build result
         return AnalysisResult(
@@ -356,3 +409,65 @@ class ModularAnalyzer(IAnalyzer):
             components.append(comp_info)
         
         return components
+    
+    def _merge_components(
+        self, 
+        strategy_components: List[ComponentInfo], 
+        scanner_components: List[ComponentInfo]
+    ) -> List[ComponentInfo]:
+        """Merge components from different sources, avoiding duplicates."""
+        # Use a dict to track components by name
+        component_map = {}
+        
+        # Add strategy components first (higher confidence)
+        for comp in strategy_components:
+            component_map[comp.name] = comp
+        
+        # Add scanner components if not already present
+        for comp in scanner_components:
+            if comp.name not in component_map:
+                component_map[comp.name] = comp
+            else:
+                # Merge additional information if available
+                existing = component_map[comp.name]
+                if not existing.description and comp.description:
+                    existing.description = comp.description
+                if not existing.props and comp.props:
+                    existing.props = comp.props
+        
+        return list(component_map.values())
+    
+    def _run_ast_analysis_cached(self, project_path: str, components: List[ComponentInfo]) -> Optional[Dict[str, Any]]:
+        """Run AST analysis with caching."""
+        # Check cache if available
+        if self.cache:
+            cache_key = f"ast_analysis:{project_path}"
+            cached = self.cache.get(cache_key)
+            if cached:
+                return cached
+        
+        # Run analysis
+        try:
+            print("Info: Running AST analysis...")
+            ast_analysis = self.ast_analyzer.analyze_project(project_path)
+            
+            # Merge AST-discovered components with scanner results
+            if "components" in ast_analysis:
+                ast_components = self._convert_ast_components(ast_analysis["components"])
+                # Merge without duplicates
+                existing_names = {c.name for c in components}
+                for ast_comp in ast_components:
+                    if ast_comp.name not in existing_names:
+                        components.append(ast_comp)
+                
+                print(f"Info: Found {len(ast_analysis['components'])} components via AST")
+            
+            # Cache result
+            if self.cache:
+                self.cache.set(cache_key, ast_analysis, ttl=1800)  # 30 min TTL
+            
+            return ast_analysis
+            
+        except Exception as e:
+            print(f"Warning: AST analysis failed: {e}")
+            return {"error": str(e)}
