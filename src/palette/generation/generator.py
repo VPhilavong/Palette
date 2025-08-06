@@ -11,11 +11,17 @@ from ..intelligence import (
     AssetIntelligence,
     ComponentRelationshipEngine,
     IntentAnalyzer,
+    ComponentReuseAnalyzer,
+    GenerationStrategyEngine,
+    GenerationStrategy,
+    StrategyConfig,
 )
+from .openai_ui_library_optimizer import OpenAIUILibraryOptimizer, PromptComplexity
 from ..quality import ComponentValidator, QualityReport
 from ..quality.zero_fix_pipeline import ZeroFixPipeline
 from ..utils.async_utils import safe_run_async
 from .enhanced_prompts import EnhancedPromptBuilder
+from .smart_context_injector import SmartComponentContextInjector, SmartContextConfig, ContextInjectionLevel
 from .prompt_parser import PromptParser, extract_component_name_from_requirements
 from .prompts import UIUXCopilotPromptBuilder
 
@@ -40,12 +46,18 @@ class UIGenerator:
             try:
                 self.prompt_builder = EnhancedPromptBuilder()
                 self.prompt_builder.initialize_project_analysis(project_path)
+                
+                # Initialize smart context injector
+                self.context_injector = SmartComponentContextInjector(project_path)
                 print("✅ Enhanced prompt engineering enabled with project analysis")
+                print("✅ Smart context injection enabled")
             except Exception as e:
                 print(f"⚠️ Enhanced mode failed, falling back to basic: {e}")
                 self.prompt_builder = UIUXCopilotPromptBuilder()
+                self.context_injector = None
         else:
             self.prompt_builder = UIUXCopilotPromptBuilder()
+            self.context_injector = None
 
         # Initialize quality validator
         if quality_assurance and project_path:
@@ -65,12 +77,31 @@ class UIGenerator:
         self.intent_analyzer = IntentAnalyzer()
         self.asset_intelligence = None
         self.component_mapper = None
+        self.reuse_analyzer = None
+        self.strategy_engine = None
+        self.openai_optimizer = None
 
         if project_path:
             try:
                 self.asset_intelligence = AssetIntelligence(project_path)
                 self.component_mapper = ComponentRelationshipEngine(project_path)
-                print("✅ Intelligence systems initialized")
+                
+                # Initialize component reuse systems
+                self.reuse_analyzer = ComponentReuseAnalyzer(project_path)
+                strategy_config = StrategyConfig(
+                    reuse_threshold=0.90,
+                    compose_threshold=0.75,
+                    extend_threshold=0.60,
+                    prefer_reuse=True,
+                    prefer_composition=True
+                )
+                self.strategy_engine = GenerationStrategyEngine(strategy_config)
+                self.strategy_engine.reuse_analyzer = self.reuse_analyzer
+                
+                # Initialize OpenAI UI library optimizer
+                self.openai_optimizer = OpenAIUILibraryOptimizer(project_path)
+                
+                print("✅ Intelligence systems initialized (including component reuse analysis and OpenAI optimization)")
             except Exception as e:
                 print(f"⚠️ Intelligence initialization failed: {e}")
 
@@ -93,8 +124,228 @@ class UIGenerator:
                 api_key=os.getenv("ANTHROPIC_API_KEY")
             )
 
+    def generate_component_with_reuse_analysis(self, prompt: str, context: Dict) -> str:
+        """Generate component with intelligent reuse analysis (new autonomous approach)."""
+        print("🧠 Analyzing component reuse opportunities...")
+        
+        # Step 1: Perform reuse analysis
+        if self.reuse_analyzer and self.strategy_engine:
+            try:
+                reuse_analysis = safe_run_async(self.reuse_analyzer.analyze_reuse_opportunities(prompt))
+                strategy_decision = self.strategy_engine.determine_strategy(
+                    reuse_analysis, prompt, context
+                )
+                
+                # Step 2: Handle strategy decision autonomously
+                return self._execute_strategy_decision(strategy_decision, prompt, context, reuse_analysis)
+                
+            except Exception as e:
+                print(f"⚠️ Reuse analysis failed, falling back to traditional generation: {e}")
+                return self.generate_component_traditional(prompt, context)
+        else:
+            print("⚠️ Reuse systems not initialized, using traditional generation")
+            return self.generate_component_traditional(prompt, context)
+
     def generate_component(self, prompt: str, context: Dict) -> str:
-        """Generate a React component from a prompt and project context"""
+        """Generate component using intelligent reuse analysis by default."""
+        return self.generate_component_with_reuse_analysis(prompt, context)
+
+    def _execute_strategy_decision(self, strategy_decision, prompt: str, context: Dict, reuse_analysis) -> str:
+        """Execute the decided strategy for component generation/reuse."""
+        from ..intelligence import GenerationStrategy
+        
+        print(f"\n🎯 Executing {strategy_decision.strategy.value.upper()} strategy")
+        print(f"   {strategy_decision.user_message}")
+        
+        if strategy_decision.strategy == GenerationStrategy.REUSE:
+            return self._execute_reuse_strategy(strategy_decision, prompt, context)
+        
+        elif strategy_decision.strategy == GenerationStrategy.COMPOSE:
+            return self._execute_compose_strategy(strategy_decision, prompt, context)
+        
+        elif strategy_decision.strategy == GenerationStrategy.EXTEND:
+            return self._execute_extend_strategy(strategy_decision, prompt, context)
+        
+        else:  # GENERATE or GENERATE_FRESH
+            return self._execute_generate_strategy(strategy_decision, prompt, context, reuse_analysis)
+
+    def _execute_reuse_strategy(self, strategy_decision, prompt: str, context: Dict) -> str:
+        """Execute REUSE strategy - return existing component usage."""
+        component = strategy_decision.primary_components[0]
+        
+        # Return usage instructions and import statement
+        result = f"""// Reusing existing {component.name} component
+{chr(10).join(strategy_decision.import_statements)}
+
+{strategy_decision.usage_example}
+
+/*
+✅ COMPONENT REUSED: {component.name}
+• Zero code duplication
+• Instant consistency with existing design
+• Proven, tested component
+• Path: {component.path}
+*/"""
+        
+        return result
+
+    def _execute_compose_strategy(self, strategy_decision, prompt: str, context: Dict) -> str:
+        """Execute COMPOSE strategy - compose multiple existing components."""
+        components = strategy_decision.primary_components
+        component_names = [comp.name for comp in components]
+        
+        # Generate composition code using the template
+        result = f"""// Composing existing components: {', '.join(component_names)}
+{chr(10).join(strategy_decision.import_statements)}
+
+{strategy_decision.usage_example}
+
+/*
+✅ COMPONENTS COMPOSED: {len(components)} components
+• {chr(10).join(['• ' + name for name in component_names])}
+• Leverages existing components
+• Maintains design consistency
+*/"""
+        
+        return result
+
+    def _execute_extend_strategy(self, strategy_decision, prompt: str, context: Dict) -> str:
+        """Execute EXTEND strategy - extend existing component."""
+        base_component = strategy_decision.primary_components[0]
+        modifications = strategy_decision.implementation_details.get('modifications_needed', [])
+        
+        # Use the extension template from the strategy decision
+        extension_template = strategy_decision.implementation_details.get('usage_instructions', {}).get('code_pattern', '')
+        
+        if extension_template:
+            result = extension_template
+        else:
+            # Fallback extension template
+            result = f"""// Extending existing {base_component.name}
+import {{ {base_component.name} }} from '{base_component.path.replace('.tsx', '').replace('.jsx', '')}';
+
+interface Enhanced{base_component.name}Props {{
+  // Add new props for extensions
+  // Modifications: {', '.join(modifications)}
+}}
+
+const Enhanced{base_component.name}: React.FC<Enhanced{base_component.name}Props> = (props) => {{
+  // Add extension logic here
+  return <{base_component.name} {{...props}} />;
+}};
+
+export default Enhanced{base_component.name};"""
+
+        result += f"""
+
+/*
+✅ COMPONENT EXTENDED: {base_component.name}
+• Base component: {base_component.path}
+• Modifications: {', '.join(modifications)}
+• Preserves original functionality
+*/"""
+        
+        return result
+
+    def _execute_generate_strategy(self, strategy_decision, prompt: str, context: Dict, reuse_analysis) -> str:
+        """Execute GENERATE strategy - generate new component with context using OpenAI optimization."""
+        reference_components = strategy_decision.primary_components
+        
+        # Use OpenAI optimizer if available
+        if self.openai_optimizer:
+            try:
+                print("🎯 Using OpenAI UI library optimizer for generation...")
+                
+                # Determine complexity based on context and reference components
+                complexity = PromptComplexity.INTERMEDIATE  # Default
+                if len(reference_components) > 2:
+                    complexity = PromptComplexity.ADVANCED
+                elif not reference_components:
+                    complexity = PromptComplexity.SIMPLE
+                
+                # Get optimized prompt
+                from ..utils.async_utils import safe_run_async
+                optimized_prompt = safe_run_async(
+                    self.openai_optimizer.optimize_prompt_for_library(
+                        prompt, complexity=complexity
+                    )
+                )
+                
+                if optimized_prompt:
+                    print(f"   Library: {optimized_prompt.library_context}")
+                    print(f"   Complexity: {optimized_prompt.complexity_level.value}")
+                    print(f"   Examples: {optimized_prompt.examples_count}")
+                    
+                    # Generate using optimized prompts
+                    if self.model.startswith("gpt"):
+                        generated_code = self._generate_with_openai(
+                            optimized_prompt.system_prompt, 
+                            optimized_prompt.user_prompt
+                        )
+                    else:
+                        generated_code = self._generate_with_anthropic(
+                            optimized_prompt.system_prompt,
+                            optimized_prompt.user_prompt
+                        )
+                    
+                    # Add optimization metadata
+                    metadata = f"""/*
+✅ COMPONENT GENERATED with OpenAI UI Library Optimization
+• Library context: {optimized_prompt.library_context}
+• Complexity: {optimized_prompt.complexity_level.value}
+• Features: {', '.join(optimized_prompt.component_hints) if optimized_prompt.component_hints else 'standard'}
+• Confidence: {optimized_prompt.confidence_score:.1%}
+• Reference components: {', '.join(comp.name for comp in reference_components) if reference_components else 'none'}
+*/
+
+"""
+                    return metadata + generated_code
+                    
+            except Exception as e:
+                print(f"⚠️ OpenAI optimization failed, using fallback: {e}")
+        
+        # Fallback to traditional method if optimizer fails or unavailable
+        if reference_components:
+            reference_info = []
+            for comp in reference_components:
+                reference_info.append(f"- {comp.name}: {comp.path} (props: {', '.join(comp.props[:3])})")
+            
+            enhanced_prompt = f"""{prompt}
+
+IMPORTANT: Use these existing components as reference patterns:
+{chr(10).join(reference_info)}
+
+Follow the established patterns, naming conventions, and styling approach used in these components."""
+        else:
+            enhanced_prompt = prompt
+        
+        # Generate using traditional method with enhanced context
+        generated_code = self.generate_component_traditional(enhanced_prompt, context)
+        
+        # Add strategy metadata as comments
+        if reference_components:
+            metadata = f"""/*
+✅ COMPONENT GENERATED with {len(reference_components)} reference patterns
+• Reference components: {', '.join(comp.name for comp in reference_components)}
+• Follows established project patterns
+*/
+
+"""
+            generated_code = metadata + generated_code
+        else:
+            metadata = f"""/*
+✅ FRESH COMPONENT GENERATED
+• No existing patterns found
+• Created with minimal context
+*/
+
+"""
+            generated_code = metadata + generated_code
+        
+        return generated_code
+
+    def generate_component_traditional(self, prompt: str, context: Dict) -> str:
+        """Generate a React component from a prompt and project context (traditional approach)"""
 
         # Parse the prompt to understand requirements
         requirements = self.prompt_parser.parse(prompt)
@@ -110,9 +361,21 @@ class UIGenerator:
         # Build prompts using enhanced or basic builder
         if isinstance(self.prompt_builder, EnhancedPromptBuilder):
             # Use enhanced prompts with few-shot learning and RAG
-            system_prompt = self.prompt_builder.build_enhanced_system_prompt(
-                context, prompt
-            )
+            if hasattr(self.prompt_builder, 'build_composition_enhanced_prompt'):
+                # Try composition-enhanced prompts first
+                try:
+                    system_prompt = safe_run_async(
+                        self.prompt_builder.build_composition_enhanced_prompt(prompt, context)
+                    )
+                except Exception as e:
+                    print(f"Warning: Composition-enhanced prompts failed: {e}")
+                    system_prompt = self.prompt_builder.build_enhanced_system_prompt(
+                        context, prompt
+                    )
+            else:
+                system_prompt = self.prompt_builder.build_enhanced_system_prompt(
+                    context, prompt
+                )
             user_prompt = self.prompt_builder.build_rag_enhanced_user_prompt(
                 prompt, context
             )
@@ -120,6 +383,26 @@ class UIGenerator:
             # Use basic prompts
             system_prompt = self.prompt_builder.build_ui_system_prompt(context)
             user_prompt = self.prompt_builder.build_user_prompt(prompt, context)
+        
+        # Apply smart context injection if available
+        if self.context_injector:
+            try:
+                # Configure context injection based on prompt complexity
+                context_config = SmartContextConfig(
+                    injection_level=ContextInjectionLevel.ADAPTIVE,
+                    max_context_words=800,
+                    relevance_threshold=0.5
+                )
+                
+                # Inject smart context into the system prompt
+                system_prompt = safe_run_async(
+                    self.context_injector.inject_smart_context(
+                        prompt, system_prompt, context_config
+                    )
+                )
+                print("✅ Smart context injection applied")
+            except Exception as e:
+                print(f"⚠️ Smart context injection failed: {e}")
 
         # Choose API based on model
         if self.model.startswith("gpt"):
@@ -136,10 +419,10 @@ class UIGenerator:
     def generate_component_with_qa(
         self, prompt: str, context: Dict, target_path: str = None
     ) -> Tuple[str, QualityReport]:
-        """Generate component with comprehensive quality assurance and traditional validation."""
-        print("🎨 Generating component with traditional quality assurance...")
+        """Generate component with comprehensive quality assurance and intelligent reuse analysis."""
+        print("🎨 Generating component with intelligent reuse analysis and quality assurance...")
 
-        # Step 1: Generate initial component
+        # Step 1: Generate initial component (now includes reuse analysis)
         component_code = self.generate_component(prompt, context)
 
         # Clean the response first

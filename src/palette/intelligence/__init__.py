@@ -18,6 +18,30 @@ from .framework_detector import EnhancedFrameworkDetector, FrameworkAnalysis
 from .pattern_extractor import ProjectPatternExtractor, PatternAnalysis
 from .compatibility_checker import CompatibilityChecker, ValidationResult
 
+# Component reuse and strategy systems
+from .component_reuse_analyzer import (
+    ComponentReuseAnalyzer, 
+    ReuseAnalysisResult, 
+    ComponentMatch, 
+    CompositionOpportunity,
+    ReuseOpportunityType
+)
+from .generation_strategy_engine import (
+    GenerationStrategyEngine, 
+    StrategyDecision, 
+    GenerationStrategy, 
+    StrategyConfig
+)
+
+# Cross-library compatibility
+from .cross_library_compatibility import (
+    CrossLibraryCompatibilityChecker,
+    LibraryCompatibilityResult,
+    ComponentMapping,
+    CompatibilityLevel,
+    MigrationComplexity
+)
+
 __all__ = [
     "IntentAnalyzer",
     "IntentContext",
@@ -42,5 +66,21 @@ __all__ = [
     "ProjectPatternExtractor",
     "PatternAnalysis",
     "CompatibilityChecker",
-    "ValidationResult"
+    "ValidationResult",
+    # Component reuse systems
+    "ComponentReuseAnalyzer",
+    "ReuseAnalysisResult",
+    "ComponentMatch",
+    "CompositionOpportunity",
+    "ReuseOpportunityType",
+    "GenerationStrategyEngine",
+    "StrategyDecision",
+    "GenerationStrategy",
+    "StrategyConfig",
+    # Cross-library compatibility
+    "CrossLibraryCompatibilityChecker",
+    "LibraryCompatibilityResult",
+    "ComponentMapping",
+    "CompatibilityLevel",
+    "MigrationComplexity"
 ]
