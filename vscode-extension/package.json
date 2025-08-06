@@ -1,8 +1,8 @@
 {
   "name": "code-palette",
-  "displayName": "Code Palette",
-  "description": "AI-powered design-to-code tool for React components",
-  "version": "0.1.1",
+  "displayName": "Palette AI (Bundled)",
+  "description": "AI-powered component generator with embedded CLI - no separate installation required",
+  "version": "0.1.1-bundled-bundled",
   "publisher": "sail-project",
   "engines": {
     "vscode": "^1.60.0"
@@ -99,6 +99,12 @@
           "description": "Anthropic API key (alternative to .env file)",
           "markdownDescription": "Your Anthropic API key. Can also be set in `.env` file as `ANTHROPIC_API_KEY`"
         },
+        "palette.projectPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Palette project directory",
+          "markdownDescription": "Path to the Palette project directory containing the Python CLI. If not set, the extension will try to auto-detect it."
+        },
         "palette.enableQualityAssurance": {
           "type": "boolean",
           "default": true,
@@ -110,6 +116,31 @@
           "default": true,
           "description": "Show validation progress in the chat",
           "markdownDescription": "Display validation stages (🎨 Generating, ✅ Validating, 🚀 Zero-Fix Pipeline) in the chat interface"
+        },
+        "palette.defaultUILibrary": {
+          "type": "string",
+          "enum": [
+            "auto-detect",
+            "none",
+            "shadcn/ui",
+            "chakra-ui",
+            "material-ui",
+            "ant-design",
+            "headless-ui",
+            "mantine",
+            "react-bootstrap",
+            "semantic-ui",
+            "grommet"
+          ],
+          "default": "auto-detect",
+          "description": "Default UI library for component generation",
+          "markdownDescription": "Choose the UI component library to use by default. **auto-detect** will analyze your project dependencies to determine the best choice."
+        },
+        "palette.showLibraryWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show warnings when chosen library conflicts with project dependencies",
+          "markdownDescription": "Display warnings when the selected UI library doesn't match your project's installed dependencies"
         }
       }
     }
@@ -128,5 +159,12 @@
   "dependencies": {
     "dotenv": "^17.2.1",
     "lucide-react": "^0.534.0"
-  }
+  },
+  "files": [
+    "bundled/**",
+    "out/**",
+    "bundled/**",
+    "out/**"
+  ],
+  "bundled": true
 }

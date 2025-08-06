@@ -38,13 +38,25 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
         }
 
         .message {
-          background: #2d2d2d;
           padding: 0.75rem 1rem;
           border-radius: 8px;
           margin-bottom: 1rem;
           white-space: pre-wrap;
-          font-family: monospace;
           overflow-x: auto;
+        }
+
+        .message.user {
+          background: #1e3a5f;
+          border-left: 3px solid #4a9eff;
+          margin-left: 2rem;
+          font-family: "Segoe UI", sans-serif;
+        }
+
+        .message.assistant {
+          background: #2d2d2d;
+          border-left: 3px solid #00b4d8;
+          margin-right: 2rem;
+          font-family: monospace;
         }
         
         .message pre {
@@ -160,7 +172,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
       <div class="input-box">
         <button id="uploadBtn">＋</button>
         <input type="file" id="imageInput" accept="image/*" />
-        <input type="text" id="input" placeholder="Ask Palette" />
+        <input type="text" id="input" placeholder="Describe the UI component you want to create..." />
         <button id="sendBtn">➤</button>
       </div>
 
@@ -168,13 +180,18 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
         const vscode = acquireVsCodeApi();
         let currentStreamMessage = null;
 
-        function appendMessage(author, text, className = '') {
+        function appendMessage(text, messageType = 'assistant', className = '') {
           const chat = document.getElementById('chat');
           const message = document.createElement('div');
-          message.className = 'message' + (className ? ' ' + className : '');
+          const fullClassName = 'message ' + messageType + (className ? ' ' + className : '');
+          message.className = fullClassName;
           
-          // Simple text content for now (code block parsing can be added later)
-          message.textContent = author + ': ' + text;
+          // Enhanced message formatting for UI development conversations
+          if (messageType === 'user') {
+            message.textContent = text;
+          } else {
+            message.textContent = text;
+          }
           
           chat.appendChild(message);
           chat.scrollTop = chat.scrollHeight;
@@ -197,17 +214,17 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
           if (text.includes('🎨') || text.includes('✅') || text.includes('🚀') || 
               text.includes('validation') || text.includes('quality')) {
             // Create a new message for each validation stage
-            appendMessage('🤖 Palette', text, 'stream');
+            appendMessage(text, 'assistant', 'stream');
             currentStreamMessage = null;
           } else if (text.includes('code')) {
             // This is a code block, create a new message
-            appendMessage('🤖 Palette', text);
+            appendMessage(text, 'assistant');
             currentStreamMessage = null;
           } else if (!currentStreamMessage) {
-            currentStreamMessage = appendMessage('🤖 Palette', text, 'stream');
+            currentStreamMessage = appendMessage(text, 'assistant', 'stream');
           } else {
             // For regular streaming updates
-            currentStreamMessage.textContent = '🤖 Palette: ' + text;
+            currentStreamMessage.textContent = text;
           }
         }
 
@@ -219,9 +236,9 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
               // Reset stream message when new output arrives
               currentStreamMessage = null;
               if (Array.isArray(message.suggestions)) {
-                message.suggestions.forEach(s => appendMessage('🤖 Palette', s));
+                message.suggestions.forEach(s => appendMessage(s, 'assistant'));
               } else if (message.suggestions) {
-                appendMessage('🤖 Palette', message.suggestions);
+                appendMessage(message.suggestions, 'assistant');
               }
               break;
               
@@ -233,7 +250,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
               
             case 'error':
               currentStreamMessage = null;
-              appendMessage('❌ Error', message.error || 'An error occurred', 'error');
+              appendMessage('❌ Error: ' + (message.error || 'An error occurred'), 'assistant', 'error');
               break;
               
             default:
@@ -246,7 +263,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
           const value = input.value.trim();
           console.log('sendMessage called with value:', value);
           if (value) {
-            appendMessage('🧑‍💻 You', value);
+            appendMessage(value, 'user');
             console.log('Sending message to VS Code:', { command: 'userMessage', text: value });
             vscode.postMessage({ command: 'userMessage', text: value });
             input.value = '';
@@ -280,7 +297,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
                 type: file.type,
                 dataUrl: reader.result
               });
-              appendMessage('🧑‍💻 You', '[Image uploaded: ' + file.name + ']');
+              appendMessage('[Image uploaded: ' + file.name + ']', 'user');
             };
             reader.readAsDataURL(file);
           }

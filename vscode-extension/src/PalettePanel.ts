@@ -1,27 +1,22 @@
 import * as vscode from 'vscode';
-import { getChatWebviewHtml } from './ui/chat'; 
+import { getChatWebviewHtml } from './ui/chat';
 import { PaletteService } from './paletteService';
-
 export class PalettePanel {
   public static currentPanel: PalettePanel | undefined;
-  
   public static getCurrentPanel(): PalettePanel | undefined {
     return PalettePanel.currentPanel;
   }
-
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _paletteService: PaletteService;
-
+  private readonly _conversationHistory: Array<{role: string, content: string}> = [];
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, paletteService: PaletteService) {
     this._panel = panel;
+    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._extensionUri = extensionUri;
     this._paletteService = paletteService;
-
     this._panel.webview.html = getChatWebviewHtml(this._panel, this._extensionUri);
-
-
     this._panel.webview.onDidReceiveMessage(
         async message => {
           switch (message.command) {
@@ -32,11 +27,11 @@ export class PalettePanel {
             case 'userMessage':
               // Handle user message - generate component
               console.log('Received userMessage:', message.text);
-              this.sendToWebview('💬 Message received, starting generation...');
+              this.sendToWebview(':speech_balloon: Message received, starting generation...');
               this.handleGenerate(message.text);
               break;
             case 'imageUpload':
-              const info = `📷 Received image "${message.name}" (${message.type})`;
+              const info = `:camera: Received image "${message.name}" (${message.type})`;
               vscode.window.showInformationMessage(info);
               this.sendToWebview(info);
               // TODO: Implement image-based generation
@@ -50,17 +45,11 @@ export class PalettePanel {
         undefined,
         this._disposables
       );
-      
       // Send welcome message
       this.sendWelcomeMessage();
-      
-      
     }
-
-
   public static createOrShow(extensionUri: vscode.Uri, paletteService: PaletteService) {
     const column = vscode.ViewColumn.Beside;
-
     if (PalettePanel.currentPanel) {
       PalettePanel.currentPanel._panel.reveal(column);
     } else {
@@ -73,110 +62,102 @@ export class PalettePanel {
           localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
         }
       );
-      
       PalettePanel.currentPanel = new PalettePanel(panel, extensionUri, paletteService);
     }
   }
-
   public sendToWebview(suggestion: string) {
       this._panel.webview.postMessage({ type: 'output', suggestions: [suggestion] });
   }
-
   private async handleGenerate(prompt: string) {
     try {
       // Validate prompt
       if (!prompt || prompt.trim().length === 0) {
-        this.sendToWebview('❌ Please provide a component description');
+        this.sendToWebview('Please provide a component description');
         return;
       }
-      
-      // Send initial message
-      this.sendToWebview(`🚀 Generating component for: "${prompt}"`);
-      this.sendToWebview(`📡 Starting Palette CLI...`);
-      
-      let hasReceivedData = false;
-      let messageCount = 0;
-      
-      // Add timeout to prevent hanging
-      const timeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Generation timed out after 3 minutes')), 180000);
-      });
-      
-      // Stream the generation with timeout
-      await Promise.race([
-        this._paletteService.streamGenerate(
-          { prompt: prompt.trim() },
-          (data) => {
-            hasReceivedData = true;
-            messageCount++;
-            // Send streaming data to webview
-            this._panel.webview.postMessage({ type: 'stream', data });
-          },
-          (error) => {
-            // Send error to webview
-            this._panel.webview.postMessage({ type: 'error', error });
-          }
-        ),
-        timeout
-      ]);
-      
-      // Send completion message
-      if (hasReceivedData) {
-        this.sendToWebview(`✅ Generation complete! (${messageCount} messages received)`);
-      } else {
-        this.sendToWebview('⚠️ Generation completed but no output was captured.');
-        this.sendToWebview('🔍 Check the Output panel (View > Output > Code Palette) for details.');
+
+      // Add user message to conversation history
+      this._conversationHistory.push({ role: 'user', content: prompt.trim() });
+
+      // Send initial thinking message
+      this.sendToWebview('Let me create that component for you...');
+
+      // Use conversational generation
+      const result = await this._paletteService.conversationalGenerate(
+        prompt.trim(),
+        this._conversationHistory
+      );
+
+      // Add assistant response to conversation history
+      this._conversationHistory.push({ role: 'assistant', content: result.response });
+
+      // Send the response to the webview
+      this.sendToWebview(result.response);
+
+      // If there's metadata (like component code), we could handle it specially
+      if (result.metadata && result.metadata.component_code) {
+        // Send as a structured message for potential UI enhancements
+        this._panel.webview.postMessage({ 
+          type: 'componentGenerated', 
+          code: result.metadata.component_code,
+          intent: result.metadata.intent 
+        });
       }
-      
+
     } catch (error: any) {
       // Parse error message for better user feedback
       let errorMessage = error.message;
       if (errorMessage.includes('No API key found')) {
         errorMessage = 'No API key found. Please configure your OpenAI or Anthropic API key in VS Code settings.';
-      } else if (errorMessage.includes('palette generate')) {
-        errorMessage = 'Failed to generate component. Please check the Output panel for details.';
+      } else if (errorMessage.includes('conversation') || errorMessage.includes('Failed to process conversation')) {
+        errorMessage = 'Failed to process conversation. Please check the Output panel for details.';
+      } else if (errorMessage.includes('No output received')) {
+        errorMessage = 'The conversation command produced no output. Please check your API keys and try again.';
+      } else if (errorMessage.includes('Process exited with code')) {
+        errorMessage = 'The conversation process failed. Please check the Output panel (View → Output → Code Palette) for details.';
       }
       
-      this._panel.webview.postMessage({ type: 'error', error: errorMessage });
+      // Send user-friendly error to webview
+      this.sendToWebview(`❌ Error: ${errorMessage}`);
+      
+      // Log detailed error for debugging
+      this._paletteService.getOutputChannel().appendLine(`❌ Detailed error: ${error.message}`);
+      this._paletteService.getOutputChannel().appendLine(`❌ Error stack: ${error.stack || 'No stack trace'}`);
+      this._paletteService.getOutputChannel().show();
+      
+      // Show error notification
       vscode.window.showErrorMessage(`Generation failed: ${errorMessage}`);
     }
   }
-
   private async handleAnalyze() {
     try {
-      this.sendToWebview('🔍 Analyzing project...');
-      
+      this.sendToWebview(':mag: Analyzing project...');
       const result = await this._paletteService.analyzeProject();
-      
       // Format the analysis results
-      const items: string[] = ['📊 Project Analysis:'];
+      const items: string[] = [':bar_chart: Project Analysis:'];
       if (result.framework) items.push(`  • Framework: ${result.framework}`);
       if (result.styling) items.push(`  • Styling: ${result.styling}`);
       if (result.hasTypeScript) items.push('  • TypeScript: ✓');
       if (result.hasTailwind) items.push('  • Tailwind: ✓');
-      
       // Send formatted results
       items.forEach(item => this.sendToWebview(item));
-      
     } catch (error: any) {
-      this.sendToWebview(`❌ Analysis failed: ${error.message}`);
+      this.sendToWebview(`:x: Analysis failed: ${error.message}`);
       vscode.window.showErrorMessage(`Analysis failed: ${error.message}`);
     }
   }
-
   private async sendWelcomeMessage() {
     setTimeout(async () => {
-      this.sendToWebview('👋 Welcome to Palette!');
-      this.sendToWebview('I can help you generate React components with AI.');
-      this.sendToWebview('Try: "create a modern hero section with gradient background"');
+      this.sendToWebview('👋 Hi! I\'m your AI UI developer assistant.');
+      this.sendToWebview('I can help you create, modify, and improve React components through natural conversation.');
+      this.sendToWebview('Just describe what you want: "Create a pricing card with three tiers" or "Make this button more accessible"');
       
       // Run installation check and show status
-      this.sendToWebview('🔍 Checking installation...');
-      
+      this.sendToWebview('🔍 Checking my setup...');
       try {
         const isInstalled = await this._paletteService.checkInstallation();
         if (isInstalled) {
-          this.sendToWebview('✅ Palette is ready! You can start generating components.');
+          this.sendToWebview('✅ I\'m ready to help! What would you like to build?');
         } else {
           this.sendToWebview('❌ Setup incomplete. Please check the Output panel for details.');
           this.sendToWebview('💡 View → Output → Code Palette for troubleshooting info.');
@@ -186,13 +167,9 @@ export class PalettePanel {
       }
     }, 500);
   }
-
   public dispose() {
     PalettePanel.currentPanel = undefined;
-
-    // Clean up resources
     this._panel.dispose();
-
     while (this._disposables.length) {
       const x = this._disposables.pop();
       if (x) {
@@ -201,3 +178,9 @@ export class PalettePanel {
     }
   }
 }
+
+
+
+
+
+

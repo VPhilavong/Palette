@@ -124,10 +124,17 @@ export async function activate(context: vscode.ExtensionContext) {
           outputPath = path.dirname(activeEditor.document.uri.fsPath);
         }
 
-        // Generate component
+        // Get UI library preference from settings
+        const config = vscode.workspace.getConfiguration('palette');
+        const uiLibrary = config.get<string>('defaultUILibrary', 'auto-detect');
+        const showWarnings = config.get<boolean>('showLibraryWarnings', true);
+
+        // Generate component with UI library preference
         const result = await paletteService.generateWithProgress({
           prompt,
-          outputPath
+          outputPath,
+          uiLibrary,
+          showLibraryWarnings: showWarnings
         });
 
         // Show success message
@@ -192,9 +199,16 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       try {
+        // Get UI library preference from settings
+        const config = vscode.workspace.getConfiguration('palette');
+        const uiLibrary = config.get<string>('defaultUILibrary', 'auto-detect');
+        const showWarnings = config.get<boolean>('showLibraryWarnings', true);
+
         await paletteService.generateWithProgress({
           prompt,
-          outputPath: uri.fsPath
+          outputPath: uri.fsPath,
+          uiLibrary,
+          showLibraryWarnings: showWarnings
         });
         
         vscode.window.showInformationMessage('Component generated successfully!');
@@ -227,6 +241,20 @@ export async function activate(context: vscode.ExtensionContext) {
         // Update the palette panel if it's open
         if (PalettePanel.currentPanel) {
           PalettePanel.currentPanel.sendToWebview('🔄 API keys updated from settings');
+        }
+      }
+      
+      // Handle UI library setting changes
+      if (e.affectsConfiguration('palette.defaultUILibrary') || e.affectsConfiguration('palette.showLibraryWarnings')) {
+        const config = vscode.workspace.getConfiguration('palette');
+        const uiLibrary = config.get<string>('defaultUILibrary', 'auto-detect');
+        
+        // Show notification about UI library change
+        vscode.window.showInformationMessage(`UI library preference updated to: ${uiLibrary}`);
+        
+        // Update the palette panel if it's open
+        if (PalettePanel.currentPanel) {
+          PalettePanel.currentPanel.sendToWebview(`🎨 UI library updated to: ${uiLibrary}`);
         }
       }
     })

@@ -8,6 +8,8 @@ export interface GenerateOptions {
     outputPath?: string;
     framework?: string;
     model?: string;
+    uiLibrary?: string;
+    showLibraryWarnings?: boolean;
 }
 
 export interface AnalyzeResult {
@@ -210,6 +212,10 @@ export class PaletteService {
         if (options.outputPath) {
             command += ` --output "${options.outputPath}"`;
         }
+        
+        if (options.uiLibrary && options.uiLibrary !== 'auto-detect') {
+            command += ` --ui ${options.uiLibrary}`;
+        }
 
         // Don't add --json flag as it doesn't exist in the CLI
         // command += ' --json';
@@ -310,6 +316,10 @@ export class PaletteService {
                 if (options.outputPath) {
                     args.push('--output', options.outputPath);
                 }
+                
+                if (options.uiLibrary && options.uiLibrary !== 'auto-detect') {
+                    args.push('--ui', options.uiLibrary);
+                }
 
                 // Create environment with API keys from both env vars and VS Code settings
                 const processEnv = { ...process.env };
@@ -345,6 +355,10 @@ export class PaletteService {
                 
                 if (options.outputPath) {
                     fullCommand += ` --output "${options.outputPath}"`;
+                }
+                
+                if (options.uiLibrary && options.uiLibrary !== 'auto-detect') {
+                    fullCommand += ` --ui ${options.uiLibrary}`;
                 }
                 
                 this.outputChannel.appendLine(`Executing command: ${fullCommand}`);
@@ -398,6 +412,158 @@ export class PaletteService {
                 reject(error);
             }
         });
+    }
+
+    async conversationalGenerate(
+        message: string,
+        conversationHistory: Array<{role: string, content: string}> = []
+    ): Promise<{response: string, metadata?: any}> {
+        this.outputChannel.appendLine('🚀 Starting conversational generation...');
+        this.outputChannel.appendLine(`📝 Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+        
+        try {
+            // Create environment with API keys from VS Code settings
+            const processEnv = { ...process.env };
+            const openaiKey = process.env.OPENAI_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('openaiApiKey');
+            const anthropicKey = process.env.ANTHROPIC_API_KEY || vscode.workspace.getConfiguration('palette').get<string>('anthropicApiKey');
+            
+            if (openaiKey) {
+                processEnv.OPENAI_API_KEY = openaiKey;
+                this.outputChannel.appendLine('🔑 OpenAI API key configured');
+            }
+            if (anthropicKey) {
+                processEnv.ANTHROPIC_API_KEY = anthropicKey;
+                this.outputChannel.appendLine('🔑 Anthropic API key configured');
+            }
+
+            // Check for API keys before starting
+            if (!openaiKey && !anthropicKey) {
+                const errorMsg = 'No API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in environment variables or VS Code settings';
+                this.outputChannel.appendLine(`❌ ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
+
+            // Build command for conversational generation
+            const args = [
+                'conversation',
+                '--message', message,
+                '--project-path', this.workspaceRoot || process.cwd()
+            ];
+
+            // Add conversation history if provided
+            if (conversationHistory.length > 0) {
+                args.push('--history', JSON.stringify(conversationHistory));
+            }
+
+            // Use the Palette project directory as working directory for python module execution
+            // First try to get from VS Code settings, then fallback to common locations
+            let paletteProjectDir = vscode.workspace.getConfiguration('palette').get<string>('projectPath');
+            
+            if (!paletteProjectDir) {
+                // Try common locations
+                const possiblePaths = [
+                    '/home/vphilavong/Projects/Palette',
+                    path.join(process.env.HOME || '', 'Projects', 'Palette'),
+                    path.join(__dirname, '..', '..', '..'),  // Relative to extension
+                ];
+                
+                for (const possiblePath of possiblePaths) {
+                    if (fs.existsSync(path.join(possiblePath, 'src', 'palette'))) {
+                        paletteProjectDir = possiblePath;
+                        break;
+                    }
+                }
+            }
+            
+            if (!paletteProjectDir || !fs.existsSync(path.join(paletteProjectDir, 'src', 'palette'))) {
+                throw new Error('Could not find Palette project directory. Please configure palette.projectPath in VS Code settings.');
+            }
+            // First try to find the actual palette CLI binary
+            const paletteBinary = await this.findPaletteCLI();
+            
+            this.outputChannel.appendLine(`🗣️  Running conversational generation from: ${paletteProjectDir}`);
+            this.outputChannel.appendLine(`📝 Command: ${paletteBinary} ${args.join(' ')}`);
+            this.outputChannel.appendLine(`🎯 Using Palette binary: ${paletteBinary}`);
+            
+            return new Promise((resolve, reject) => {
+                // Use the palette binary directly instead of python -m
+                const proc = spawn(paletteBinary, args, {
+                    cwd: paletteProjectDir, // Run from Palette project directory
+                    env: processEnv,
+                    stdio: ['pipe', 'pipe', 'pipe']
+                });
+
+                let outputBuffer = '';
+                let errorBuffer = '';
+
+                proc.stdout?.on('data', (data) => {
+                    const chunk = data.toString();
+                    outputBuffer += chunk;
+                    // Only log to output channel, don't send to UI yet
+                    this.outputChannel.append(`[stdout] ${chunk}`);
+                });
+
+                proc.stderr?.on('data', (data) => {
+                    const chunk = data.toString();
+                    errorBuffer += chunk;
+                    // stderr contains debug info and progress messages, log them
+                    this.outputChannel.append(`[stderr] ${chunk}`);
+                });
+
+                proc.on('close', (code) => {
+                    this.outputChannel.appendLine(`Process exited with code: ${code}`);
+                    this.outputChannel.appendLine(`stdout buffer length: ${outputBuffer.length}`);
+                    this.outputChannel.appendLine(`stderr buffer length: ${errorBuffer.length}`);
+                    
+                    if (code === 0) {
+                        try {
+                            // The conversation CLI outputs JSON to stdout
+                            const cleanOutput = outputBuffer.trim();
+                            this.outputChannel.appendLine(`Attempting to parse JSON: ${cleanOutput.substring(0, 200)}...`);
+                            
+                            if (!cleanOutput) {
+                                reject(new Error('No output received from conversation command'));
+                                return;
+                            }
+                            
+                            const parsed = JSON.parse(cleanOutput);
+                            
+                            // Check if it's an error response
+                            if (parsed.error) {
+                                reject(new Error(parsed.error));
+                                return;
+                            }
+                            
+                            resolve(parsed);
+                        } catch (parseError: any) {
+                            this.outputChannel.appendLine(`JSON parse error: ${parseError.message}`);
+                            this.outputChannel.appendLine(`Raw output: ${outputBuffer}`);
+                            
+                            // If JSON parsing fails, check if we have any meaningful output
+                            if (outputBuffer.trim()) {
+                                resolve({ response: outputBuffer.trim() });
+                            } else if (errorBuffer.trim()) {
+                                reject(new Error(`Command failed: ${errorBuffer.trim()}`));
+                            } else {
+                                reject(new Error('No output received from conversation command'));
+                            }
+                        }
+                    } else {
+                        const errorMsg = errorBuffer.trim() || `Process exited with code ${code}`;
+                        reject(new Error(errorMsg));
+                    }
+                });
+
+                proc.on('error', (err) => {
+                    this.outputChannel.appendLine(`Process error: ${err.message}`);
+                    reject(new Error(`Failed to start conversation process: ${err.message}`));
+                });
+            });
+
+        } catch (error: any) {
+            this.outputChannel.appendLine(`❌ Conversational generation failed: ${error.message}`);
+            throw error;
+        }
     }
 
     async testEnvironment(): Promise<void> {

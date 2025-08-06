@@ -2600,5 +2600,10 @@ def _validate_ui_library_choice(ui_choice: str, project_path: str, ui_library_de
         return False
 
 
+# Add conversation command to main CLI
+from .conversation import conversation
+main.add_command(conversation)
+
+
 if __name__ == "__main__":
     main()
