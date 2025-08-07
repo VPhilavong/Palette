@@ -1,13 +1,38 @@
 import * as vscode from 'vscode';
 import { PalettePanel } from './PalettePanel';
+import { EnhancedStreamingPanel } from './EnhancedStreamingPanel';
+// import { AgenticPalettePanel } from './AgenticPalettePanel'; // Temporarily disabled due to LangChain Zod conflicts
+import { SimplifiedAgenticPanel } from './SimplifiedAgenticPanel';
+// import { AISDKPalettePanel } from './AISDKPalettePanel'; // Complex version - has tool conflicts
+// Conditional import with error handling for UnifiedPalettePanel
+let UnifiedPalettePanel: any = null;
+try {
+  UnifiedPalettePanel = require('./UnifiedPalettePanel').UnifiedPalettePanel;
+  console.log('✅ UnifiedPalettePanel imported successfully');
+} catch (error) {
+  console.error('❌ Failed to import UnifiedPalettePanel:', error);
+}
 import { PaletteService } from './paletteService';
+import { StreamingPaletteService } from './services/StreamingPaletteService';
+import { PaletteCommManager } from './services/PaletteCommManager';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 
+// Conditional import with error handling for backward compatibility
+let SimpleAISDKPanel: any = null;
+try {
+  SimpleAISDKPanel = require('./SimpleAISDKPanel').SimpleAISDKPanel;
+  console.log('SimpleAISDKPanel imported successfully');
+} catch (error) {
+  console.error('Failed to import SimpleAISDKPanel:', error);
+}
+
 let paletteService: PaletteService;
 
 export async function activate(context: vscode.ExtensionContext) {
+  console.log('🚀 Palette Extension Activation Starting...');
+  
   // Load API keys from VS Code settings first
   const config = vscode.workspace.getConfiguration('palette');
   const openaiKey = config.get<string>('openaiApiKey') || '';
@@ -97,6 +122,74 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('palette.openWebview', () => {
       PalettePanel.createOrShow(context.extensionUri, paletteService);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('palette.openStreamingChat', () => {
+      EnhancedStreamingPanel.createOrShow(context.extensionUri);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('palette.openAgenticChat', () => {
+      // AgenticPalettePanel.createOrShow(context.extensionUri); // Temporarily disabled
+      vscode.window.showWarningMessage('LangGraph agent temporarily disabled due to dependency conflicts. Use Simplified Agent instead.');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('palette.openSimplifiedAgent', () => {
+      SimplifiedAgenticPanel.createOrShow(context.extensionUri);
+    })
+  );
+
+  // New unified system command
+  try {
+    console.log('🎯 Registering palette.openUnified command...');
+    context.subscriptions.push(
+      vscode.commands.registerCommand('palette.openUnified', () => {
+        try {
+          if (!UnifiedPalettePanel) {
+            const message = 'UnifiedPalettePanel failed to import. Check console for details.';
+            console.error(message);
+            vscode.window.showErrorMessage(message);
+            return;
+          }
+          
+          console.log('Opening Palette Unified System...');
+          UnifiedPalettePanel.createOrShow(context.extensionUri);
+          console.log('UnifiedPalettePanel opened successfully');
+        } catch (error) {
+          console.error('Error creating UnifiedPalettePanel:', error);
+          vscode.window.showErrorMessage(`Failed to open Palette Unified: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })
+    );
+    console.log('✅ palette.openUnified command registered successfully');
+  } catch (error) {
+    console.error('❌ Failed to register palette.openUnified command:', error);
+    vscode.window.showErrorMessage(`Command registration failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Legacy AI SDK command for backward compatibility
+  context.subscriptions.push(
+    vscode.commands.registerCommand('palette.openAISDKAgent', () => {
+      try {
+        if (!SimpleAISDKPanel) {
+          const message = 'SimpleAISDKPanel failed to import. Check console for details.';
+          console.error(message);
+          vscode.window.showErrorMessage(message);
+          return;
+        }
+        
+        console.log('Attempting to create SimpleAISDKPanel...');
+        SimpleAISDKPanel.createOrShow(context.extensionUri);
+        console.log('SimpleAISDKPanel.createOrShow completed successfully');
+      } catch (error) {
+        console.error('Error creating SimpleAISDKPanel:', error);
+        vscode.window.showErrorMessage(`Failed to open AI SDK Agent: ${error instanceof Error ? error.message : String(error)}`);
+      }
     })
   );
 
@@ -259,8 +352,19 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+  
+  console.log('🎉 Palette Extension Activation Complete!');
 }
 
-export function deactivate() {
-  // Clean up
+export async function deactivate() {
+  console.log('🛑 Palette extension deactivating...');
+  
+  try {
+    // Cleanup unified system
+    const commManager = PaletteCommManager.getInstance();
+    await commManager.dispose();
+    console.log('✅ PaletteCommManager disposed');
+  } catch (error) {
+    console.error('Error disposing PaletteCommManager:', error);
+  }
 }

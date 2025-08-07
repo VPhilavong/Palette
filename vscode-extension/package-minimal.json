@@ -1,0 +1,76 @@
+{
+  "name": "code-palette-minimal",
+  "displayName": "Palette AI (Minimal)",
+  "description": "Minimal working version with cleaned up configuration",
+  "version": "0.2.0-minimal",
+  "publisher": "sail-project",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension-minimal.js",
+  "keywords": [
+    "react",
+    "component",
+    "ai",
+    "tailwind",
+    "ui",
+    "design"
+  ],
+  "activationEvents": [
+    "onCommand:palette.openUnified",
+    "onCommand:palette.test"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "palette.openUnified",
+        "title": "🎨 Palette: Open Unified System",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.test",
+        "title": "🧪 Palette: Test Extension",
+        "category": "Palette"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "palette.openUnified"
+        },
+        {
+          "command": "palette.test"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Code Palette",
+      "properties": {
+        "palette.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API key",
+          "markdownDescription": "Your OpenAI API key for AI generation"
+        },
+        "palette.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key",
+          "markdownDescription": "Your Anthropic API key for AI generation"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p ."
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.9.4"
+  }
+}

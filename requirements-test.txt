@@ -1,0 +1,22 @@
+# Testing dependencies for Palette
+# These are additional dependencies needed to run the test suites
+
+# HTTP client library for API testing
+requests>=2.31.0
+
+# WebSocket client for integration testing
+websockets>=11.0.2
+
+# Async HTTP client for advanced testing scenarios
+aiohttp>=3.8.5
+
+# Data validation and serialization
+pydantic>=2.0.0
+
+# Testing utilities
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# For concurrent testing (built into Python 3.2+)
+# concurrent.futures - built into Python standard library

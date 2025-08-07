@@ -1,0 +1,32 @@
+{
+  "name": "react-router-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for React Router integration with Palette",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js",
+    "test": "jest"
+  },
+  "keywords": ["mcp", "react-router", "palette", "ai-dev-tools"],
+  "author": "Palette Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "ts-morph": "^21.0.0",
+    "fs-extra": "^11.0.0",
+    "glob": "^10.0.0",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.0",
+    "@types/jest": "^29.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  }
+}

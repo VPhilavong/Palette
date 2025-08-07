@@ -1,0 +1,30 @@
+{
+  "id": "session_1754558079075_3ho8al8uw",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello",
+      "timestamp": "2025-08-07T09:14:39.176Z"
+    },
+    {
+      "role": "assistant",
+      "content": "<div className=\"p-4 bg-gray-100 rounded\">\n  <!-- Generated component -->\n  <p>Component generated from template</p>\n</div>",
+      "timestamp": "2025-08-07T09:14:39.176Z",
+      "metadata": {
+        "provider": "static_templates",
+        "complexity": "simple",
+        "duration": 3,
+        "fallbackUsed": false
+      }
+    }
+  ],
+  "workspacePath": "/home/vphilavong/Projects/Palette/vscode-extension",
+  "createdAt": "2025-08-07T09:14:39.075Z",
+  "lastActivity": "2025-08-07T09:14:39.176Z",
+  "preferences": {
+    "preferredProvider": "auto",
+    "enableAnalysis": true,
+    "streamingEnabled": true,
+    "qualityThreshold": "medium"
+  }
+}

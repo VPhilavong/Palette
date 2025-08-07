@@ -1,0 +1,152 @@
+[
+  {
+    "id": "complex-dashboard",
+    "name": "Admin Dashboard",
+    "description": "Complete admin dashboard with sidebar navigation, header, charts, and data tables",
+    "message": "Create a complete admin dashboard with sidebar navigation, header with user profile, data visualization charts, and user management table",
+    "complexity": "complex",
+    "expected_files": [
+      "src/pages/Dashboard.tsx",
+      "src/components/layout/Sidebar.tsx",
+      "src/components/layout/Header.tsx",
+      "src/components/layout/DashboardLayout.tsx",
+      "src/components/charts/BarChart.tsx",
+      "src/components/charts/LineChart.tsx",
+      "src/components/UserTable.tsx",
+      "src/components/StatsCards.tsx"
+    ],
+    "expected_components": [
+      "Dashboard",
+      "Sidebar",
+      "Header",
+      "DashboardLayout",
+      "BarChart",
+      "LineChart",
+      "UserTable",
+      "StatsCards"
+    ],
+    "expected_features": [
+      "Responsive layout with sidebar",
+      "Data visualization with charts",
+      "User management interface",
+      "Statistics overview cards",
+      "Mobile-responsive navigation"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 300,
+    "validation_criteria": {
+      "layout": "Should have proper dashboard layout structure",
+      "navigation": "Should include working navigation system",
+      "responsive": "Should work on mobile and desktop",
+      "data_viz": "Should display charts and data tables",
+      "composition": "Should properly compose multiple components"
+    },
+    "tags": [
+      "dashboard",
+      "admin",
+      "charts",
+      "layout",
+      "complex"
+    ]
+  },
+  {
+    "id": "complex-ecommerce",
+    "name": "E-commerce Product Page",
+    "description": "Complete e-commerce product page with gallery, details, reviews, and shopping cart integration",
+    "message": "Create a complete e-commerce product page with image gallery, product details, customer reviews, related products, and add to cart functionality",
+    "complexity": "complex",
+    "expected_files": [
+      "src/pages/ProductPage.tsx",
+      "src/components/product/ProductGallery.tsx",
+      "src/components/product/ProductInfo.tsx",
+      "src/components/product/ProductReviews.tsx",
+      "src/components/product/RelatedProducts.tsx",
+      "src/components/cart/AddToCartButton.tsx",
+      "src/components/product/ProductVariants.tsx",
+      "src/components/reviews/ReviewCard.tsx"
+    ],
+    "expected_components": [
+      "ProductPage",
+      "ProductGallery",
+      "ProductInfo",
+      "ProductReviews",
+      "RelatedProducts",
+      "AddToCartButton",
+      "ProductVariants",
+      "ReviewCard"
+    ],
+    "expected_features": [
+      "Image gallery with zoom",
+      "Product variant selection",
+      "Customer reviews system",
+      "Shopping cart integration",
+      "Related products recommendations"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 350,
+    "validation_criteria": {
+      "gallery": "Should have working image gallery with navigation",
+      "variants": "Should handle product variants (size, color, etc.)",
+      "reviews": "Should display and manage customer reviews",
+      "cart": "Should integrate with shopping cart functionality",
+      "ux": "Should provide excellent shopping experience"
+    },
+    "tags": [
+      "ecommerce",
+      "product",
+      "gallery",
+      "reviews",
+      "cart"
+    ]
+  },
+  {
+    "id": "complex-landing-page",
+    "name": "SaaS Landing Page",
+    "description": "Complete SaaS landing page with hero, features, testimonials, pricing, and CTA sections",
+    "message": "Create a complete SaaS landing page with hero section, features showcase, customer testimonials, pricing tiers, and call-to-action sections",
+    "complexity": "complex",
+    "expected_files": [
+      "src/pages/LandingPage.tsx",
+      "src/components/landing/HeroSection.tsx",
+      "src/components/landing/FeaturesSection.tsx",
+      "src/components/landing/TestimonialsSection.tsx",
+      "src/components/landing/PricingSection.tsx",
+      "src/components/landing/CTASection.tsx",
+      "src/components/landing/Navbar.tsx",
+      "src/components/landing/Footer.tsx"
+    ],
+    "expected_components": [
+      "LandingPage",
+      "HeroSection",
+      "FeaturesSection",
+      "TestimonialsSection",
+      "PricingSection",
+      "CTASection",
+      "Navbar",
+      "Footer"
+    ],
+    "expected_features": [
+      "Responsive design",
+      "Smooth scrolling navigation",
+      "Pricing comparison table",
+      "Customer testimonials carousel",
+      "Call-to-action optimization"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 280,
+    "validation_criteria": {
+      "design": "Should have modern, professional design",
+      "responsive": "Should work perfectly on all devices",
+      "conversion": "Should optimize for user conversion",
+      "performance": "Should load quickly and smoothly",
+      "sections": "Should have all required landing page sections"
+    },
+    "tags": [
+      "landing-page",
+      "saas",
+      "marketing",
+      "responsive",
+      "conversion"
+    ]
+  }
+]

@@ -1,0 +1,125 @@
+[
+  {
+    "id": "simple-button",
+    "name": "Simple Button Component",
+    "description": "Basic button component with primary/secondary variants",
+    "message": "Create a button component with primary and secondary variants",
+    "complexity": "simple",
+    "expected_files": [
+      "src/components/ui/button.tsx"
+    ],
+    "expected_components": [
+      "Button"
+    ],
+    "expected_features": [
+      "TypeScript types",
+      "Tailwind styling",
+      "Variant support"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 30,
+    "validation_criteria": {
+      "typescript": "Should have proper TypeScript interface",
+      "styling": "Should use Tailwind CSS classes",
+      "accessibility": "Should have proper button type and aria attributes",
+      "reusability": "Should accept children and onClick props"
+    },
+    "tags": [
+      "component",
+      "ui",
+      "basic"
+    ]
+  },
+  {
+    "id": "simple-card",
+    "name": "Card Component",
+    "description": "Reusable card component with header, content, and footer slots",
+    "message": "Create a card component with header, content area, and optional footer",
+    "complexity": "simple",
+    "expected_files": [
+      "src/components/ui/card.tsx"
+    ],
+    "expected_components": [
+      "Card",
+      "CardHeader",
+      "CardContent",
+      "CardFooter"
+    ],
+    "expected_features": [
+      "Compound component pattern",
+      "Flexible layout",
+      "TypeScript support"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 45,
+    "validation_criteria": {
+      "structure": "Should use compound component pattern",
+      "styling": "Should have consistent spacing and borders",
+      "flexibility": "Should allow custom content in each section"
+    },
+    "tags": [
+      "component",
+      "ui",
+      "layout"
+    ]
+  },
+  {
+    "id": "simple-form",
+    "name": "Contact Form",
+    "description": "Basic contact form with validation",
+    "message": "Create a contact form with name, email, and message fields with validation",
+    "complexity": "simple",
+    "expected_files": [
+      "src/components/ContactForm.tsx"
+    ],
+    "expected_components": [
+      "ContactForm"
+    ],
+    "expected_features": [
+      "Form validation",
+      "Error handling",
+      "Submit functionality"
+    ],
+    "test_project_type": "vite-react-shadcn",
+    "estimated_duration": 60,
+    "validation_criteria": {
+      "validation": "Should validate email format and required fields",
+      "accessibility": "Should have proper labels and error messages",
+      "ux": "Should provide clear feedback on form submission"
+    },
+    "tags": [
+      "form",
+      "validation",
+      "user-input"
+    ]
+  },
+  {
+    "id": "edge-no-tailwind",
+    "name": "Component Without Tailwind",
+    "description": "Test generation in project without Tailwind CSS setup",
+    "message": "Create a button component with styling in a project without Tailwind CSS",
+    "complexity": "simple",
+    "expected_files": [
+      "src/components/Button.tsx"
+    ],
+    "expected_components": [
+      "Button"
+    ],
+    "expected_features": [
+      "CSS modules or styled-components",
+      "Fallback styling approach"
+    ],
+    "test_project_type": "no-tailwind",
+    "estimated_duration": 45,
+    "validation_criteria": {
+      "styling": "Should use alternative styling method",
+      "fallback": "Should work without Tailwind dependencies",
+      "adaptability": "Should adapt to project constraints"
+    },
+    "tags": [
+      "edge-case",
+      "no-tailwind",
+      "fallback"
+    ]
+  }
+]

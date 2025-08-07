@@ -1,0 +1,298 @@
+{
+  "timestamp": "2025-08-07T01:29:25.997088",
+  "duration": 76.21026849746704,
+  "system_status": "CRITICAL_ISSUES",
+  "suite_results": {
+    "total_suites": 3,
+    "suites_passed": 0,
+    "suites_failed": 3,
+    "suite_success_rate": 0.0
+  },
+  "test_results": {
+    "total_tests": 10,
+    "passed": 5,
+    "failed": 7,
+    "success_rate": 50.0
+  },
+  "critical_systems": {
+    "Python Backend": false,
+    "Quality Validation": false,
+    "VS Code Integration": false
+  },
+  "all_systems_operational": false,
+  "recommendations": [
+    "\ud83d\udd27 Fix Python backend issues - check server startup and API endpoints",
+    "\ud83d\udd0d Address quality validation system - ensure ComponentValidator is working",
+    "\ud83d\udd17 Fix VS Code integration - check extension compilation and communication",
+    "\ud83d\udcc8 Improve test coverage and fix failing tests"
+  ],
+  "detailed_results": {
+    "generation_pipeline": {
+      "all_tests_passed": false,
+      "error": "Server failed to start within 30 seconds",
+      "total_tests": 0,
+      "passed": 0,
+      "failed": 1
+    },
+    "quality_workflow": {
+      "total_tests": 10,
+      "passed": 5,
+      "failed": 5,
+      "partial": 0,
+      "success_rate": 50.0,
+      "quality_system_working": false,
+      "test_results": [
+        {
+          "test_name": "quality_perfect_component",
+          "status": "FAIL",
+          "duration": 2.1385724544525146,
+          "message": "Validation inaccurate - issues: 0 (expected ~0), score: 75.2 (expected 85-100), types: set() (expected set())",
+          "details": {
+            "description": "High-quality component with proper TypeScript, accessibility, and styling",
+            "file_score": 75.25,
+            "inline_score": 75.25,
+            "issues_found": 0,
+            "expected_issues": 0,
+            "issue_types": [],
+            "expected_types": [],
+            "sample_issues": []
+          }
+        },
+        {
+          "test_name": "quality_problematic_component",
+          "status": "PASS",
+          "duration": 2.0738584995269775,
+          "message": "Quality validation accurate (score: 41.3, issues: 5)",
+          "details": {
+            "description": "Component with multiple quality issues",
+            "file_score": 41.3,
+            "inline_score": 41.3,
+            "issues_found": 5,
+            "expected_issues": 6,
+            "issue_types": [
+              "structure",
+              "accessibility",
+              "eslint",
+              "typescript",
+              "performance"
+            ],
+            "expected_types": [
+              "typescript",
+              "eslint",
+              "accessibility",
+              "structure"
+            ],
+            "sample_issues": [
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/problematic_component.tsx",
+                "type": "typescript",
+                "message": "Duplicate React import statements detected",
+                "severity": "error",
+                "line": null,
+                "fixable": true
+              },
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/problematic_component.tsx",
+                "type": "eslint",
+                "message": "Remove console.log statements",
+                "severity": "warning",
+                "line": null,
+                "fixable": true
+              },
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/problematic_component.tsx",
+                "type": "structure",
+                "message": "Invalid Tailwind CSS class detected",
+                "severity": "error",
+                "line": null,
+                "fixable": true
+              }
+            ]
+          }
+        },
+        {
+          "test_name": "quality_typescript_errors",
+          "status": "FAIL",
+          "duration": 2.0717453956604004,
+          "message": "Validation inaccurate - issues: 1 (expected ~3), score: 71.8 (expected 40-70), types: {'typescript'} (expected {'typescript'})",
+          "details": {
+            "description": "TypeScript-related quality issues",
+            "file_score": 71.75,
+            "inline_score": 71.75,
+            "issues_found": 1,
+            "expected_issues": 3,
+            "issue_types": [
+              "typescript"
+            ],
+            "expected_types": [
+              "typescript"
+            ],
+            "sample_issues": [
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/typescript_errors.tsx",
+                "type": "typescript",
+                "message": "Avoid using 'any' type for better type safety",
+                "severity": "warning",
+                "line": null,
+                "fixable": true
+              }
+            ]
+          }
+        },
+        {
+          "test_name": "quality_accessibility_issues",
+          "status": "FAIL",
+          "duration": 2.1346628665924072,
+          "message": "Validation inaccurate - issues: 2 (expected ~4), score: 65.8 (expected 30-60), types: {'accessibility', 'performance'} (expected {'accessibility'})",
+          "details": {
+            "description": "Accessibility violations",
+            "file_score": 65.8,
+            "inline_score": 65.8,
+            "issues_found": 2,
+            "expected_issues": 4,
+            "issue_types": [
+              "accessibility",
+              "performance"
+            ],
+            "expected_types": [
+              "accessibility"
+            ],
+            "sample_issues": [
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/accessibility_issues.tsx",
+                "type": "accessibility",
+                "message": "Images should have alt attributes",
+                "severity": "warning",
+                "line": null,
+                "fixable": true
+              },
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/accessibility_issues.tsx",
+                "type": "performance",
+                "message": "Consider using useCallback for event handlers",
+                "severity": "info",
+                "line": null,
+                "fixable": false
+              }
+            ]
+          }
+        },
+        {
+          "test_name": "quality_performance_issues",
+          "status": "FAIL",
+          "duration": 2.0881688594818115,
+          "message": "Validation inaccurate - issues: 1 (expected ~2), score: 75.3 (expected 50-75), types: {'performance'} (expected {'performance'})",
+          "details": {
+            "description": "Performance anti-patterns",
+            "file_score": 75.3,
+            "inline_score": 75.3,
+            "issues_found": 1,
+            "expected_issues": 2,
+            "issue_types": [
+              "performance"
+            ],
+            "expected_types": [
+              "performance"
+            ],
+            "sample_issues": [
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/performance_issues.tsx",
+                "type": "performance",
+                "message": "Consider using useCallback for event handlers",
+                "severity": "info",
+                "line": null,
+                "fixable": false
+              }
+            ]
+          }
+        },
+        {
+          "test_name": "quality_modern_best_practices",
+          "status": "FAIL",
+          "duration": 2.1245713233947754,
+          "message": "Validation inaccurate - issues: 1 (expected ~0), score: 74.5 (expected 90-100), types: {'performance'} (expected set())",
+          "details": {
+            "description": "Modern React component with best practices",
+            "file_score": 74.55,
+            "inline_score": 74.55,
+            "issues_found": 1,
+            "expected_issues": 0,
+            "issue_types": [
+              "performance"
+            ],
+            "expected_types": [],
+            "sample_issues": [
+              {
+                "file": "/tmp/palette_quality_test_mb7an76b/modern_best_practices.tsx",
+                "type": "performance",
+                "message": "Consider using useCallback for event handlers",
+                "severity": "info",
+                "line": null,
+                "fixable": false
+              }
+            ]
+          }
+        },
+        {
+          "test_name": "project_quality_analysis",
+          "status": "PASS",
+          "duration": 0.0019168853759765625,
+          "message": "Project analysis complete (score: 95.0)",
+          "details": {
+            "project_score": 95.0,
+            "total_issues": 0,
+            "total_suggestions": 0,
+            "metrics_available": true,
+            "files_analyzed": 3
+          }
+        },
+        {
+          "test_name": "auto_fix_engine",
+          "status": "PASS",
+          "duration": 2.1091372966766357,
+          "message": "Auto-fix applied 4 fixes, quality improved",
+          "details": {
+            "initial_score": 48.0,
+            "auto_fixable_issues": 4,
+            "fixes_applied": 4,
+            "sample_fixes": [
+              "Consolidated 1 duplicate imports",
+              "Fixed bg-gray to bg-gray-100",
+              "Fixed text-black to text-gray-900"
+            ]
+          }
+        },
+        {
+          "test_name": "quality_performance",
+          "status": "PASS",
+          "duration": 1.0572075843811035,
+          "message": "Performance acceptable (1.06s)",
+          "details": {
+            "validation_duration": 1.0571393966674805,
+            "component_size": 4880,
+            "performance_acceptable": true,
+            "score": 74.55
+          }
+        },
+        {
+          "test_name": "edge_cases",
+          "status": "PASS",
+          "duration": 1.018571138381958,
+          "message": "Edge cases handled well (4/4)",
+          "details": {
+            "edge_cases_passed": 4,
+            "total_edge_cases": 4,
+            "success_rate": 1.0
+          }
+        }
+      ]
+    },
+    "vscode_integration": {
+      "integration_working": false,
+      "error": "Failed to start Python server: Python server failed to start",
+      "total_tests": 0,
+      "passed": 0,
+      "failed": 1
+    }
+  }
+}

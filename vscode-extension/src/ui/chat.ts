@@ -4,12 +4,18 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
   const styleUri = panel.webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'style.css')
   );
+  const nonce = getNonce();
 
   return `<!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; 
+          style-src ${panel.webview.cspSource} 'unsafe-inline'; 
+          script-src 'nonce-${nonce}';
+          connect-src ws: wss: http: https:;
+          worker-src 'none';">
       <link href="${styleUri}" rel="stylesheet">
       <title>Palette</title>
       <style>
@@ -176,7 +182,7 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
         <button id="sendBtn">➤</button>
       </div>
 
-      <script>
+      <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         let currentStreamMessage = null;
 
@@ -306,4 +312,13 @@ export function getChatWebviewHtml(panel: vscode.WebviewPanel, extensionUri: vsc
     </body>
     </html>
   `;
+}
+
+function getNonce() {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }

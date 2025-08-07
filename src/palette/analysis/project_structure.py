@@ -1,5 +1,5 @@
 """
-Project Structure Detection for Next.js and React Codebases
+Project Structure Detection for Vite + React Codebases
 Analyzes filesystem and package.json to determine correct file paths.
 """
 
@@ -13,19 +13,14 @@ from enum import Enum
 
 class FrameworkType(Enum):
     """Detected framework types"""
-    NEXTJS_APP_ROUTER = "nextjs_app_router"
-    NEXTJS_PAGES_ROUTER = "nextjs_pages_router"  
-    REACT_APP = "react_app"
+    REACT_APP = "react_app"  # Vite + React
     UNKNOWN = "unknown"
 
 
 class ProjectStructure(Enum):
     """Project directory structures"""
-    APP_ROUTER = "app"  # app/[route]/page.tsx
-    APP_ROUTER_SRC = "src_app"  # src/app/[route]/page.tsx
-    PAGES_ROUTER = "pages"  # pages/[route].tsx
-    PAGES_ROUTER_SRC = "src_pages"  # src/pages/[route].tsx
     REACT_SRC = "react_src"  # src/pages/[Page].tsx + src/components/
+    REACT_ROOT = "react_root"  # components/ at root level
 
 
 @dataclass
@@ -131,45 +126,25 @@ class ProjectStructureDetector:
     
     def _detect_directory_structure(self) -> ProjectStructure:
         """Detect the directory structure pattern"""
-        # Priority order for detection
-        checks = [
-            (ProjectStructure.APP_ROUTER_SRC, "src/app"),
-            (ProjectStructure.APP_ROUTER, "app"),
-            (ProjectStructure.PAGES_ROUTER_SRC, "src/pages"),
-            (ProjectStructure.PAGES_ROUTER, "pages"),
-            (ProjectStructure.REACT_SRC, "src")
-        ]
-        
-        for structure, path in checks:
-            if (self.project_path / path).is_dir():
-                return structure
-                
-        # Default fallback
-        return ProjectStructure.REACT_SRC if self._has_src_directory() else ProjectStructure.APP_ROUTER
+        # Simplified: Check for src directory
+        if self._has_src_directory():
+            return ProjectStructure.REACT_SRC
+        else:
+            return ProjectStructure.REACT_ROOT
     
     def _determine_framework_type(self, is_nextjs: bool, structure: ProjectStructure) -> FrameworkType:
         """Determine the specific framework type"""
-        if not is_nextjs:
-            return FrameworkType.REACT_APP
-            
-        if structure in [ProjectStructure.APP_ROUTER, ProjectStructure.APP_ROUTER_SRC]:
-            return FrameworkType.NEXTJS_APP_ROUTER
-        elif structure in [ProjectStructure.PAGES_ROUTER, ProjectStructure.PAGES_ROUTER_SRC]:
-            return FrameworkType.NEXTJS_PAGES_ROUTER
-        else:
-            return FrameworkType.NEXTJS_APP_ROUTER  # Default for Next.js
+        # Simplified: Always return REACT_APP for Vite projects
+        return FrameworkType.REACT_APP
     
     def _map_directories(self, structure: ProjectStructure, has_src: bool) -> Tuple[str, str]:
         """Map structure to actual directory paths"""
         mapping = {
-            ProjectStructure.APP_ROUTER: ("app", "components"),
-            ProjectStructure.APP_ROUTER_SRC: ("src/app", "src/components"),
-            ProjectStructure.PAGES_ROUTER: ("pages", "components"),
-            ProjectStructure.PAGES_ROUTER_SRC: ("src/pages", "src/components"),
-            ProjectStructure.REACT_SRC: ("src/pages", "src/components")
+            ProjectStructure.REACT_SRC: ("src/pages", "src/components"),
+            ProjectStructure.REACT_ROOT: ("pages", "components")
         }
         
-        return mapping.get(structure, ("app", "components"))
+        return mapping.get(structure, ("src/pages", "src/components"))
     
     def detect_intent(self, prompt: str) -> IntentType:
         """Detect what the user wants to create based on prompt"""
@@ -301,38 +276,17 @@ class ProjectStructureDetector:
         """Generate page file path"""
         ext = ".tsx" if project_info.has_typescript else ".jsx"
         
-        if project_info.framework == FrameworkType.NEXTJS_APP_ROUTER:
-            # Next.js App Router: app/[route]/page.tsx
-            if name in ['landing', 'home', 'index']:
-                return f"{project_info.routes_dir}/page{ext}"
-            else:
-                return f"{project_info.routes_dir}/{name}/page{ext}"
-                
-        elif project_info.framework == FrameworkType.NEXTJS_PAGES_ROUTER:
-            # Next.js Pages Router: pages/[route].tsx
-            if name in ['landing', 'home', 'index']:
-                return f"{project_info.routes_dir}/index{ext}"
-            else:
-                return f"{project_info.routes_dir}/{name}{ext}"
-                
-        else:
-            # React App: src/pages/[Page].tsx
-            page_name = name.capitalize() + "Page"
-            return f"{project_info.routes_dir}/{page_name}{ext}"
+        # React App: src/pages/[Page].tsx
+        page_name = name.capitalize() + "Page"
+        return f"{project_info.routes_dir}/{page_name}{ext}"
     
     def _generate_layout_path(self, name: str, project_info: ProjectInfo) -> str:
         """Generate layout file path"""
         ext = ".tsx" if project_info.has_typescript else ".jsx"
         
-        if project_info.framework in [FrameworkType.NEXTJS_APP_ROUTER]:
-            if name in ['main', 'root', 'app']:
-                return f"{project_info.routes_dir}/layout{ext}"
-            else:
-                return f"{project_info.routes_dir}/{name}/layout{ext}"
-        else:
-            # For other frameworks, treat as component
-            layout_name = name.capitalize() + "Layout"
-            return f"{project_info.components_dir}/{layout_name}{ext}"
+        # For React apps, treat as component
+        layout_name = name.capitalize() + "Layout"
+        return f"{project_info.components_dir}/{layout_name}{ext}"
     
     def _generate_component_path(self, name: str, project_info: ProjectInfo) -> str:
         """Generate component file path"""

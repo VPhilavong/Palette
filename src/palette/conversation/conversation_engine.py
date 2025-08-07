@@ -14,8 +14,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from ..generation.generator import UIGenerator
-from ..analysis.context import ProjectAnalyzer
+from ..generation.simple_shadcn_generator import SimpleShadcnGenerator  
+from ..analysis.simple_vite_analyzer import SimpleViteAnalyzer
 from ..utils.file_manager import FileManager
 from .design_system_analyzer import DesignSystemAnalyzer
 from .component_relationship_analyzer import ComponentRelationshipAnalyzer
@@ -33,6 +33,12 @@ class ConversationIntent(Enum):
     CREATE_VARIANT = "create_variant"       # Create component variant
     MULTI_STEP_FEATURE = "multi_step_feature"  # Complex multi-step generation
     PROJECT_QUESTION = "project_question"   # Questions about the project
+    # shadcn/ui specific intents
+    INSTALL_COMPONENT = "install_component"  # Install shadcn/ui component
+    CUSTOMIZE_COMPONENT = "customize_component"  # Customize shadcn/ui component
+    LIST_COMPONENTS = "list_components"      # List available shadcn/ui components
+    UPDATE_THEME = "update_theme"           # Update shadcn/ui theme/colors
+    START_REFINEMENT = "start_refinement"   # Start iterative refinement session
 
 
 @dataclass
@@ -145,6 +151,27 @@ class IntentClassifier:
                 'create a', 'build a', 'system', 'feature', 'module',
                 'dashboard', 'auth', 'login', 'profile', 'user',
                 'complete', 'full', 'entire', 'workflow'
+            ],
+            # shadcn/ui specific intents
+            ConversationIntent.INSTALL_COMPONENT: [
+                'install', 'add component', 'add shadcn', 'install shadcn',
+                'npx shadcn', 'add button', 'add card', 'install ui component'
+            ],
+            ConversationIntent.CUSTOMIZE_COMPONENT: [
+                'customize', 'modify component', 'change style', 'update theme',
+                'customize button', 'change colors', 'modify variant'
+            ],
+            ConversationIntent.LIST_COMPONENTS: [
+                'list components', 'available components', 'what components',
+                'show components', 'which components', 'shadcn components'
+            ],
+            ConversationIntent.UPDATE_THEME: [
+                'update theme', 'change theme', 'modify colors', 'update colors',
+                'theme colors', 'color scheme', 'dark mode', 'light mode'
+            ],
+            ConversationIntent.START_REFINEMENT: [
+                'refine session', 'refinement session', 'iterative', 'step by step',
+                'build iteratively', 'refine together', 'work together on'
             ]
         }
 
@@ -171,12 +198,8 @@ class ConversationEngine:
     
     def __init__(self, project_path: str = None):
         self.project_path = project_path
-        self.ui_generator = UIGenerator(
-            project_path=project_path,
-            enhanced_mode=True,
-            quality_assurance=True
-        )
-        self.project_analyzer = ProjectAnalyzer() if project_path else None
+        self.ui_generator = SimpleShadcnGenerator(project_path=project_path)
+        self.project_analyzer = SimpleViteAnalyzer() if project_path else None
         self.design_analyzer = DesignSystemAnalyzer(project_path) if project_path else None
         self.relationship_analyzer = ComponentRelationshipAnalyzer(project_path) if project_path else None
         self.multi_step_generator = MultiStepGenerator(project_path, self) if project_path else None
@@ -299,16 +322,28 @@ class ConversationEngine:
         
         return conversations
 
-    def process_message(self, user_message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-        """Process a user message and return a response"""
+    def process_message(self, user_message: str, history: Optional[List[Dict[str, str]]] = None, stream_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """Process a user message and return a response, with optional streaming support"""
         if not self.current_context:
             self.start_conversation()
+        
+        # Load conversation history if provided
+        if history:
+            self.current_context.messages = []
+            for msg in history:
+                conv_msg = ConversationMessage(
+                    role=msg['role'],
+                    content=msg['content'],
+                    timestamp=datetime.now()
+                )
+                self.current_context.messages.append(conv_msg)
         
         # Check if we're waiting for confirmation on a multi-step feature
         last_message = self.current_context.messages[-1] if self.current_context.messages else None
         if (last_message and last_message.role == 'assistant' and 
             last_message.metadata and last_message.metadata.get('awaiting_confirmation')):
-            return self._handle_plan_confirmation(user_message, last_message.metadata)
+            result = self._handle_plan_confirmation(user_message, last_message.metadata)
+            return {"response": result[0], "metadata": result[1]}
         
         # Classify intent
         intent = self.intent_classifier.classify_intent(user_message)
@@ -322,8 +357,8 @@ class ConversationEngine:
         )
         self.current_context.messages.append(user_msg)
         
-        # Process based on intent
-        response, metadata = self._handle_intent(intent, user_message)
+        # Process based on intent with streaming support
+        response, metadata = self._handle_intent(intent, user_message, stream_callback)
         
         # Add assistant message to context
         assistant_msg = ConversationMessage(
@@ -340,13 +375,13 @@ class ConversationEngine:
         except Exception as e:
             print(f"Debug: Session save failed: {e}")
         
-        return response, metadata
+        return {"response": response, "metadata": metadata or {}}
 
-    def _handle_intent(self, intent: ConversationIntent, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-        """Handle different conversation intents"""
+    def _handle_intent(self, intent: ConversationIntent, message: str, stream_callback: Optional[callable] = None) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Handle different conversation intents with optional streaming"""
         try:
             if intent == ConversationIntent.GENERATE_NEW:
-                return self._generate_new_component(message)
+                return self._generate_new_component(message, stream_callback)
             elif intent == ConversationIntent.REFINE_EXISTING:
                 return self._refine_existing_component(message)
             elif intent == ConversationIntent.EXPLAIN_CODE:
@@ -357,14 +392,25 @@ class ConversationEngine:
                 return self._suggest_improvements(message)
             elif intent == ConversationIntent.MULTI_STEP_FEATURE:
                 return self._handle_multi_step_feature(message)
+            # shadcn/ui specific intent handlers
+            elif intent == ConversationIntent.INSTALL_COMPONENT:
+                return self._install_shadcn_component(message)
+            elif intent == ConversationIntent.CUSTOMIZE_COMPONENT:
+                return self._customize_shadcn_component(message)
+            elif intent == ConversationIntent.LIST_COMPONENTS:
+                return self._list_available_components(message)
+            elif intent == ConversationIntent.UPDATE_THEME:
+                return self._update_theme(message)
+            elif intent == ConversationIntent.START_REFINEMENT:
+                return self._start_refinement_session(message)
             else:
                 return self._generate_new_component(message)
         except Exception as e:
             error_msg = f"I encountered an error while processing your request: {str(e)}"
             return error_msg, {"error": str(e)}
 
-    def _generate_new_component(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-        """Generate a new UI component"""
+    def _generate_new_component(self, message: str, stream_callback: Optional[callable] = None) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Generate a new UI component with optional streaming"""
         # Build context for generation
         context = self._build_generation_context()
         
@@ -386,8 +432,17 @@ class ConversationEngine:
             conversation_prompt += consistency_note
         
         try:
+            # Send streaming update if callback provided
+            if stream_callback:
+                stream_callback("🎨 Analyzing your request and project structure...")
+                
             # Generate using existing pipeline
-            component_code = self.ui_generator.generate_component(conversation_prompt, context)
+            result = self.ui_generator.generate(conversation_prompt, context)
+            component_code = result.get('code', '') if isinstance(result, dict) else str(result)
+            
+            # Send streaming update for code generation
+            if stream_callback:
+                stream_callback("✅ Component generated successfully!")
             
             # Register component with consistency manager
             component_name = f"{component_type}Component"
@@ -455,7 +510,8 @@ class ConversationEngine:
         context = self._build_generation_context()
         
         try:
-            refined_code = self.ui_generator.generate_component(refinement_prompt, context)
+            result = self.ui_generator.generate(refinement_prompt, context)
+            refined_code = result.get('code', '') if isinstance(result, dict) else str(result)
             
             response = f"I've updated the component based on your feedback:\n\n```tsx\n{refined_code}\n```\n\nIs this closer to what you had in mind?"
             
@@ -551,7 +607,8 @@ class ConversationEngine:
                 """
                 
                 context = self._build_generation_context()
-                variant_code = self.ui_generator.generate_component(variant_prompt, context)
+                result = self.ui_generator.generate(variant_prompt, context)
+                variant_code = result.get('code', '') if isinstance(result, dict) else str(result)
                 
                 response = f"I've created a custom variant of the component:\n\n```tsx\n{variant_code}\n```\n\nThis maintains the same basic structure while incorporating your requested changes."
                 
@@ -1002,3 +1059,193 @@ class ConversationEngine:
             
         except Exception as e:
             return f"Could not generate consistency report: {str(e)}"
+    
+    def _install_shadcn_component(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Handle shadcn/ui component installation requests"""
+        # Extract component name from message
+        component_name = self._extract_shadcn_component_name(message)
+        
+        if not component_name:
+            return ("Which shadcn/ui component would you like to install? "
+                   "Popular components include: button, card, form, input, dialog, dropdown-menu", None)
+        
+        try:
+            # Run the shadcn-ui add command
+            import subprocess
+            result = subprocess.run(
+                ["npx", "shadcn-ui@latest", "add", component_name], 
+                cwd=self.project_path,
+                capture_output=True, 
+                text=True
+            )
+            
+            if result.returncode == 0:
+                response = f"✅ Successfully installed {component_name} component!\n\n"
+                response += f"You can now import it in your components:\n"
+                response += f"```typescript\nimport {{ {component_name.title()} }} from '@/components/ui/{component_name}'\n```"
+                
+                return response, {"component_installed": component_name}
+            else:
+                return f"❌ Failed to install {component_name}: {result.stderr}", {"error": result.stderr}
+                
+        except Exception as e:
+            return f"Error installing component: {str(e)}", {"error": str(e)}
+    
+    def _customize_shadcn_component(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Handle shadcn/ui component customization requests"""
+        component_name = self._extract_shadcn_component_name(message)
+        
+        if not component_name:
+            return ("Which component would you like to customize? "
+                   "I can help you modify colors, sizes, variants, or add custom styles.", None)
+        
+        # Generate customized component using the existing generator
+        context = self._build_generation_context()
+        context["component_type"] = "customization"
+        context["base_component"] = component_name
+        
+        prompt = f"Customize the {component_name} component based on: {message}"
+        
+        try:
+            result = self.ui_generator.generate(prompt, context)
+            code = result.get('code', '') if isinstance(result, dict) else str(result)
+            
+            response = f"🎨 Here's your customized {component_name} component:\n\n{code}"
+            
+            return response, {
+                "customization": True,
+                "base_component": component_name,
+                "generated_code": code
+            }
+            
+        except Exception as e:
+            return f"Error customizing component: {str(e)}", {"error": str(e)}
+    
+    def _list_available_components(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """List available shadcn/ui components"""
+        # Get available shadcn/ui components from project
+        if self.project_path and self.project_analyzer:
+            analysis = self.project_analyzer.analyze_project(self.project_path)
+            installed_components = analysis.get("available_components", [])
+        else:
+            installed_components = []
+        
+        # List of popular shadcn/ui components
+        popular_components = [
+            "button", "card", "input", "form", "dialog", "dropdown-menu",
+            "select", "checkbox", "radio-group", "switch", "slider", 
+            "progress", "badge", "alert", "toast", "tooltip", "popover"
+        ]
+        
+        response = "📋 **shadcn/ui Components Overview**\n\n"
+        
+        if installed_components:
+            response += f"✅ **Installed in your project:** {', '.join(installed_components)}\n\n"
+        
+        response += "🎨 **Popular components you can install:**\n"
+        for component in popular_components:
+            status = "✅" if component in installed_components else "📦"
+            response += f"{status} `{component}` - Install with: `npx shadcn-ui@latest add {component}`\n"
+        
+        response += "\n💡 **Tip:** Ask me to 'install button' or 'customize card' to get started!"
+        
+        return response, {
+            "installed_components": installed_components,
+            "available_components": popular_components
+        }
+    
+    def _update_theme(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Handle theme update requests"""
+        response = "🎨 **Theme Customization Guide**\n\n"
+        
+        if "dark mode" in message.lower():
+            response += "To add dark mode support:\n"
+            response += "1. Update your `globals.css` with dark mode variables\n"
+            response += "2. Add `dark:` prefixes to your Tailwind classes\n"
+            response += "3. Use `next-themes` for theme switching\n\n"
+        elif "color" in message.lower():
+            response += "To customize colors:\n"
+            response += "1. Edit `globals.css` CSS variables:\n"
+            response += "```css\n:root {\n  --primary: 210 40% 98%;\n  --primary-foreground: 222.2 84% 4.9%;\n}\n```\n"
+            response += "2. Or use the shadcn/ui theme generator online\n\n"
+        else:
+            response += "I can help you:\n"
+            response += "• 🌙 Set up dark mode\n"
+            response += "• 🎨 Change color schemes\n"
+            response += "• 📱 Update component variants\n"
+            response += "• 🔧 Modify CSS variables\n\n"
+            response += "What specific theme changes would you like to make?"
+        
+        return response, {"theme_guidance": True}
+    
+    def _start_refinement_session(self, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Handle requests to start iterative refinement sessions"""
+        
+        # Extract the component type or description from the message
+        component_prompt = message
+        
+        # Remove refinement-related words to get the core component request
+        refinement_words = ['refine', 'session', 'iterative', 'step by step', 'build', 'together', 'work on']
+        for word in refinement_words:
+            component_prompt = component_prompt.replace(word, '').strip()
+        
+        # If message is too generic, ask for clarification
+        if len(component_prompt) < 10:
+            return ("I'd love to start a refinement session with you! "
+                   "What type of component would you like to create and refine together? "
+                   "For example: 'Let's build a hero section iteratively' or 'Refine a button component step by step'"), None
+        
+        # Use the start_refinement_session method
+        return self.start_refinement_session(component_prompt)
+    
+    def _extract_shadcn_component_name(self, message: str) -> Optional[str]:
+        """Extract shadcn/ui component name from message"""
+        message_lower = message.lower()
+        
+        # Common shadcn/ui components
+        components = [
+            "button", "card", "input", "form", "dialog", "dropdown-menu",
+            "select", "checkbox", "radio-group", "switch", "slider",
+            "progress", "badge", "alert", "toast", "tooltip", "popover",
+            "table", "tabs", "accordion", "avatar", "calendar", "collapsible"
+        ]
+        
+        # Look for exact matches first
+        for component in components:
+            if component in message_lower:
+                return component
+        
+        # Look for common variations
+        variations = {
+            "dropdown": "dropdown-menu",
+            "menu": "dropdown-menu", 
+            "radio": "radio-group",
+            "toggle": "switch"
+        }
+        
+        for variation, component in variations.items():
+            if variation in message_lower:
+                return component
+        
+        return None
+    
+    def start_refinement_session(self, initial_prompt: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Start a focused refinement session for iterative component improvement"""
+        
+        # Generate initial component
+        response, metadata = self._generate_new_component(initial_prompt)
+        
+        if metadata and 'component_code' in metadata:
+            # Enhance response with refinement guidance
+            response += f"\n\n💡 **Ready for refinements!** You can now:\n"
+            response += "• Ask me to adjust colors, sizes, or styling\n"
+            response += "• Request accessibility improvements\n" 
+            response += "• Add or modify functionality\n"
+            response += "• Change the component structure\n\n"
+            response += "Just describe what you'd like to change and I'll refine it!"
+            
+            if metadata:
+                metadata["refinement_session"] = True
+                metadata["initial_prompt"] = initial_prompt
+        
+        return response, metadata

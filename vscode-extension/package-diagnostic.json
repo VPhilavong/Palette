@@ -1,0 +1,55 @@
+{
+  "name": "code-palette-diagnostic",
+  "displayName": "Palette AI (Diagnostic)",
+  "description": "Diagnostic version to test basic VS Code extension functionality",
+  "version": "0.1.0-diagnostic",
+  "publisher": "sail-project",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension-diagnostic.js",
+  "keywords": [
+    "diagnostic",
+    "test"
+  ],
+  "activationEvents": [
+    "onCommand:palette.diagnostic",
+    "onCommand:palette.openDiagnostic"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "palette.diagnostic",
+        "title": "🩺 Palette: Test Basic Function",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.openDiagnostic",
+        "title": "🩺 Palette: Open Diagnostic Webview",
+        "category": "Palette"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "palette.diagnostic"
+        },
+        {
+          "command": "palette.openDiagnostic"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p ."
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.9.4"
+  }
+}

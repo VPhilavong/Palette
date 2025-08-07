@@ -8,3 +8,29 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+
+# Exclude development and test files
+*.md
+!readme.md
+!changelog.md
+diagnostic.js
+fix-parsing.js
+minimal-test.js
+package-minimal.json
+package.json.backup
+package.json.full
+test-extension.js
+
+# Exclude bundled CLI (too large for extension packaging)
+bundled/**
+
+# Exclude unnecessary node_modules
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/*.md
+node_modules/**/*.txt
+node_modules/**/README*
+node_modules/**/LICENSE*
+node_modules/**/CHANGELOG*
+node_modules/**/docs/**
+node_modules/**/.git/**

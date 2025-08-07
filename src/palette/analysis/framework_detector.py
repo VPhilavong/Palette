@@ -15,25 +15,14 @@ class FrameworkDetector:
     """Detects React frameworks and project structures."""
     
     def __init__(self):
+        # Simplified: Only support Vite + React projects
         self.supported_frameworks = {
-            "next.js": ["next.config.js", "next.config.ts", "app/", "pages/"],
-            "remix": ["remix.config.js", "remix.config.ts", "app/routes/", "app/root.tsx"],
-            "react": ["src/", "public/", "package.json"],
-            "vite": ["vite.config.js", "vite.config.ts", "frontend/vite.config.js", "frontend/vite.config.ts"],
-            "monorepo": ["turbo.json", "yarn.lock", "workspaces", "apps/", "packages/"],
-            "fullstack": ["frontend/", "backend/", "docker-compose.yml"],
-        }
-        
-        self.monorepo_patterns = {
-            "calcom": ["@calcom/", "turbo.json", "packages/config/tailwind-preset.js"],
-            "nx": ["nx.json", "workspace.json"],
-            "lerna": ["lerna.json"],
-            "rush": ["rush.json"],
+            "vite": ["vite.config.js", "vite.config.ts", "vite.config.mjs"],
         }
     
     def detect(self, project_path: str) -> ProjectStructure:
         """
-        Detect project structure and framework.
+        Detect project structure for Vite + React projects.
         
         Args:
             project_path: Path to the project directory
@@ -44,11 +33,10 @@ class FrameworkDetector:
         framework = self._detect_framework(project_path)
         styling = self._detect_styling_system(project_path)
         component_library = self._detect_component_library(project_path)
-        monorepo_type = self._detect_monorepo_type(project_path)
         
         # Get directory structure
         components_dir = self._find_components_directory(project_path)
-        pages_dir = self._find_pages_directory(project_path)
+        pages_dir = None  # Vite projects don't have pages directories
         
         # Check for TypeScript and Tailwind
         has_typescript = self._has_typescript(project_path)
@@ -58,8 +46,8 @@ class FrameworkDetector:
             framework=framework,
             styling=styling,
             component_library=component_library,
-            is_monorepo=monorepo_type is not None,
-            monorepo_type=monorepo_type,
+            is_monorepo=False,  # We don't support monorepos anymore
+            monorepo_type=None,
             components_dir=components_dir,
             pages_dir=pages_dir,
             has_typescript=has_typescript,
@@ -67,18 +55,15 @@ class FrameworkDetector:
         )
     
     def _detect_framework(self, project_path: str) -> str:
-        """Detect the React framework being used."""
-        # First check for monorepo patterns
-        monorepo_type = self._detect_monorepo_type(project_path)
-        if monorepo_type:
-            return f"monorepo-{monorepo_type}"
+        """Detect if this is a Vite + React project."""
+        # Check for Vite config files
+        vite_configs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"]
+        has_vite_config = any(
+            os.path.exists(os.path.join(project_path, config))
+            for config in vite_configs
+        )
         
-        # Check for full-stack structure
-        fullstack_type = self._detect_fullstack_structure(project_path)
-        if fullstack_type:
-            return f"fullstack-{fullstack_type}"
-        
-        # Check package.json dependencies
+        # Check package.json for Vite and React
         package_json_path = os.path.join(project_path, "package.json")
         if os.path.exists(package_json_path):
             try:
@@ -88,83 +73,22 @@ class FrameworkDetector:
                         **package_data.get("dependencies", {}),
                         **package_data.get("devDependencies", {}),
                     }
-                
-                # Check for Remix first (before Vite, as Remix uses Vite)
-                if any(dep.startswith("@remix-run/") for dep in dependencies):
-                    return "remix"
-                elif "next" in dependencies:
-                    return "next.js"
-                elif "vite" in dependencies:
-                    return "vite"
-                elif "react" in dependencies:
-                    return "react"
+                    
+                    has_vite = "vite" in dependencies
+                    has_react = "react" in dependencies
+                    
+                    if has_vite and has_react:
+                        return "vite"
             except json.JSONDecodeError:
                 pass
         
-        # Fallback to file-based detection
-        for framework, indicators in self.supported_frameworks.items():
-            if framework in ["monorepo", "fullstack"]:
-                continue
-            
-            matches = sum(1 for indicator in indicators
-                         if os.path.exists(os.path.join(project_path, indicator)))
-            
-            if matches >= 2:
-                return framework
+        # If we have Vite config, assume it's a Vite project
+        if has_vite_config:
+            return "vite"
         
         return "unknown"
     
-    def _detect_monorepo_type(self, project_path: str) -> Optional[str]:
-        """Detect monorepo type and return the specific type."""
-        for monorepo_type, indicators in self.monorepo_patterns.items():
-            matches = 0
-            for indicator in indicators:
-                if os.path.exists(os.path.join(project_path, indicator)):
-                    matches += 1
-            
-            # Require at least 2 matches for confidence
-            if matches >= 2:
-                return monorepo_type
-        
-        # Generic monorepo detection
-        monorepo_files = ["turbo.json", "yarn.lock", "lerna.json", "nx.json"]
-        monorepo_dirs = ["apps/", "packages/", "libs/"]
-        
-        has_config = any(os.path.exists(os.path.join(project_path, f)) for f in monorepo_files)
-        has_structure = any(os.path.exists(os.path.join(project_path, d)) for d in monorepo_dirs)
-        
-        if has_config and has_structure:
-            return "generic"
-        
-        return None
     
-    def _detect_fullstack_structure(self, project_path: str) -> Optional[str]:
-        """Detect if this is a full-stack project structure."""
-        frontend_dir = os.path.join(project_path, "frontend")
-        backend_dir = os.path.join(project_path, "backend")
-        
-        if os.path.exists(frontend_dir) and os.path.exists(backend_dir):
-            # Check what's in the frontend
-            frontend_package = os.path.join(frontend_dir, "package.json")
-            if os.path.exists(frontend_package):
-                try:
-                    with open(frontend_package, "r") as f:
-                        package_data = json.load(f)
-                        deps = {**package_data.get("dependencies", {}),
-                               **package_data.get("devDependencies", {})}
-                        
-                        if "next" in deps:
-                            return "next.js"
-                        elif "vite" in deps:
-                            return "vite"
-                        elif "react" in deps:
-                            return "react"
-                except json.JSONDecodeError:
-                    pass
-            
-            return "generic"
-        
-        return None
     
     def _detect_styling_system(self, project_path: str) -> str:
         """Detect the styling system (Tailwind, CSS modules, etc.)."""
@@ -197,14 +121,10 @@ class FrameworkDetector:
         return "css"
     
     def _detect_component_library(self, project_path: str) -> str:
-        """Detect component library being used."""
-        # Component library patterns
+        """Detect if shadcn/ui is being used."""
+        # We primarily support shadcn/ui
         component_libraries = {
             "shadcn/ui": ["components/ui/", "@radix-ui", "class-variance-authority"],
-            "calcom": ["@calcom/ui", "class-variance-authority", "packages/ui"],
-            "chakra-ui": ["@chakra-ui/react", "chakra-ui"],
-            "material-ui": ["@mui/material", "@material-ui"],
-            "ant-design": ["antd"],
         }
         
         # Check package.json dependencies
@@ -289,16 +209,6 @@ class FrameworkDetector:
         
         return None
     
-    def _find_pages_directory(self, project_path: str) -> Optional[str]:
-        """Find the pages/routes directory."""
-        possible_dirs = ["app", "pages", "src/pages", "app/routes"]
-        
-        for dir_path in possible_dirs:
-            full_path = os.path.join(project_path, dir_path)
-            if os.path.exists(full_path) and os.path.isdir(full_path):
-                return dir_path
-        
-        return None
     
     def _has_typescript(self, project_path: str) -> bool:
         """Check if the project uses TypeScript."""

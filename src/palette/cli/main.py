@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import shutil
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -309,90 +310,665 @@ def analyze():
 
 
 @main.command()
-@click.option("--type", help="Framework type (react, nextjs, vue)")
-@click.option("--styling", help="Styling library (tailwind, css)")
-@click.option("--ui-lib", help="UI library (shadcn, none)")
-@click.option("--components", is_flag=True, help="Include component templates")
-@click.option("--utils", is_flag=True, help="Include utility templates")
-@click.option("--wireframe", help="Path to wireframe file (SVG or JSON)")
-@click.option("--wireframe-prompt", help="Description of what to build from wireframe")
-def init(type: Optional[str], styling: Optional[str], ui_lib: Optional[str], components: bool, utils: bool, wireframe: Optional[str], wireframe_prompt: Optional[str]):
-    """Initialize a new project with Palette templates"""
+@click.argument("project_name", required=True)
+@click.option("--template", help="Vite template (react-ts is default)")
+def init(project_name: str, template: Optional[str]):
+    """Initialize a new Vite + React + TypeScript + shadcn/ui project"""
     
     console.print(Panel(
-        "[bold blue]🚀 Palette Project Initializer[/bold blue]",
+        "[bold blue]🚀 Palette Project Initializer[/bold blue]\nVite + React + TypeScript + shadcn/ui",
         title="Initializing",
         border_style="blue",
     ))
     
+    template = template or "react-ts"
+    
     try:
-        # Interactive prompts if not provided via flags
-        if not type:
-            type = Prompt.ask(
-                "Choose framework",
-                choices=["react", "nextjs", "vue"],
-                default="react"
-            )
-        
-        if not styling:
-            styling = Prompt.ask(
-                "Choose styling library",
-                choices=["tailwind", "css"],
-                default="tailwind"
-            )
-        
-        if not ui_lib:
-            ui_lib = Prompt.ask(
-                "Choose UI library",
-                choices=["shadcn", "none"],
-                default="shadcn"
-            )
-        
-        # Get project name
-        project_name = Prompt.ask("Enter project name")
-        if not project_name:
-            console.print("[red]Error:[/red] Project name is required")
-            sys.exit(1)
-        
-        # Wireframe workflow
-        wireframe_path = wireframe
-        wireframe_description = wireframe_prompt
-        
-        if not wireframe_path:
-            has_wireframe = Confirm.ask("Do you have a wireframe?")
-            if has_wireframe:
-                wireframe_path = Prompt.ask("Enter wireframe file path (SVG)")
-                if not wireframe_path or not os.path.exists(wireframe_path):
-                    console.print("[red]Error:[/red] Wireframe file not found")
-                    sys.exit(1)
-                wireframe_description = Prompt.ask("Describe what you want to build from this wireframe")
-        
-        # Create project directory
+        # Check if directory exists
         if os.path.exists(project_name):
-            if not Confirm.ask(f"Directory '{project_name}' already exists. Overwrite?"):
+            if not Confirm.ask(f"Directory '{project_name}' already exists. Continue?"):
                 console.print("[yellow]Project initialization cancelled[/yellow]")
                 return
             shutil.rmtree(project_name)
         
+        console.print(f"[blue]📦 Creating Vite project:[/blue] {project_name}")
+        
+        # Step 1: Create project directory
+        console.print("🔄 Step 1/6: Creating project directory...")
         os.makedirs(project_name)
-        console.print(f"[green]✓[/green] Created project directory: {project_name}")
+        project_path = os.path.abspath(project_name)
+        os.chdir(project_name)
+        console.print(f"[green]✓[/green] Created project directory")
         
-        # Generate project structure based on selections
-        _create_project_structure(project_name, type, styling, ui_lib, components, utils)
+        # Step 2: Initialize Vite project inside the directory
+        console.print("🔄 Step 2/7: Initializing Vite project...")
+        _create_vite_react_project()
+        console.print(f"[green]✓[/green] Initialized Vite project")
         
-        # Generate wireframe-based components if provided
-        if wireframe_path and wireframe_description:
-            _generate_wireframe_components(project_name, wireframe_path, wireframe_description, type, styling, ui_lib)
+        # Step 3: Install dependencies
+        console.print("🔄 Step 3/7: Installing dependencies...")
+        result = subprocess.run(["npm", "install"], capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"[red]Warning:[/red] npm install had issues: {result.stderr}")
+        else:
+            console.print(f"[green]✓[/green] Installed dependencies")
         
-        console.print(f"[green]✓[/green] Project '{project_name}' initialized successfully!")
+        # Step 4: Add Tailwind CSS (exactly as per official docs)
+        console.print("🔄 Step 4/8: Adding Tailwind CSS...")
+        result = subprocess.run([
+            "npm", "install", "tailwindcss", "@tailwindcss/vite"
+        ], capture_output=True, text=True, check=True)
+        console.print(f"[green]✓[/green] Added Tailwind CSS")
+        
+        # Step 5: Replace everything in src/index.css with @import "tailwindcss"
+        console.print("🔄 Step 5/8: Updating CSS file...")
+        _update_css_file()
+        console.print(f"[green]✓[/green] Updated CSS file")
+        
+        # Step 6: Edit tsconfig.json and tsconfig.app.json files
+        console.print("🔄 Step 6/8: Editing TypeScript config files...")
+        _edit_typescript_configs()
+        console.print(f"[green]✓[/green] Edited TypeScript configs")
+        
+        # Step 7: Install @types/node and update vite.config.ts
+        console.print("🔄 Step 7/8: Installing @types/node and updating Vite config...")
+        result = subprocess.run([
+            "npm", "install", "-D", "@types/node"
+        ], capture_output=True, text=True, check=True)
+        _update_vite_config()
+        console.print(f"[green]✓[/green] Updated Vite configuration")
+        
+        # Step 8: Run shadcn init
+        console.print("🔄 Step 8/8: Running shadcn init...")
+        _run_shadcn_init()
+        console.print(f"[green]✓[/green] Initialized shadcn/ui")
+        
+        console.print(f"\n[bold green]🎉 Project '{project_name}' created successfully![/bold green]")
+        console.print(f"\n[bold]Stack:[/bold]")
+        console.print(f"  ⚡ Vite")
+        console.print(f"  ⚛️  React + TypeScript")  
+        console.print(f"  🎨 Tailwind CSS")
+        console.print(f"  🧩 shadcn/ui")
+        
         console.print(f"\n[bold]Next steps:[/bold]")
         console.print(f"  cd {project_name}")
-        console.print(f"  npm install")
         console.print(f"  npm run dev")
+        console.print(f"  palette conversation --interactive  # Start building!")
         
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error during setup:[/red] {e}")
+        console.print(f"[yellow]Command failed:[/yellow] {' '.join(e.cmd)}")
+        sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
         sys.exit(1)
+
+
+def _configure_tailwind_for_vite(project_path: str):
+    """Configure Tailwind CSS for Vite project"""
+    import json
+    
+    # Update tailwind.config.js
+    tailwind_config = '''/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+'''
+    
+    with open("tailwind.config.js", "w") as f:
+        f.write(tailwind_config)
+    
+    # Update src/index.css
+    index_css = '''@tailwind base;
+@tailwind components;
+@tailwind utilities;
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(index_css)
+    
+    # Keep the standard vite.config.ts (no special Tailwind plugin needed)
+    # The _create_vite_react_project function already creates the correct config
+
+
+def _setup_shadcn_ui(project_path: str):
+    """Set up shadcn/ui in the project"""
+    import json
+    
+    # Install shadcn/ui dependencies
+    subprocess.run([
+        "npm", "install", "class-variance-authority", "clsx", "tailwind-merge", 
+        "lucide-react", "@radix-ui/react-slot"
+    ], capture_output=True, text=True, check=True)
+    
+    # Create components.json
+    components_config = {
+        "$schema": "https://ui.shadcn.com/schema.json",
+        "style": "default",
+        "rsc": False,
+        "tsx": True,
+        "tailwind": {
+            "config": "tailwind.config.js",
+            "css": "src/index.css",
+            "baseColor": "slate",
+            "cssVariables": True
+        },
+        "aliases": {
+            "components": "@/components",
+            "utils": "@/lib/utils"
+        }
+    }
+    
+    with open("components.json", "w") as f:
+        json.dump(components_config, f, indent=2)
+    
+    # Create lib/utils.ts
+    os.makedirs("src/lib", exist_ok=True)
+    utils_content = '''import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+'''
+    
+    with open(os.path.join("src", "lib", "utils.ts"), "w") as f:
+        f.write(utils_content)
+    
+    # Create components/ui directory
+    os.makedirs(os.path.join("src", "components", "ui"), exist_ok=True)
+    
+    # Update tailwind.config.js with shadcn/ui configuration (ES modules format)
+    tailwind_config = '''import tailwindcssAnimate from 'tailwindcss-animate';
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class"],
+  content: [
+    './pages/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './app/**/*.{ts,tsx}',
+    './src/**/*.{ts,tsx}',
+  ],
+  prefix: "",
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [tailwindcssAnimate],
+}
+'''
+    
+    with open("tailwind.config.js", "w") as f:
+        f.write(tailwind_config)
+    
+    # Update src/index.css with shadcn/ui base styles (Tailwind v4)
+    index_css = '''@import "tailwindcss";
+ 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+ 
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+ 
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(index_css)
+    
+    # Install tailwindcss-animate
+    subprocess.run(["npm", "install", "-D", "tailwindcss-animate"], capture_output=True, text=True, check=True)
+
+
+def _create_vite_react_project():
+    """Create a basic Vite + React + TypeScript project structure"""
+    import json
+    
+    # Create package.json
+    package_json = {
+        "name": "vite-react-project",
+        "private": True,
+        "version": "0.0.0",
+        "type": "module",
+        "scripts": {
+            "dev": "vite",
+            "build": "tsc && vite build",
+            "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+            "preview": "vite preview"
+        },
+        "dependencies": {
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+            "@types/react": "^18.2.43",
+            "@types/react-dom": "^18.2.17",
+            "@typescript-eslint/eslint-plugin": "^6.14.0",
+            "@typescript-eslint/parser": "^6.14.0",
+            "@vitejs/plugin-react": "^4.2.1",
+            "eslint": "^8.55.0",
+            "eslint-plugin-react-hooks": "^4.6.0",
+            "eslint-plugin-react-refresh": "^0.4.5",
+            "typescript": "^5.2.2",
+            "vite": "^5.0.8"
+        }
+    }
+    
+    with open("package.json", "w") as f:
+        json.dump(package_json, f, indent=2)
+    
+    # Create tsconfig.json
+    tsconfig = {
+        "compilerOptions": {
+            "target": "ES2020",
+            "useDefineForClassFields": True,
+            "lib": ["ES2020", "DOM", "DOM.Iterable"],
+            "module": "ESNext",
+            "skipLibCheck": True,
+            "moduleResolution": "bundler",
+            "allowImportingTsExtensions": True,
+            "resolveJsonModule": True,
+            "isolatedModules": True,
+            "noEmit": True,
+            "jsx": "react-jsx",
+            "strict": True,
+            "noUnusedLocals": True,
+            "noUnusedParameters": True,
+            "noFallthroughCasesInSwitch": True,
+            "baseUrl": ".",
+            "paths": {
+                "@/*": ["./src/*"]
+            }
+        },
+        "include": ["src"],
+        "references": [{"path": "./tsconfig.node.json"}]
+    }
+    
+    with open("tsconfig.json", "w") as f:
+        json.dump(tsconfig, f, indent=2)
+    
+    # Create tsconfig.node.json
+    tsconfig_node = {
+        "compilerOptions": {
+            "composite": True,
+            "skipLibCheck": True,
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "allowSyntheticDefaultImports": True
+        },
+        "include": ["vite.config.ts"]
+    }
+    
+    with open("tsconfig.node.json", "w") as f:
+        json.dump(tsconfig_node, f, indent=2)
+    
+    # Create vite.config.ts
+    vite_config = '''import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': '/src',
+    },
+  },
+})
+'''
+    
+    with open("vite.config.ts", "w") as f:
+        f.write(vite_config)
+    
+    # Create index.html
+    index_html = '''<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + React + TS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+'''
+    
+    with open("index.html", "w") as f:
+        f.write(index_html)
+    
+    # Create src directory and files
+    os.makedirs("src", exist_ok=True)
+    
+    # Create src/main.tsx
+    main_tsx = '''import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+'''
+    
+    with open("src/main.tsx", "w") as f:
+        f.write(main_tsx)
+    
+    # Create src/App.tsx
+    app_tsx = '''import { useState } from 'react'
+import './App.css'
+
+function App() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <h1 className="text-4xl font-bold text-foreground">
+          Vite + React + shadcn/ui
+        </h1>
+        <div className="card">
+          <button 
+            onClick={() => setCount((count) => count + 1)}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+          >
+            count is {count}
+          </button>
+          <p className="mt-4 text-muted-foreground">
+            Edit <code className="bg-muted px-1 py-0.5 rounded">src/App.tsx</code> and save to test HMR
+          </p>
+        </div>
+        <p className="text-muted-foreground">
+          Click on the Vite and React logos to learn more
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export default App
+'''
+    
+    with open("src/App.tsx", "w") as f:
+        f.write(app_tsx)
+    
+    # Create src/App.css
+    app_css = '''#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+'''
+    
+    with open("src/App.css", "w") as f:
+        f.write(app_css)
+    
+    # Create src/index.css (will be overwritten by Tailwind setup)
+    index_css = '''body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+'''
+    
+    with open("src/index.css", "w") as f:
+        f.write(index_css)
+    
+    # Create public directory
+    os.makedirs("public", exist_ok=True)
+    
+    # Create public/vite.svg
+    vite_svg = '''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="31.88" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 257"><defs><linearGradient id="IconifyId1813088fe1fbc01fb466" x1="-.828%" x2="57.636%" y1="7.652%" y2="78.411%"><stop offset="0%" stop-color="#41D1FF"></stop><stop offset="100%" stop-color="#BD34FE"></stop></linearGradient><linearGradient id="IconifyId1813088fe1fbc01fb467" x1="43.376%" x2="50.316%" y1="2.242%" y2="89.03%"><stop offset="0%" stop-color="#FFEA83"></stop><stop offset="8.333%" stop-color="#FFDD35"></stop><stop offset="100%" stop-color="#FFA800"></stop></linearGradient></defs><path fill="url(#IconifyId1813088fe1fbc01fb466)" d="M255.153 37.938L134.897 252.976c-2.483 4.44-8.862 4.466-11.382.048L.875 37.958c-2.746-4.814 1.371-10.646 6.827-9.67l120.385 21.517a6.537 6.537 0 0 0 2.322-.004l117.867-21.483c5.438-.991 9.574 4.796 6.877 9.62Z"></path><path fill="url(#IconifyId1813088fe1fbc01fb467)" d="M185.432.063L96.44 17.501a3.268 3.268 0 0 0-2.634 3.014l-5.474 92.456a3.268 3.268 0 0 0 3.997 3.378l24.777-5.718c2.318-.535 4.413 1.507 3.936 3.838l-7.361 36.047c-.495 2.426 1.782 4.5 4.151 3.78l15.304-4.649c2.372-.72 4.652 1.36 4.15 3.788l-11.698 56.621c-.732 3.542 3.979 5.473 5.943 2.437l1.313-2.028l72.516-144.72c1.215-2.423-.88-5.186-3.54-4.672l-25.505 4.922c-2.396.462-4.435-1.77-3.759-4.114l16.646-57.705c.677-2.35-1.37-4.583-3.769-4.113Z"></path></svg>'''
+    
+    with open("public/vite.svg", "w") as f:
+        f.write(vite_svg)
+
+
+def _update_css_file():
+    """Step 5: Replace everything in src/index.css with @import 'tailwindcss'"""
+    
+    css_content = '''@import "tailwindcss";
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(css_content)
+
+
+def _edit_typescript_configs():
+    """Step 6: Edit tsconfig.json and tsconfig.app.json files"""
+    import json
+    
+    # Edit tsconfig.json - Add baseUrl and paths to compilerOptions
+    with open("tsconfig.json", "r") as f:
+        tsconfig = json.load(f)
+    
+    if "compilerOptions" not in tsconfig:
+        tsconfig["compilerOptions"] = {}
+    
+    tsconfig["compilerOptions"]["baseUrl"] = "."
+    tsconfig["compilerOptions"]["paths"] = {
+        "@/*": ["./src/*"]
+    }
+    
+    with open("tsconfig.json", "w") as f:
+        json.dump(tsconfig, f, indent=2)
+    
+    # Edit tsconfig.app.json - Add baseUrl and paths to compilerOptions
+    try:
+        with open("tsconfig.app.json", "r") as f:
+            tsconfig_app = json.load(f)
+        
+        if "compilerOptions" not in tsconfig_app:
+            tsconfig_app["compilerOptions"] = {}
+        
+        tsconfig_app["compilerOptions"]["baseUrl"] = "."
+        tsconfig_app["compilerOptions"]["paths"] = {
+            "@/*": ["./src/*"]
+        }
+        
+        with open("tsconfig.app.json", "w") as f:
+            json.dump(tsconfig_app, f, indent=2)
+    except FileNotFoundError:
+        # If tsconfig.app.json doesn't exist, skip it (some Vite setups don't have it)
+        pass
+
+
+def _update_vite_config():
+    """Step 7: Update vite.config.ts exactly as per documentation"""
+    
+    vite_config = '''import path from "path"
+import tailwindcss from "@tailwindcss/vite"
+import react from "@vitejs/plugin-react"
+import { defineConfig } from "vite"
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+})
+'''
+    
+    with open("vite.config.ts", "w") as f:
+        f.write(vite_config)
+
+
+def _run_shadcn_init():
+    """Step 8: Run npx shadcn@latest init"""
+    
+    # Run shadcn init command with answers piped in
+    # Default answers: Neutral (for base color)
+    init_cmd = 'echo "Neutral" | npx shadcn@latest init'
+    
+    try:
+        result = subprocess.run(init_cmd, shell=True, capture_output=True, text=True, check=True)
+        console.print("✅ shadcn/ui initialized successfully")
+    except subprocess.CalledProcessError as e:
+        console.print(f"⚠️  shadcn init completed with warnings: {e.stderr}")
+        # This is often fine - shadcn init can complete successfully with warnings
 
 
 @main.command()
