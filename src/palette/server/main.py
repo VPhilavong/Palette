@@ -984,7 +984,7 @@ async def add_route(request: RouteRequest):
             content = app_path.read_text()
             
             # Determine if this is a named or default export by checking the file
-            import_path = Path(request.projectPath) / request.importPath.replace('./', 'src/') + '.tsx'
+            import_path = Path(request.projectPath) / (request.importPath.replace('./', 'src/') + '.tsx')
             is_named_export = False
             
             if import_path.exists():

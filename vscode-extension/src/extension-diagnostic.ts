@@ -335,6 +335,8 @@ function parseAIResponse(aiResponse: string): {content: string, codeBlocks: Arra
                 /export\s+const\s+(\w+):\s*React\.FC(?:<\w+>)?\s*=/,
                 // export const ComponentName: FC<Props> = 
                 /export\s+const\s+(\w+):\s*FC(?:<\w+>)?\s*=/,
+                // const ComponentName: React.FC = (without export, common pattern)
+                /const\s+(\w+):\s*React\.FC\s*=/,
                 // export default function ComponentName
                 /export\s+default\s+function\s+(\w+)/,
                 // export function ComponentName  
@@ -346,7 +348,9 @@ function parseAIResponse(aiResponse: string): {content: string, codeBlocks: Arra
                 // const ComponentName = (arrow function)
                 /const\s+(\w+)\s*=\s*\(/,
                 // Handle JSX components (look for JSX return)
-                /const\s+(\w+)\s*=.*?=>\s*\(/s
+                /const\s+(\w+)\s*=.*?=>\s*\(/s,
+                // Look for export default ComponentName at the end
+                /export\s+default\s+(\w+)$/m
             ];
             
             for (const pattern of patterns) {
@@ -428,6 +432,8 @@ async function handleRouteIntegration(codeBlocks: Array<{code: string, language:
                 /export\s+const\s+(\w+):\s*React\.FC(?:<\w+>)?\s*=/,
                 // export const ComponentName: FC<Props> = 
                 /export\s+const\s+(\w+):\s*FC(?:<\w+>)?\s*=/,
+                // const ComponentName: React.FC = (without export, common pattern)
+                /const\s+(\w+):\s*React\.FC\s*=/,
                 // export default function ComponentName
                 /export\s+default\s+function\s+(\w+)/,
                 // export function ComponentName
@@ -439,7 +445,9 @@ async function handleRouteIntegration(codeBlocks: Array<{code: string, language:
                 // const ComponentName = (arrow function)
                 /const\s+(\w+)\s*=\s*\(/,
                 // Handle JSX components
-                /const\s+(\w+)\s*=.*?=>\s*\(/s
+                /const\s+(\w+)\s*=.*?=>\s*\(/s,
+                // Look for export default ComponentName at the end
+                /export\s+default\s+(\w+)$/m
             ];
             
             for (const pattern of routePatterns) {
@@ -688,6 +696,8 @@ function extractActualComponentName(code: string): string | null {
         /export\s+const\s+(\w+):\s*React\.FC(?:<\w+>)?\s*=/,
         // export const ComponentName: FC<Props> = 
         /export\s+const\s+(\w+):\s*FC(?:<\w+>)?\s*=/,
+        // const ComponentName: React.FC = (without export, common pattern)
+        /const\s+(\w+):\s*React\.FC\s*=/,
         // export default function ComponentName
         /export\s+default\s+function\s+(\w+)/,
         // export function ComponentName  
@@ -697,7 +707,9 @@ function extractActualComponentName(code: string): string | null {
         // function ComponentName (for export default at end)
         /function\s+(\w+)\s*\(/,
         // const ComponentName = (arrow function)
-        /const\s+(\w+)\s*=\s*\(/
+        /const\s+(\w+)\s*=\s*\(/,
+        // Look for export default ComponentName at the end
+        /export\s+default\s+(\w+)$/m
     ];
     
     for (const pattern of patterns) {
