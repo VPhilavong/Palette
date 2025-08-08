@@ -1,12 +1,10 @@
 import type { BackendRequest, BackendResponse } from '../types';
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateText } from 'ai';
 
 const BACKEND_URL = 'http://localhost:8765';
 
 export class PaletteAPI {
   /**
-   * Generate AI response using direct AI SDK (following extension-diagnostic.ts pattern)
+   * Generate AI response using direct OpenAI API calls (simplified approach)
    */
   static async generateResponse(request: BackendRequest): Promise<BackendResponse> {
     try {
@@ -15,7 +13,10 @@ export class PaletteAPI {
         return this.getFallbackResponse(request.message, 'No API key provided');
       }
 
-      // Create OpenAI client with API key (same as extension-diagnostic.ts)
+      // Create OpenAI client with API key (direct approach like GitHub version)
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      const { generateText } = await import('ai');
+      
       const openaiClient = createOpenAI({
         apiKey: request.api_key
       });
@@ -30,9 +31,9 @@ export class PaletteAPI {
         `${conversationMessages}\n\nUser: ${request.message}` : 
         request.message;
 
-      // Generate response using AI SDK (same pattern as extension-diagnostic.ts)
+      // Generate response using AI SDK (direct approach)
       const result = await generateText({
-        model: openaiClient(request.model || 'gpt-4.1-2025-04-14'),
+        model: openaiClient(request.model || 'gpt-4o-mini'),
         system: systemPrompt,
         prompt: fullPrompt,
         temperature: 0.7
@@ -46,7 +47,7 @@ export class PaletteAPI {
       };
 
     } catch (error: any) {
-      console.error('AI SDK generation error:', error);
+      console.error('Direct OpenAI API error:', error);
       return this.getFallbackResponse(request.message, error.message);
     }
   }
@@ -101,7 +102,7 @@ export class PaletteAPI {
   }
 
   /**
-   * Build system prompt for Palette AI (similar to extension-diagnostic.ts)
+   * Build system prompt for Palette AI (similar to GitHub version)
    */
   private static buildSystemPrompt(): string {
     return `You are Palette AI, an expert React/TypeScript developer specializing in modern web development with:

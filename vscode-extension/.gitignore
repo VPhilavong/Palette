@@ -1,0 +1,43 @@
+# Compiled TypeScript output
+out/
+*.js
+*.js.map
+
+# Node modules
+node_modules/
+
+# VS Code settings (optional - comment out if you want to share)
+.vscode/
+
+# Logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Allow specific JS files that are actual source files (not compiled)
+!chatbot/*.js
+!scripts/*.js
+
+# Ignore compiled JS in src (these should be TS only)
+src/**/*.js
+src/**/*.js.map

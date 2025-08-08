@@ -13,6 +13,10 @@ export interface ConversationMessage {
         codeBlocks?: CodeBlock[];
         intent?: string;
         context?: any;
+        availableActions?: string[];
+        error?: string;
+        isSetup?: boolean;
+        showSettings?: boolean;
     };
 }
 

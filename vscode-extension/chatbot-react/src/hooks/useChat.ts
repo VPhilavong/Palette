@@ -8,7 +8,7 @@ const getConfigFromUrl = () => {
   const params = new URLSearchParams(window.location.search);
   return {
     apiKey: params.get('apiKey') || '',
-    model: params.get('model') || 'gpt-4.1-2025-04-14',
+    model: params.get('model') || 'gpt-4o-mini',
     backendUrl: params.get('backendUrl') || 'http://localhost:8765'
   };
 };

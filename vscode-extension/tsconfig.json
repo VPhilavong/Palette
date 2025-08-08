@@ -16,6 +16,7 @@
   },
   "include": ["src"],
   "exclude": [
-    "node_modules/zod/v4/**/*"
+    "node_modules",
+    "out"
   ]
 }

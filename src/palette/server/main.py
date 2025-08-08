@@ -28,6 +28,7 @@ sys.path.insert(0, str(src_path))
 from palette.analysis.context import ProjectAnalyzer
 from palette.conversation.conversation_engine import ConversationEngine
 from palette.quality.validator import ComponentValidator
+from palette.ai_providers import ai_provider_registry, generate_ai_response, validate_model_configuration
 
 # Import fallback wrapper for analysis methods
 try:
@@ -934,6 +935,345 @@ async def get_generation_context(request: AnalysisRequest):
                 }
             }
         }
+
+
+class ChatbotRequest(BaseModel):
+    message: str
+    conversation_history: List[Dict[str, str]] = []
+    project_context: Optional[Dict] = None
+    api_key: str
+    model: str = "gpt-4o-mini"  # Updated default model
+
+
+@app.post("/api/generate/unified/stream")
+async def generate_unified_streaming_response(request: ChatbotRequest):
+    """Generate AI response with real-time streaming using unified provider system"""
+    try:
+        # Validate model configuration
+        validation = validate_model_configuration(request.model)
+        if not validation["valid"]:
+            # Return error as SSE
+            def error_stream():
+                yield f"data: {json.dumps({'error': validation['error'], 'type': 'error'})}\n\n"
+            
+            return StreamingResponse(
+                error_stream(),
+                media_type="text/plain",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Type": "text/event-stream"
+                }
+            )
+        
+        # Set API key in environment
+        if request.api_key:
+            config = ai_provider_registry.get_provider_config(request.model)
+            if config.provider.value == "openai":
+                os.environ['OPENAI_API_KEY'] = request.api_key
+            elif config.provider.value == "anthropic":
+                os.environ['ANTHROPIC_API_KEY'] = request.api_key
+        
+        # Build system prompt with project context
+        system_prompt = build_enhanced_system_prompt(request.project_context or {})
+        
+        async def generate_stream():
+            try:
+                # Send start event
+                yield f"data: {json.dumps({'type': 'start', 'model': request.model})}\n\n"
+                
+                full_response = ""
+                async for chunk in generate_ai_response(
+                    model=request.model,
+                    system_prompt=system_prompt,
+                    messages=request.conversation_history,
+                    stream=True,
+                    temperature=0.7
+                ):
+                    if chunk:
+                        full_response += chunk
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                
+                # Send completion event with metadata
+                code_blocks = extract_code_blocks_from_response(full_response)
+                intent = detect_message_intent(request.message)
+                
+                completion_data = {
+                    'type': 'complete',
+                    'full_content': full_response,
+                    'code_blocks': code_blocks,
+                    'intent': intent,
+                    'model_used': request.model,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                yield f"data: {json.dumps(completion_data)}\n\n"
+                
+            except Exception as e:
+                error_data = {
+                    'type': 'error',
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Content-Type": "text/event-stream"
+            }
+        )
+        
+    except Exception as e:
+        # Fallback error response
+        def error_stream():
+            error_data = {
+                'type': 'error',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            error_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Content-Type": "text/event-stream"
+            }
+        )
+
+
+@app.post("/api/generate/unified")
+async def generate_unified_response(request: ChatbotRequest):
+    """Generate AI response using unified provider system"""
+    try:
+        # Validate model configuration
+        validation = validate_model_configuration(request.model)
+        if not validation["valid"]:
+            return {
+                "success": False,
+                "error": validation["error"],
+                "content": f"⚠️ {validation['error']}",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Set API key in environment
+        if request.api_key:
+            # Determine provider type from model
+            config = ai_provider_registry.get_provider_config(request.model)
+            if config.provider.value == "openai":
+                os.environ['OPENAI_API_KEY'] = request.api_key
+            elif config.provider.value == "anthropic":
+                os.environ['ANTHROPIC_API_KEY'] = request.api_key
+        
+        # Build system prompt with project context
+        system_prompt = build_enhanced_system_prompt(request.project_context or {})
+        
+        # Generate response using unified provider
+        full_response = ""
+        async for chunk in generate_ai_response(
+            model=request.model,
+            system_prompt=system_prompt,
+            messages=request.conversation_history,
+            stream=True,  # Enable streaming
+            temperature=0.7
+        ):
+            full_response += chunk
+        
+        # Extract code blocks
+        code_blocks = extract_code_blocks_from_response(full_response)
+        
+        return {
+            "success": True,
+            "content": full_response,
+            "code_blocks": code_blocks,
+            "intent": detect_message_intent(request.message),
+            "model_used": request.model,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "content": f"I apologize, but I encountered an error: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@app.post("/api/generate")
+async def generate_chatbot_response(request: ChatbotRequest):
+    """Generate AI response for chatbot interface using hybrid approach"""
+    try:
+        # Import AI SDK components dynamically
+        from palette.generation.simple_shadcn_generator import SimpleShadcnGenerator
+        
+        # Get or create analyzer for project context
+        project_path = request.project_context.get("projectPath") if request.project_context else None
+        if project_path:
+            analyzer = get_or_create_analyzer(project_path)
+            analysis_result = analyzer.analyze_project(project_path)
+        else:
+            analysis_result = {}
+        
+        # Set API key in environment for generator
+        original_api_key = None
+        if request.api_key:
+            original_api_key = os.getenv('OPENAI_API_KEY')
+            os.environ['OPENAI_API_KEY'] = request.api_key
+        
+        # Create generator instance
+        generator = SimpleShadcnGenerator(project_path=project_path)
+        
+        # Prepare context for generation
+        generation_context = {
+            "message": request.message,
+            "conversation_history": request.conversation_history,
+            "project_analysis": analysis_result,
+            "project_context": request.project_context or {},
+            "model": request.model
+        }
+        
+        try:
+            # Generate response using the existing generator
+            result = await generator.generate_conversational_response(generation_context)
+            
+            # Extract code blocks if present
+            code_blocks = []
+            if result.get("code"):
+                code_blocks = [{
+                    "language": result.get("language", "tsx"),
+                    "code": result["code"],
+                    "filename": result.get("filename")
+                }]
+            
+            # Detect user intent
+            intent = detect_message_intent(request.message)
+            
+            return {
+                "success": True,
+                "content": result.get("content", result.get("response", "")),
+                "code_blocks": code_blocks,
+                "intent": intent,
+                "suggested_actions": result.get("suggestions", []),
+                "timestamp": datetime.now().isoformat(),
+                "model_used": request.model,
+                "token_usage": result.get("token_usage", {})
+            }
+            
+        finally:
+            # Restore original API key if we modified it
+            if request.api_key:
+                if original_api_key:
+                    os.environ['OPENAI_API_KEY'] = original_api_key
+                else:
+                    os.environ.pop('OPENAI_API_KEY', None)
+        
+    except Exception as e:
+        # Fallback error response
+        return {
+            "success": False,
+            "error": str(e),
+            "content": f"I apologize, but I encountered an error while processing your request: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+def build_enhanced_system_prompt(project_context: Dict) -> str:
+    """Build enhanced system prompt with project context"""
+    base_prompt = """You are Palette AI, an expert UI developer assistant specializing in React, TypeScript, Tailwind CSS, and shadcn/ui components.
+
+Your role:
+- Create beautiful, functional UI components and pages
+- Generate complete, working code that users can immediately use
+- Follow modern React and TypeScript best practices
+- Use shadcn/ui components when appropriate
+- Write accessible, responsive designs
+
+Guidelines:
+- Always use TypeScript for React components
+- Prefer functional components with hooks
+- Use Tailwind CSS for styling
+- Include proper imports and exports
+- Create complete, working examples
+- Focus on user experience and design quality
+"""
+    
+    # Add project-specific context if available
+    if project_context.get("framework"):
+        base_prompt += f"\nProject Framework: {project_context['framework']}"
+    
+    if project_context.get("components"):
+        components = project_context["components"][:10]  # Limit to avoid token overflow
+        base_prompt += f"\nAvailable shadcn/ui components: {', '.join(components)}"
+    
+    return base_prompt
+
+
+def extract_code_blocks_from_response(response: str) -> List[Dict[str, str]]:
+    """Extract code blocks from AI response"""
+    import re
+    
+    code_block_pattern = r'```(\w+)?\n([\s\S]*?)```'
+    code_blocks = []
+    
+    for match in re.finditer(code_block_pattern, response):
+        language = match.group(1) or 'text'
+        code = match.group(2).strip()
+        
+        # Infer filename for React components
+        filename = None
+        if language in ['tsx', 'jsx']:
+            # Try to extract component name
+            component_match = re.search(r'(?:export\s+default\s+function\s+(\w+)|const\s+(\w+):\s*React\.FC)', code)
+            if component_match:
+                component_name = component_match.group(1) or component_match.group(2)
+                filename = f"{component_name}.{language}"
+        
+        code_blocks.append({
+            "language": language,
+            "code": code,
+            "filename": filename
+        })
+    
+    return code_blocks
+
+
+def detect_message_intent(message: str) -> str:
+    """Detect the intent of a user message for better response handling"""
+    message_lower = message.lower()
+    
+    # Component generation intents
+    if any(word in message_lower for word in ['create', 'generate', 'make', 'build']):
+        if any(word in message_lower for word in ['page', 'route', 'view']):
+            return 'generate_page'
+        elif any(word in message_lower for word in ['component', 'widget', 'element']):
+            return 'generate_component'
+        elif any(word in message_lower for word in ['form', 'modal', 'dialog']):
+            return 'generate_form'
+        return 'generate_new'
+    
+    # Modification intents
+    if any(word in message_lower for word in ['fix', 'improve', 'refactor', 'update']):
+        return 'refine_existing'
+    
+    # Information intents
+    if any(word in message_lower for word in ['explain', 'how', 'what', 'why', 'tell me']):
+        return 'explain_code'
+    
+    # Help and guidance
+    if any(word in message_lower for word in ['help', 'suggest', 'recommend', 'advise']):
+        return 'suggest_improvements'
+    
+    return 'general'
 
 
 @app.post("/api/routes/analyze")

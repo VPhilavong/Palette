@@ -1,180 +1,177 @@
-# Code Palette - VS Code Extension
+# 🎨 Palette AI - VS Code Extension
 
-AI-powered design-to-code tool for React components. Generate beautiful, responsive components directly in VS Code.
+Generate React components and pages using AI directly in VS Code. **No backend setup required!**
 
-## Features
+## ✨ What's New
 
-- **🎨 Component Generation**: Natural language to React components
-- **👀 Live Preview**: See components before creating files
-- **📊 Project Analysis**: Automatic framework and design system detection
-- **⚡ Fast Integration**: Wraps the proven Code Palette CLI
-- **🎯 Smart Placement**: Automatically places components in the right directories
+- **🚀 Direct AI Integration** - Works immediately without Python backend
+- **🎯 Zero Configuration** - Just add your OpenAI API key and start
+- **💡 Smart Context** - Automatically analyzes your project structure
+- **🛠️ shadcn/ui Support** - Generate components using shadcn/ui patterns
+- **📦 One-Click File Creation** - Add generated code directly to your project
 
-## Commands
+## 🚀 Quick Start (< 1 minute!)
 
-- **Palette: Generate Component** - Generate a new React component
-- **Palette: Preview Component** - Preview component without creating file
-- **Palette: Analyze Project** - Analyze current project setup
-
-## Quick Start
-
-1. **Install Prerequisites**
-   ```bash
-   # Install the Code Palette CLI first
-   pip install -e /path/to/code-palette
-   
-   # Configure your OpenAI API key
-   export OPENAI_API_KEY="your-key-here"
-   ```
-
-2. **Open a React Project**
-   - Open any React/Next.js project in VS Code
-   - Ensure you have TypeScript and Tailwind CSS configured
-
-3. **Generate Your First Component**
-   - Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
-   - Type "Palette: Generate Component"
-   - Enter description: "modern button with hover effects"
-   - Choose "Create" to save the component
-
-## Usage Examples
-
-### Generate Components
-```
-Command: Palette: Generate Component
-Input: "pricing section with three tiers and glassmorphism"
-Result: Creates src/components/pricing-section.tsx
-```
-
-### Preview Before Creating
-```
-Command: Palette: Preview Component  
-Input: "contact form with validation"
-Result: Opens preview in new tab
-```
-
-### Analyze Project
-```
-Command: Palette: Analyze Project
-Result: Shows detected framework, styling, libraries
-```
-
-## Context Menu Integration
-
-Right-click on any folder in the Explorer to generate components directly in that location.
-
-## Configuration
-
-Configure the extension in VS Code Settings:
-
-- **Palette: CLI Path** - Path to palette command (default: "palette")
-- **Palette: Default Model** - AI model to use (default: "gpt-4o-2024-08-06")
-- **Palette: OpenAI API Key** - Your OpenAI API key (alternative to .env file)
-- **Palette: Anthropic API Key** - Your Anthropic API key (alternative to .env file)
-
-### API Key Configuration
-
-You have two options for configuring API keys:
-
-1. **VS Code Settings** (Recommended for single projects):
-   - Open VS Code Settings (`Ctrl+,`)
-   - Search for "palette"
-   - Enter your API key in the appropriate field
-
-2. **.env File** (Recommended for multiple projects):
-   - Create a `.env` file in your project root
-   - Add: `OPENAI_API_KEY=your-key-here`
-   - The extension will automatically load it
-
-**Note**: VS Code settings take priority over .env files.
-
-## Requirements
-
-- **VS Code**: Version 1.60.0 or higher
-- **Code Palette CLI**: Must be installed and accessible
-- **OpenAI API Key**: Required for component generation
-- **React Project**: Works with Next.js, Vite, Create React App
-
-## Supported File Types
-
-- TypeScript React (`.tsx`)
-- JavaScript React (`.jsx`)
-- TypeScript (`.ts`)
-- JavaScript (`.js`)
-
-## Generated Component Features
-
-✅ **TypeScript interfaces** with proper types  
-✅ **Responsive design** with Tailwind breakpoints  
-✅ **Accessibility** with ARIA labels and semantic HTML  
-✅ **Modern patterns** with hover states and animations  
-✅ **Component variants** with union types  
-✅ **JSDoc documentation** for complex props  
-
-## Example Generated Component
-
-```typescript
-interface ButtonProps {
-  variant?: 'primary' | 'secondary' | 'outline';
-  size?: 'sm' | 'md' | 'lg';
-  disabled?: boolean;
-  onClick?: () => void;
-  children: React.ReactNode;
-}
-
-const Button: React.FC<ButtonProps> = ({ 
-  variant = 'primary', 
-  size = 'md', 
-  disabled = false,
-  onClick,
-  children 
-}) => {
-  return (
-    <button
-      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${
-        disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
-      }`}
-      onClick={onClick}
-      disabled={disabled}
-      aria-disabled={disabled}
-    >
-      {children}
-    </button>
-  );
-};
-```
-
-## Troubleshooting
-
-### "Palette CLI not found"
-- Install the CLI: `pip install -e /path/to/code-palette`
-- Update the CLI path in VS Code settings
-
-### "OpenAI API key not configured"
-- Set environment variable: `export OPENAI_API_KEY="your-key"`
-- Restart VS Code after setting the key
-
-### Component not generating
-- Check that you're in a React project
-- Verify API key is valid
-- Check VS Code Output panel for detailed errors
-
-## Development
-
-To work on this extension:
+### 1. Install the Extension
 
 ```bash
-git clone <repository>
-cd vscode-extension
-npm install
-npm run compile
-# Press F5 to launch Extension Development Host
+# From VS Code Marketplace (coming soon)
+1. Open Extensions (Ctrl+Shift+X)
+2. Search for "Palette AI"
+3. Click Install
+
+# Or install from VSIX file
+code --install-extension code-palette-chatbot-0.2.0.vsix
 ```
 
-## License
+### 2. Add Your OpenAI API Key
+
+1. Open VS Code Settings (`Ctrl+,`)
+2. Search for "Palette"
+3. Enter your OpenAI API key in the `Palette: Openai Api Key` field
+
+> Get your API key from: https://platform.openai.com/api-keys
+
+### 3. Start Generating!
+
+1. Open Command Palette (`Ctrl+Shift+P`)
+2. Run: `Palette: Open AI Chatbot`
+3. Type your request and watch the magic happen!
+
+## 💡 Example Requests
+
+```
+"Create a modern landing page with hero section and features"
+"Build a contact form with email validation and Tailwind styling"
+"Generate a dashboard sidebar with collapsible navigation"
+"Make a product card component with image, price, and add to cart button"
+"Create a pricing page with three tiers using shadcn/ui cards"
+```
+
+## 🎯 How It Works
+
+1. **Analyzes Your Project**: Automatically reads your package.json, existing components, and project structure
+2. **Builds Smart Context**: Detects React, Next.js, Vite, Tailwind CSS, and shadcn/ui usage
+3. **Generates Production Code**: Uses OpenAI to create TypeScript components with proper types
+4. **One-Click Integration**: Click "Add File" to save generated components to your project
+
+## ⚙️ Configuration
+
+### Supported Models
+
+Configure your preferred model in VS Code settings:
+
+- `gpt-4o-mini` (Default - Best balance of speed, quality, and cost)
+- `gpt-4o` (More powerful, better for complex components)
+- `gpt-3.5-turbo` (Fastest and most economical)
+- `gpt-5` / `gpt-5-mini` / `gpt-5-nano` (Latest models with advanced capabilities)
+
+### Token Optimization
+
+The extension automatically optimizes token usage:
+- Includes only relevant components (first 10) in context
+- Uses last 3 conversation messages for continuity
+- Limits project analysis to essential files
+- Smart prompt compression for efficiency
+
+## 🛠️ Features
+
+### Component Generation
+- TypeScript interfaces with proper types
+- Responsive design with Tailwind breakpoints
+- Accessibility with ARIA labels and semantic HTML
+- Modern patterns with hover states and animations
+- shadcn/ui component integration
+
+### Project Intelligence
+- Automatic framework detection (React, Next.js, Vite)
+- Existing component awareness
+- Design system pattern matching
+- Import path resolution
+
+### Chat Interface
+- Natural language component requests
+- Conversation history
+- Code syntax highlighting
+- One-click file creation
+
+## 🔧 Troubleshooting
+
+### "OpenAI API key not configured"
+- Ensure you've added your API key in VS Code settings
+- Check that the key starts with `sk-`
+- Verify the key is active on OpenAI's platform
+
+### "Rate limit exceeded"
+**For GPT-5 (10,000 TPM limit):**
+- Switch to `gpt-5-mini` (60,000 TPM) or `gpt-5-nano` (60,000 TPM)
+- These models have 6x higher token limits
+
+**For other models:**
+- Wait a moment and try again
+- Use a simpler request to reduce tokens
+- Check your OpenAI usage dashboard
+
+### "Model not found"
+- Ensure you're using a valid model name
+- Try `gpt-4o-mini` (most reliable)
+- Check if you have access to the model in your OpenAI account
+
+### Components not appearing in project
+- Ensure you have a workspace folder open
+- Check that the file path is valid
+- Look for the file in your project explorer
+
+## 🤝 Advanced Usage
+
+### Using with Existing shadcn/ui Projects
+The extension automatically detects installed shadcn/ui components and uses them in generated code:
+```typescript
+// Automatically uses your existing Button component
+import { Button } from "@/components/ui/button"
+```
+
+### Custom Project Structures
+The extension adapts to your project structure:
+- Detects `src/components/ui` for shadcn/ui
+- Finds `src/pages` for Next.js pages
+- Recognizes `src/app` for App Router
+
+## 📊 Privacy & Security
+
+- **All code stays local** - No code is sent to Palette servers
+- **Your API key** - You use your own OpenAI API key
+- **No telemetry** - We don't track your usage
+- **Open source** - Review the code yourself
+
+## 🚧 Roadmap
+
+- [ ] Support for more UI libraries (Material-UI, Chakra UI)
+- [ ] Component testing generation
+- [ ] Storybook integration
+- [ ] Design-to-code from images
+- [ ] Team collaboration features
+
+## 📝 License
 
 MIT - See LICENSE file for details
 
+## 🤔 FAQ
+
+**Q: Do I need to install Python or run a backend?**
+A: No! Everything runs directly in VS Code.
+
+**Q: Can I use this with my existing project?**
+A: Yes! It works with any React, Next.js, or Vite project.
+
+**Q: How much does it cost?**
+A: The extension is free. You only pay for OpenAI API usage (~$0.01 per component).
+
+**Q: Does it work offline?**
+A: No, it requires an internet connection to reach OpenAI's API.
+
 ---
 
-**Made with ❤️ by the SAIL Project**
+**Made with ❤️ by the Palette team**
+
+Problems? Feature requests? [Open an issue on GitHub](https://github.com/your-repo/issues)

@@ -54,6 +54,27 @@
         "command": "palette.createFileFromChatbot",
         "title": "🎨 Palette: Create File (Internal)",
         "category": "Palette"
+      },
+      {
+        "command": "palette.openModernChatbot",
+        "title": "🎨 Palette: Open Modern AI Assistant",
+        "category": "Palette",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "palette.showSettingsMenu",
+        "title": "⚙️ Palette: Settings Menu",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.configureApiKeys",
+        "title": "🔑 Palette: Configure API Keys",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.selectModel",
+        "title": "🤖 Palette: Select AI Model",
+        "category": "Palette"
       }
     ],
     "menus": {
@@ -76,6 +97,9 @@
         {
           "command": "palette.createFileFromChatbot",
           "when": "false"
+        },
+        {
+          "command": "palette.openModernChatbot"
         }
       ],
       "editor/context": [
@@ -86,6 +110,31 @@
         }
       ]
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "palette-sidebar",
+          "title": "Palette AI",
+          "icon": "resources/palette-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "palette-sidebar": [
+        {
+          "type": "webview",
+          "id": "palette.modernChatbot",
+          "name": "AI Assistant",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "palette.modernChatbot",
+        "contents": "# 🎨 Palette AI Assistant\n\nBuild beautiful UIs with conversational design.\n\n**Quick Examples:**\n• \"Create a modern landing page with hero section\"\n• \"Build a dashboard with sidebar and charts\"\n• \"Design a product page with image gallery\"\n\n[⚙️ Configure API Key](command:palette.showSettingsMenu)\n\nStart chatting once your API key is set up!"
+      }
+    ],
     "configuration": {
       "title": "Palette AI Chatbot",
       "properties": {
@@ -95,16 +144,32 @@
           "description": "OpenAI API Key for Palette AI generation",
           "scope": "application"
         },
+        "palette.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API Key for Claude models",
+          "scope": "application"
+        },
         "palette.defaultModel": {
           "type": "string",
-          "default": "gpt-4.1-2025-04-14",
-          "description": "Default AI model to use",
+          "default": "gpt-4o-mini",
+          "description": "Default AI model to use for generation",
           "enum": [
-            "gpt-4.1-2025-04-14",
-            "gpt-4o",
             "gpt-4o-mini",
-            "gpt-4-turbo"
+            "gpt-4o",
+            "gpt-3.5-turbo",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-2025-08-07",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229"
           ]
+        },
+        "palette.enableStreaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable streaming responses for better user experience"
         },
         "palette.backendUrl": {
           "type": "string",
@@ -127,6 +192,37 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically detect and analyze project context"
+        },
+        "palette.maxTokens": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum tokens for AI responses",
+          "minimum": 100,
+          "maximum": 32000
+        },
+        "palette.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "description": "AI model temperature (creativity level)",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "palette.analysisDepth": {
+          "type": "string",
+          "enum": ["shallow", "normal", "deep"],
+          "default": "normal",
+          "description": "Project analysis depth"
+        },
+        "palette.cacheAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Cache project analysis for better performance"
+        },
+        "palette.logLevel": {
+          "type": "string",
+          "enum": ["error", "warn", "info", "debug"],
+          "default": "info",
+          "description": "Logging level for debugging"
         }
       }
     }
@@ -136,15 +232,23 @@
     "watch": "tsc -w -p ."
   },
   "dependencies": {
-    "@ai-sdk/openai": "^0.0.66",
-    "ai": "^4.0.0",
-    "dotenv": "^17.2.1"
+    "@ai-sdk/anthropic": "^2.0.1",
+    "@ai-sdk/openai": "^2.0.5",
+    "@langchain/community": "^0.3.50",
+    "@langchain/core": "^0.3.68",
+    "@langchain/openai": "^0.6.6",
+    "@vscode-elements/elements": "^2.0.1",
+    "ai": "^5.0.8",
+    "dotenv": "^17.2.1",
+    "langchain": "^0.3.30",
+    "openai": "^4.28.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/dotenv": "^6.1.1",
-    "@types/node": "16.x",
+    "@types/node": "^18.19.121",
     "@types/vscode": "^1.60.0",
-    "typescript": "^4.9.4"
+    "typescript": "^5.9.2"
   },
   "author": "",
   "license": "ISC"

@@ -179,6 +179,8 @@ export class ChatbotServer {
                 await this.handleReadFile(req, res);
             } else if (req.method === 'GET' && requestPath === '/api/workspace/info') {
                 await this.handleWorkspaceInfo(req, res);
+            } else if (req.method === 'POST' && requestPath === '/api/chat/generate') {
+                await this.handleChatGenerate(req, res);
             } else {
                 this.sendApiError(res, 404, 'API_NOT_FOUND', `API endpoint not found: ${requestPath}`);
             }
@@ -311,6 +313,55 @@ export class ChatbotServer {
         } catch (error: any) {
             console.error('🎨 Read file error:', error);
             this.sendApiError(res, 400, 'READ_FILE_FAILED', error.message || 'Failed to read file');
+        }
+    }
+
+    /**
+     * Handle chat generation API endpoint - bridges to enhanced AI integration
+     */
+    private async handleChatGenerate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+        const body = await this.parseRequestBody(req);
+        
+        if (!body || !body.message) {
+            this.sendApiError(res, 400, 'INVALID_REQUEST', 'Missing required field: message');
+            return;
+        }
+
+        try {
+            console.log('🔍 Chat generation request:', body.message, 'API key length:', body.api_key?.length || 0);
+            
+            // Import AI integration service
+            const { AIIntegrationService } = await import('./ai-integration');
+            
+            // Use the enhanced AI integration with semantic context
+            console.log('🔍 Calling AIIntegrationService.generateResponse...');
+            const response = await AIIntegrationService.generateResponse(
+                body.message, 
+                body.conversation_history || []
+            );
+
+            console.log('🔍 AI response received:', {
+                contentLength: response.content?.length || 0,
+                codeBlocksCount: response.codeBlocks?.length || 0,
+                intent: response.intent,
+                hasContent: !!response.content
+            });
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                data: {
+                    content: response.content,
+                    codeBlocks: response.codeBlocks || [],
+                    intent: response.intent || 'general',
+                    suggestedActions: response.suggestedActions || []
+                },
+                timestamp: new Date().toISOString()
+            }));
+
+        } catch (error: any) {
+            console.error('🎨 Chat generation error:', error);
+            this.sendApiError(res, 500, 'CHAT_GENERATION_FAILED', error.message || 'Failed to generate AI response');
         }
     }
 

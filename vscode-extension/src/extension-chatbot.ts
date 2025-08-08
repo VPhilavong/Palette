@@ -8,9 +8,13 @@ import * as path from 'path';
 import { generateAIResponse } from './ai-integration';
 import { ConversationManager } from './conversation-manager';
 import { ChatbotServer } from './chatbot-server';
+import { ModernChatbotPanel } from './ui/modern-chatbot-panel';
+import { SettingsCommands } from './commands/settings-commands';
 
 let conversationManager: ConversationManager;
 let chatbotServer: ChatbotServer;
+let modernChatbotProvider: ModernChatbotPanel;
+let settingsCommands: SettingsCommands;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('🎨 Palette Chatbot: Extension activation started');
@@ -20,6 +24,19 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Initialize chatbot server
     chatbotServer = new ChatbotServer(context.extensionPath);
+    
+    // Initialize modern chatbot panel provider
+    modernChatbotProvider = new ModernChatbotPanel(context.extensionUri);
+    
+    // Register the modern webview panel
+    const modernChatbotDisposable = vscode.window.registerWebviewViewProvider(
+        ModernChatbotPanel.viewType, 
+        modernChatbotProvider
+    );
+    
+    // Initialize and register settings commands
+    settingsCommands = new SettingsCommands();
+    settingsCommands.registerCommands(context);
     
     // Set up file operation handler for API bridge
     chatbotServer.setFileOperationHandler(async (operation) => {
@@ -56,8 +73,23 @@ export function activate(context: vscode.ExtensionContext) {
             console.log('🎨 Starting Backend Server');
             await startBackendServer(context);
         });
+
+        // Register modern chatbot command
+        const modernChatbotCommand = vscode.commands.registerCommand('palette.openModernChatbot', async () => {
+            console.log('🎨 Opening Modern Palette Chatbot');
+            await vscode.commands.executeCommand('palette.modernChatbot.focus');
+        });
         
-        context.subscriptions.push(chatbotCommand, backendStatusCommand, stopServerCommand, openInBrowserCommand, startBackendCommand);
+        
+        context.subscriptions.push(
+            chatbotCommand, 
+            backendStatusCommand, 
+            stopServerCommand, 
+            openInBrowserCommand, 
+            startBackendCommand, 
+            modernChatbotCommand,
+            modernChatbotDisposable
+        );
         
         console.log('🎨 Palette Chatbot: Commands registered successfully');
         vscode.window.showInformationMessage('🎨 Palette Chatbot activated');
@@ -106,7 +138,7 @@ async function openChatbotInSimpleBrowser(context: vscode.ExtensionContext) {
         // Get VSCode settings and pass to chatbot
         const config = vscode.workspace.getConfiguration('palette');
         const apiKey = config.get<string>('openaiApiKey') || '';
-        const model = config.get<string>('defaultModel') || 'gpt-4.1-2025-04-14';
+        const model = config.get<string>('defaultModel') || 'gpt-4o-mini';
         const backendUrl = config.get<string>('backendUrl') || 'http://localhost:8765';
         
         // Build URL with configuration parameters
@@ -266,7 +298,7 @@ async function openChatbotDirectlyInBrowser(context: vscode.ExtensionContext) {
         // Get VSCode settings and pass to chatbot
         const config = vscode.workspace.getConfiguration('palette');
         const apiKey = config.get<string>('openaiApiKey') || '';
-        const model = config.get<string>('defaultModel') || 'gpt-4.1-2025-04-14';
+        const model = config.get<string>('defaultModel') || 'gpt-4o-mini';
         const backendUrl = config.get<string>('backendUrl') || 'http://localhost:8765';
         
         // Build URL with configuration parameters
