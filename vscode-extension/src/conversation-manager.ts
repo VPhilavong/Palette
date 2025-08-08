@@ -17,6 +17,28 @@ export interface ConversationMessage {
         error?: string;
         isSetup?: boolean;
         showSettings?: boolean;
+        // AI SDK 5 integration fields
+        model?: string;
+        tier?: 'core' | 'enhanced';
+        tokensUsed?: number;
+        files?: any[];
+        strategy?: string;
+        // Tool system integration fields
+        availableTools?: number;
+        mcpServers?: number;
+        toolList?: boolean;
+        totalTools?: number;
+        toolExecution?: boolean;
+        toolName?: string;
+        success?: boolean;
+        mcpStatus?: boolean;
+        totalServers?: number;
+        runningServers?: number;
+        // shadcn/ui integration fields
+        shadcnInstall?: boolean;
+        shadcnBrowser?: boolean;
+        shadcnInit?: boolean;
+        components?: number;
     };
 }
 

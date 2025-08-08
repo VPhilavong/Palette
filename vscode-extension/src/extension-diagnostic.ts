@@ -234,7 +234,7 @@ async function generateWithAI(userMessage: string, context: any): Promise<string
         // Get API key and model from VS Code settings
         const config = vscode.workspace.getConfiguration('palette');
         const apiKey = config.get<string>('openaiApiKey');
-        const modelName = config.get<string>('defaultModel') || 'gpt-4.1-2025-04-14';
+    const modelName = config.get<string>('defaultModel') || 'gpt-5-mini-2025-08-07';
         
         if (!apiKey || apiKey.trim() === '') {
             throw new Error('OpenAI API key not configured. Please set it in VS Code settings: Palette > Openai Api Key');
@@ -252,7 +252,7 @@ async function generateWithAI(userMessage: string, context: any): Promise<string
         });
         
         const result = await generateText({
-            model: openaiClient('gpt-4.1-2025-04-14'),
+            model: openaiClient('gpt-5-mini-2025-08-07'),
             system: systemPrompt,
             prompt: userMessage,
             temperature: 0.7

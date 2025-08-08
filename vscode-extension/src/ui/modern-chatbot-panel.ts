@@ -1,12 +1,15 @@
 /**
  * Modern Chatbot Panel using VSCode Elements
- * Replaces the old React-based chatbot with native VS Code UI components
+ * Provides native VSCode UI components with no JavaScript errors
  */
 
 import * as vscode from 'vscode';
 import { AIIntegrationService } from '../ai-integration';
 import { ConversationMessage } from '../conversation-manager';
-import { getAIContextBuilder } from '../intelligence/ai-context-builder';
+import { MCPManager } from '../mcp/mcp-manager';
+import { ToolExecutor } from '../tools/tool-executor';
+import { ToolRegistry } from '../tools/tool-registry';
+import { ProgressManager } from './progress-manager';
 
 export class ModernChatbotPanel implements vscode.WebviewViewProvider {
     public static readonly viewType = 'palette.modernChatbot';
@@ -14,8 +17,22 @@ export class ModernChatbotPanel implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _messages: ConversationMessage[] = [];
     private _isLoading = false;
+    private _toolRegistry?: ToolRegistry;
+    private _toolExecutor?: ToolExecutor;
+    private _mcpManager?: MCPManager;
+    private _progressManager: ProgressManager;
+    private _availableTools: Array<{name: string, description: string, category: string}> = [];
+    private _mcpServerStatus: Map<string, string> = new Map();
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(private readonly _extensionUri: vscode.Uri) {
+        this._progressManager = ProgressManager.getInstance();
+        
+        // Check if tool system is available
+        const toolSystemAvailable = this._toolRegistry && this._toolExecutor;
+        if (!toolSystemAvailable) {
+            console.log('🎨 ModernChatbotPanel: Tool system not available');
+        }
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -31,249 +48,680 @@ export class ModernChatbotPanel implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage((data) => {
-            this._handleWebviewMessage(data);
-        });
+        // Set up message handling
+        webviewView.webview.onDidReceiveMessage(
+            (message) => this._handleWebviewMessage(message),
+            undefined,
+            []
+        );
+
+        // Load existing messages
+        this._updateWebview();
     }
 
-    private async _handleWebviewMessage(data: any) {
-        switch (data.type) {
+    private _getHtmlForWebview(webview: vscode.Webview): string {
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode-elements/elements', 'dist', 'bundled.js'));
+        const playgroundUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode-elements/webview-playground', 'dist', 'index.js'));
+        const nonce = this._getNonce();
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palette AI Assistant</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource};">
+    <script type="module" nonce="${nonce}" src="${playgroundUri}"></script>
+    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-sideBar-background);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .toolbar {
+            padding: 8px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message-bubble {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+        }
+
+        .message-bubble.user {
+            align-self: flex-end;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+
+        .message-bubble.assistant {
+            align-self: flex-start;
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .message-content {
+            line-height: 1.6;
+        }
+
+        .message-content p {
+            margin: 0 0 12px 0;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-content strong {
+            color: var(--vscode-foreground);
+            font-weight: 600;
+        }
+
+        .message-content em {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+        }
+
+        .message-content ul, .message-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+
+        .message-content li {
+            margin: 4px 0;
+        }
+
+        .message-content code {
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 0.9em;
+        }
+
+        .input-area {
+            padding: 12px;
+            border-top: 1px solid var(--vscode-panel-border);
+            flex-shrink: 0;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .welcome-message {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .welcome-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--vscode-foreground);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .feature-card {
+            padding: 12px;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .feature-card:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .feature-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .feature-desc {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .code-block {
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            margin: 8px 0;
+            overflow: hidden;
+        }
+
+        .code-header {
+            padding: 8px 12px;
+            background-color: var(--vscode-panel-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .code-content {
+            padding: 12px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        vscode-textarea {
+            flex: 1;
+        }
+
+        .status-indicators {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .message-text {
+            margin: 4px 0;
+            line-height: 1.5;
+        }
+
+        .message-text p {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <vscode-button id="toolsBtn" appearance="secondary" size="small">Tools</vscode-button>
+            <vscode-button id="mcpBtn" appearance="secondary" size="small">MCP</vscode-button>
+            <vscode-button id="clearBtn" appearance="secondary" size="small">Clear</vscode-button>
+            
+            <div class="status-indicators">
+                <div class="status-indicator">
+                    <span>🛠️</span>
+                    <span id="toolCount">0</span>
+                </div>
+                <div class="status-indicator">
+                    <span>🔌</span>
+                    <span id="mcpCount">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="messages-area" id="messagesArea">
+            <div class="welcome-message" id="welcomeMessage">
+                <div class="welcome-title">Palette AI Assistant</div>
+                <div>I can help you design components, build pages, and organize files in your project.</div>
+                
+                <div class="feature-grid">
+                    <div class="feature-card" data-action="generate">
+                        <div class="feature-title">🎨 Generate Components</div>
+                        <div class="feature-desc">Create React components with TypeScript</div>
+                    </div>
+                    <div class="feature-card" data-action="analyze">
+                        <div class="feature-title">🔍 Analyze Project</div>
+                        <div class="feature-desc">Get insights about your codebase</div>
+                    </div>
+                    <div class="feature-card" data-action="tools">
+                        <div class="feature-title">🛠️ Show Tools</div>
+                        <div class="feature-desc">View available development tools</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-container">
+                <vscode-textarea 
+                    id="messageInput" 
+                    placeholder="Ask me anything about your project..."
+                    rows="1"
+                    resize="vertical"
+                    maxlength="4000">
+                </vscode-textarea>
+                <vscode-button id="sendBtn">Send</vscode-button>
+            </div>
+        </div>
+    </div>
+
+    <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        let messages = [];
+        let isLoading = false;
+
+        // DOM elements
+        const messagesArea = document.getElementById('messagesArea');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const welcomeMessage = document.getElementById('welcomeMessage');
+        const toolsBtn = document.getElementById('toolsBtn');
+        const mcpBtn = document.getElementById('mcpBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        clearBtn.addEventListener('click', clearMessages);
+        toolsBtn.addEventListener('click', showTools);
+        mcpBtn.addEventListener('click', showMCPStatus);
+
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Feature card clicks
+        document.addEventListener('click', (e) => {
+            const featureCard = e.target.closest('.feature-card');
+            if (featureCard) {
+                const action = featureCard.dataset.action;
+                if (action === 'tools') {
+                    showTools();
+                } else if (action === 'generate') {
+                    messageInput.value = 'Help me create a new React component';
+                    messageInput.focus();
+                } else if (action === 'analyze') {
+                    messageInput.value = 'Analyze my project structure';
+                    messageInput.focus();
+                }
+            }
+        });
+
+        // Handle messages from extension
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
+                case 'updateMessages':
+                    messages = message.messages || [];
+                    isLoading = message.isLoading || false;
+                    renderMessages();
+                    break;
+                case 'updateToolStatus':
+                    updateToolStatus(message.availableTools, message.mcpServerStatus);
+                    break;
+                case 'clearMessages':
+                    clearMessagesUI();
+                    break;
+            }
+        });
+
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || isLoading) return;
+
+            vscode.postMessage({
+                type: 'sendMessage',
+                message: text
+            });
+
+            messageInput.value = '';
+        }
+
+        function clearMessages() {
+            vscode.postMessage({ type: 'clearMessages' });
+        }
+
+        function showTools() {
+            vscode.postMessage({ type: 'listAvailableTools' });
+        }
+
+        function showMCPStatus() {
+            vscode.postMessage({ type: 'showMCPStatus' });
+        }
+
+        function clearMessagesUI() {
+            messages = [];
+            renderMessages();
+        }
+
+        function renderMessages() {
+            if (messages.length === 0) {
+                welcomeMessage.style.display = 'block';
+                // Clear any existing message bubbles
+                const existingBubbles = messagesArea.querySelectorAll('.message-bubble');
+                existingBubbles.forEach(bubble => bubble.remove());
+                return;
+            }
+
+            welcomeMessage.style.display = 'none';
+
+            // Clear existing messages
+            const existingBubbles = messagesArea.querySelectorAll('.message-bubble');
+            existingBubbles.forEach(bubble => bubble.remove());
+
+            // Render messages
+            messages.forEach(message => {
+                const bubble = document.createElement('div');
+                bubble.className = \`message-bubble \${message.role}\`;
+                
+                if (message.metadata?.codeBlocks?.length > 0) {
+                    bubble.innerHTML = renderMessageWithCode(message);
+                } else {
+                    bubble.innerHTML = '<div class="message-content">' + formatMessageContent(message.content) + '</div>';
+                }
+                
+                messagesArea.appendChild(bubble);
+            });
+
+            // Add typing indicator if loading
+            if (isLoading) {
+                const typingBubble = document.createElement('div');
+                typingBubble.className = 'message-bubble assistant';
+                typingBubble.innerHTML = '<em>Thinking...</em>';
+                messagesArea.appendChild(typingBubble);
+            }
+
+            // Scroll to bottom
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function formatMessageContent(content) {
+            // Convert newlines to <br> and handle basic formatting
+            let formatted = escapeHtml(content)
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**
+                .replace(/\*(.*?)\*/g, '<em>$1</em>');              // *italic*
+            
+            return formatted;
+        }
+
+        function renderMessageWithCode(message) {
+            // Simple approach: render text and code blocks separately
+            if (!message.metadata?.codeBlocks?.length) {
+                return '<div class="message-content">' + formatMessageContent(message.content) + '</div>';
+            }
+
+            let html = '';
+            
+            // For messages with code blocks, just show the content and code blocks
+            html += '<div class="message-content">' + formatMessageContent(message.content) + '</div>';
+
+            // Add each code block
+            message.metadata.codeBlocks.forEach(block => {
+                html += '<div class="code-block">';
+                html += '<div class="code-header">';
+                html += '<span>' + (block.language || 'text');
+                if (block.filename) {
+                    html += ' • ' + escapeHtml(block.filename);
+                }
+                html += '</span>';
+                html += '<vscode-button onclick="createFile(' + 
+                       "'" + escapeForAttribute(block.code) + "', " +
+                       "'" + escapeForAttribute(block.filename || '') + "', " +
+                       "'" + escapeForAttribute(block.language || '') + "'" +
+                       ')">Add File</vscode-button>';
+                html += '</div>';
+                html += '<div class="code-content">' + escapeHtml(block.code) + '</div>';
+                html += '</div>';
+            });
+
+            return html;
+        }
+
+        function createFile(code, filename, language) {
+            vscode.postMessage({
+                type: 'createFile',
+                code: code,
+                filename: filename,
+                language: language
+            });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML.replace(/\\n/g, '<br>');
+        }
+
+        function escapeForAttribute(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function updateToolStatus(availableTools, mcpServerStatus) {
+            const toolCount = document.getElementById('toolCount');
+            const mcpCount = document.getElementById('mcpCount');
+            
+            if (toolCount) toolCount.textContent = availableTools?.length || 0;
+            if (mcpCount) mcpCount.textContent = Object.keys(mcpServerStatus || {}).length;
+        }
+
+        // Initialize
+        vscode.postMessage({ type: 'refreshToolStatus' });
+    </script>
+</body>
+</html>`;
+    }
+
+    private _handleWebviewMessage(message: any) {
+        switch (message.type) {
             case 'sendMessage':
-                await this._handleSendMessage(data.message);
+                this._handleSendMessage(message.message);
                 break;
             case 'clearMessages':
-                this._clearMessages();
+                this._handleClearMessages();
+                break;
+            case 'listAvailableTools':
+                this._handleListAvailableTools();
+                break;
+            case 'showMCPStatus':
+                this._handleShowMCPStatus();
                 break;
             case 'createFile':
-                await this._handleCreateFile(data.code, data.filename, data.language);
+                this._handleCreateFile(message.code, message.filename, message.language);
                 break;
-            case 'exportConversation':
-                await this._handleExportConversation();
-                break;
-            case 'showSettings':
-                await this._handleShowSettings();
-                break;
-            case 'changeModel':
-                await this._handleChangeModel(data.model);
-                break;
-            case 'configureApiKey':
-                await this._handleConfigureApiKey();
-                break;
-            case 'showMessage':
-                vscode.window.showInformationMessage(data.message);
+            case 'refreshToolStatus':
+                this._refreshToolStatus();
                 break;
         }
     }
 
-    private async _handleSendMessage(userMessage: string) {
-        if (this._isLoading) {
-            return;
-        }
+    private async _handleSendMessage(text: string) {
+        if (!text.trim() || this._isLoading) return;
 
         // Check if API key is configured
         const config = vscode.workspace.getConfiguration('palette');
         const openaiKey = config.get<string>('openaiApiKey');
-        const anthropicKey = config.get<string>('anthropicApiKey');
         
-        if (!openaiKey && !anthropicKey) {
-            // Show inline API key setup
+        if (!openaiKey) {
+            // Show API key setup message in chat
             this._showApiKeySetup();
             return;
         }
 
-        this._isLoading = true;
-        
-        // Add user message
-        const userMsg: ConversationMessage = {
+        const userMessage: ConversationMessage = {
             role: 'user',
-            content: userMessage,
+            content: text,
             timestamp: Date.now().toString()
         };
-        this._messages.push(userMsg);
+
+        this._messages.push(userMessage);
+        this._isLoading = true;
         this._updateWebview();
 
         try {
-            // Build enhanced context using pure TypeScript analysis
-            const contextBuilder = getAIContextBuilder();
-            const enhancedContext = await contextBuilder.buildEnhancedContext(userMessage);
+            console.log('🎨 Generating AI response for:', text);
             
-            console.log('🧠 Enhanced context built:', {
-                framework: enhancedContext.projectContext.framework,
-                components: enhancedContext.projectContext.availableComponents.length,
-                actions: enhancedContext.availableActions.length
-            });
+            // Use AI Integration Service to generate response
+            const aiResponse = await AIIntegrationService.generateStreamingResponse(
+                text,
+                this._messages.slice(0, -1), // Pass conversation history without the current message
+                undefined // No custom system prompt
+            );
             
-            // Initialize streaming response
-            const assistantMsg: ConversationMessage = {
+            // Extract code blocks if any
+            const codeBlocks = this._extractCodeBlocks(aiResponse.content);
+            
+            const assistantMessage: ConversationMessage = {
                 role: 'assistant',
-                content: '',
+                content: aiResponse.content,
                 timestamp: Date.now().toString(),
                 metadata: {
-                    codeBlocks: [],
-                    intent: 'generating',
-                    context: enhancedContext
+                    codeBlocks: codeBlocks,
+                    intent: aiResponse.intent,
+                    availableActions: aiResponse.suggestedActions
                 }
             };
-            this._messages.push(assistantMsg);
-            this._updateWebview();
 
-            // Use AI SDK directly with enhanced context
-            await this._generateWithEnhancedContext(userMessage, assistantMsg, enhancedContext);
+            this._messages.push(assistantMessage);
+            console.log('🎨 AI response generated successfully');
             
         } catch (error: any) {
-            // Add error message
-            const errorMsg: ConversationMessage = {
+            console.error('🎨 Error generating AI response:', error);
+            
+            const errorMessage: ConversationMessage = {
                 role: 'assistant',
-                content: `❌ Error: ${error.message}`,
+                content: `Sorry, I encountered an error generating a response: ${error.message || error}. Please check your API key configuration and network connection.`,
                 timestamp: Date.now().toString()
             };
-            this._messages.push(errorMsg);
+            this._messages.push(errorMessage);
+            
+            // Show user-friendly error
+            vscode.window.showErrorMessage(
+                'Failed to generate AI response. Check your API key and network connection.',
+                'Check Settings',
+                'Retry'
+            ).then(selection => {
+                if (selection === 'Check Settings') {
+                    vscode.commands.executeCommand('palette.showSettingsMenu');
+                } else if (selection === 'Retry') {
+                    this._handleSendMessage(text);
+                }
+            });
+        } finally {
+            this._isLoading = false;
+            this._updateWebview();
         }
+    }
 
-        this._isLoading = false;
+    private _handleClearMessages() {
+        this._messages = [];
         this._updateWebview();
     }
 
-    private async _streamResponseFromBackend(userMessage: string, assistantMsg: ConversationMessage) {
+    private _handleListAvailableTools() {
+        const tools = this._availableTools.map(tool => `• ${tool.name}: ${tool.description}`).join('\n');
+        const message: ConversationMessage = {
+            role: 'assistant',
+            content: tools.length > 0 ? `Available tools:\n${tools}` : 'No tools currently available.',
+            timestamp: Date.now().toString()
+        };
+        this._messages.push(message);
+        this._updateWebview();
+    }
+
+    private _handleShowMCPStatus() {
+        const statusEntries = Array.from(this._mcpServerStatus.entries());
+        const status = statusEntries.map(([server, status]) => `• ${server}: ${status}`).join('\n');
+        const message: ConversationMessage = {
+            role: 'assistant',
+            content: status.length > 0 ? `MCP Server Status:\n${status}` : 'No MCP servers configured.',
+            timestamp: Date.now().toString()
+        };
+        this._messages.push(message);
+        this._updateWebview();
+    }
+
+    private async _handleCreateFile(code: string, filename: string, language: string) {
         try {
-            // Get VS Code configuration
-            const config = vscode.workspace.getConfiguration('palette');
-            const apiKey = config.get<string>('openaiApiKey') || config.get<string>('anthropicApiKey') || '';
-            const model = config.get<string>('defaultModel') || 'gpt-4o-mini';
-            const backendUrl = config.get<string>('backendUrl') || 'http://localhost:8765';
-            
-            // This method will be removed as we now use enhanced context builder
-            const projectContext = {
-                projectPath: 'legacy-fallback',
-                framework: 'react'
-            };
-            
-            // Prepare conversation history
-            const conversationHistory = this._messages
-                .slice(0, -1) // Exclude the current assistant message being generated
-                .map(msg => ({
-                    role: msg.role,
-                    content: msg.content
-                }));
-            
-            // Make streaming request
-            const response = await fetch(`${backendUrl}/api/generate/unified/stream`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'text/event-stream'
-                },
-                body: JSON.stringify({
-                    message: userMessage,
-                    conversation_history: conversationHistory,
-                    project_context: projectContext,
-                    api_key: apiKey,
-                    model: model
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage('No workspace folder found');
+                return;
             }
+
+            const filePath = vscode.Uri.joinPath(workspaceFolder.uri, filename);
+            await vscode.workspace.fs.writeFile(filePath, Buffer.from(code, 'utf8'));
             
-            if (!response.body) {
-                throw new Error('No response body for streaming');
-            }
+            vscode.window.showInformationMessage(`File created: ${filename}`);
             
-            // Process streaming response
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            
-            let buffer = '';
-            
-            while (true) {
-                const { done, value } = await reader.read();
-                
-                if (done) break;
-                
-                buffer += decoder.decode(value, { stream: true });
-                
-                // Process complete lines
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // Keep incomplete line in buffer
-                
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            
-                            switch (data.type) {
-                                case 'start':
-                                    console.log(`🎨 Streaming started with model: ${data.model}`);
-                                    break;
-                                    
-                                case 'content':
-                                    assistantMsg.content += data.content;
-                                    this._updateWebview();
-                                    break;
-                                    
-                                case 'complete':
-                                    assistantMsg.content = data.full_content;
-                                    assistantMsg.metadata = {
-                                        codeBlocks: data.code_blocks || [],
-                                        intent: data.intent
-                                    };
-                                    console.log(`🎨 Streaming complete. Generated ${data.code_blocks?.length || 0} code blocks`);
-                                    this._updateWebview();
-                                    return; // Exit the streaming loop
-                                    
-                                case 'error':
-                                    throw new Error(data.error);
-                            }
-                        } catch (parseError) {
-                            console.warn('🎨 Failed to parse streaming data:', parseError);
-                        }
-                    }
-                }
-            }
-            
-        } catch (error: any) {
-            console.error('🎨 Streaming error:', error);
-            assistantMsg.content = `❌ Streaming error: ${error.message}`;
-            this._updateWebview();
+            // Open the file
+            const document = await vscode.workspace.openTextDocument(filePath);
+            await vscode.window.showTextDocument(document);
+        } catch (error) {
+            console.error('Error creating file:', error);
+            vscode.window.showErrorMessage(`Failed to create file: ${error}`);
         }
     }
 
-    private async _generateWithEnhancedContext(
-        userMessage: string, 
-        assistantMsg: ConversationMessage, 
-        enhancedContext: any
-    ) {
-        try {
-            // Use AI SDK directly with enhanced context (no backend dependency)
-            const response = await AIIntegrationService.generateStreamingResponse(
-                userMessage,
-                this._messages.slice(0, -1), // Exclude the current assistant message being generated
-                enhancedContext.systemPrompt
-            );
-
-            // Update the assistant message with the response
-            assistantMsg.content = response.content;
-            assistantMsg.metadata = {
-                codeBlocks: response.codeBlocks || [],
-                intent: response.intent,
-                context: enhancedContext,
-                availableActions: enhancedContext.availableActions
-            };
+    private _extractCodeBlocks(content: string): any[] {
+        const codeBlocks: any[] = [];
+        const codeBlockRegex = /```(\w+)?\s*(?:\/\/ (.+))?\n([\s\S]*?)```/g;
+        let match;
+        
+        while ((match = codeBlockRegex.exec(content)) !== null) {
+            const language = match[1] || 'text';
+            const filename = match[2] || '';
+            const code = match[3].trim();
             
-            console.log(`🎨 Generated response with ${response.codeBlocks?.length || 0} code blocks`);
-            this._updateWebview();
-            
-        } catch (error: any) {
-            console.error('🎨 Enhanced context generation error:', error);
-            assistantMsg.content = `❌ Error generating response: ${error.message}\n\nThis appears to be a client-side error. Please check:\n- Your API key configuration\n- Your internet connection\n- The model selection`;
-            assistantMsg.metadata = {
-                ...assistantMsg.metadata,
-                error: error.message
-            };
-            this._updateWebview();
+            codeBlocks.push({
+                language,
+                filename,
+                code
+            });
         }
+        
+        return codeBlocks;
     }
 
     private async _showApiKeySetup() {
@@ -282,14 +730,13 @@ export class ModernChatbotPanel implements vscode.WebviewViewProvider {
             role: 'assistant',
             content: `🔑 **API Key Required**
 
-To get started with Palette AI, you'll need to configure an API key from OpenAI or Anthropic.
+To get started with Palette AI, you'll need to configure an API key from OpenAI.
 
 **Quick Setup:**
-1. Click the ⚙️ Settings button below
-2. Choose "Configure API Keys"  
-3. Enter your API key from:
-   - [OpenAI](https://platform.openai.com/api-keys) (for GPT models)
-   - [Anthropic](https://console.anthropic.com/) (for Claude models)
+1. Click the ⚙️ Tools button above or use Command Palette
+2. Run "Palette: Settings Menu"
+3. Choose "Configure API Keys"  
+4. Enter your API key from [OpenAI](https://platform.openai.com/api-keys)
 
 Once configured, you can start building UIs with natural language!
 
@@ -308,670 +755,55 @@ Once configured, you can start building UIs with natural language!
         this._updateWebview();
     }
 
-    private async _handleCreateFile(code: string, filename: string | undefined, language: string) {
-        if (!filename) {
-            filename = `Component.${language === 'tsx' ? 'tsx' : 'js'}`;
-        }
-
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            vscode.window.showErrorMessage('No workspace folder found');
-            return;
-        }
-
-        // Smart file placement based on project structure
-        let targetDir = 'src/components';
-        if (filename.includes('Page') || filename.toLowerCase().includes('page')) {
-            targetDir = 'src/pages';
-        } else if (filename.startsWith('use') && language === 'ts') {
-            targetDir = 'src/hooks';
-        }
-
-        const filePath = vscode.Uri.joinPath(workspaceFolder.uri, targetDir, filename);
-        
-        try {
-            // Ensure directory exists
-            const dirPath = vscode.Uri.joinPath(workspaceFolder.uri, targetDir);
-            try {
-                await vscode.workspace.fs.stat(dirPath);
-            } catch {
-                await vscode.workspace.fs.createDirectory(dirPath);
-            }
-
-            // Write file
-            await vscode.workspace.fs.writeFile(filePath, Buffer.from(code, 'utf8'));
-            
-            // Show success and open file
-            vscode.window.showInformationMessage(`Created ${filename} in ${targetDir}`);
-            const document = await vscode.workspace.openTextDocument(filePath);
-            await vscode.window.showTextDocument(document);
-
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Failed to create file: ${error.message}`);
-        }
-    }
-
-    private _clearMessages() {
-        this._messages = [];
-        this._updateWebview();
-    }
-
-    private async _handleExportConversation() {
-        try {
-            const timestamp = new Date().toISOString().split('T')[0];
-            const filename = `palette-conversation-${timestamp}.json`;
-            
-            const exportData = {
-                timestamp: new Date().toISOString(),
-                messages: this._messages,
-                messageCount: this._messages.length
-            };
-            
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            if (workspaceFolder) {
-                const filePath = vscode.Uri.joinPath(workspaceFolder.uri, filename);
-                await vscode.workspace.fs.writeFile(filePath, Buffer.from(JSON.stringify(exportData, null, 2), 'utf8'));
-                vscode.window.showInformationMessage(`Conversation exported to ${filename}`);
-            } else {
-                vscode.window.showErrorMessage('No workspace folder found for export');
-            }
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Export failed: ${error.message}`);
-        }
-    }
-
-    private async _handleShowSettings() {
-        await vscode.commands.executeCommand('workbench.action.openSettings', 'palette');
-    }
-
-    private async _handleChangeModel(model: string) {
-        const config = vscode.workspace.getConfiguration('palette');
-        await config.update('defaultModel', model, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`Model changed to ${model}`);
-        this._updateWebview();
-    }
-
-    private async _handleConfigureApiKey() {
-        // Use the settings manager for API key configuration
-        await vscode.commands.executeCommand('palette.showSettingsMenu');
+    private _refreshToolStatus() {
+        // Update tool status
+        this._view?.webview.postMessage({
+            type: 'updateToolStatus',
+            availableTools: this._availableTools,
+            mcpServerStatus: Object.fromEntries(this._mcpServerStatus)
+        });
     }
 
     private _updateWebview() {
         if (this._view) {
-            const config = vscode.workspace.getConfiguration('palette');
-            const currentModel = config.get<string>('defaultModel') || 'gpt-4o-mini';
-            
             this._view.webview.postMessage({
                 type: 'updateMessages',
                 messages: this._messages,
                 isLoading: this._isLoading
             });
-            
-            this._view.webview.postMessage({
-                type: 'updateModel',
-                model: currentModel
-            });
         }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview): string {
-        // Get webview resource URIs
-        const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(
-            this._extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css'
-        ));
-        
-        // Use VS Code Elements for native styling
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Palette AI Assistant</title>
-    <link href="${codiconsUri}" rel="stylesheet" />
-    <style>
-        :root {
-            --codicon-font-family: codicon;
+    public setToolRegistry(toolRegistry: ToolRegistry) {
+        this._toolRegistry = toolRegistry;
+        this._refreshAvailableTools();
+    }
+
+    public setToolExecutor(toolExecutor: ToolExecutor) {
+        this._toolExecutor = toolExecutor;
+    }
+
+    public setMCPManager(mcpManager: MCPManager) {
+        this._mcpManager = mcpManager;
+    }
+
+    private _refreshAvailableTools() {
+        if (this._toolRegistry) {
+            this._availableTools = this._toolRegistry.getAllTools().map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                category: tool.category || 'general'
+            }));
+            this._refreshToolStatus();
         }
+    }
 
-        body {
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            line-height: var(--vscode-font-weight);
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-sideBar-background);
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
+    private _getNonce(): string {
+        let text = '';
+        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        for (let i = 0; i < 32; i++) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length));
         }
-
-        .header {
-            padding: 12px 16px;
-            background-color: var(--vscode-sideBar-background);
-            border-bottom: 1px solid var(--vscode-sideBar-border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .header h2 {
-            margin: 0;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--vscode-charts-green);
-        }
-
-        .messages-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .message {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .message.user {
-            align-items: flex-end;
-        }
-
-        .message.assistant {
-            align-items: flex-start;
-        }
-
-        .message-content {
-            max-width: 85%;
-            padding: 12px 16px;
-            border-radius: 8px;
-            word-wrap: break-word;
-        }
-
-        .message.user .message-content {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-        }
-
-        .message.assistant .message-content {
-            background-color: var(--vscode-panel-background);
-            border: 1px solid var(--vscode-panel-border);
-        }
-
-        .code-block {
-            margin: 12px 0;
-            background-color: var(--vscode-textCodeBlock-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .code-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 12px;
-            background-color: var(--vscode-editor-background);
-            border-bottom: 1px solid var(--vscode-panel-border);
-            font-size: 12px;
-        }
-
-        .code-content {
-            padding: 12px;
-            font-family: var(--vscode-editor-font-family);
-            font-size: var(--vscode-editor-font-size);
-            overflow-x: auto;
-            white-space: pre;
-        }
-
-        .create-file-btn {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-        }
-
-        .create-file-btn:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-
-        .input-container {
-            padding: 12px 16px;
-            background-color: var(--vscode-sideBar-background);
-            border-top: 1px solid var(--vscode-sideBar-border);
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
-        }
-
-        .input-wrapper {
-            display: flex;
-            align-items: end;
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 20px;
-            padding: 8px 12px;
-            flex: 1;
-            gap: 8px;
-            transition: border-color 0.2s ease;
-        }
-
-        .input-wrapper:focus-within {
-            border-color: var(--vscode-focusBorder);
-        }
-
-        .message-input {
-            flex: 1;
-            background-color: transparent;
-            color: var(--vscode-input-foreground);
-            border: none;
-            outline: none;
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            resize: none;
-            min-height: 20px;
-            max-height: 120px;
-            line-height: 1.4;
-            padding: 0;
-        }
-
-        .send-button {
-            background-color: #007acc;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            flex-shrink: 0;
-            align-self: flex-end;
-        }
-
-        .send-button:hover {
-            background-color: #005a9e;
-        }
-
-        .send-button .codicon {
-            font-size: 12px;
-        }
-
-        .attach-button {
-            background-color: transparent;
-            color: var(--vscode-descriptionForeground);
-            border: none;
-            border-radius: 4px;
-            width: 24px;
-            height: 24px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            flex-shrink: 0;
-        }
-
-        .attach-button:hover {
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-list-hoverBackground);
-        }
-
-        .attach-button .codicon {
-            font-size: 14px;
-        }
-
-        .send-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .toolbar {
-            padding: 8px 16px;
-            background-color: var(--vscode-sideBar-background);
-            border-bottom: 1px solid var(--vscode-sideBar-border);
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .toolbar-btn {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            background-color: transparent;
-            color: var(--vscode-foreground);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 4px;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-size: 12px;
-            font-family: var(--vscode-font-family);
-            transition: all 0.2s ease;
-        }
-
-        .toolbar-btn:hover {
-            background-color: var(--vscode-list-hoverBackground);
-            border-color: var(--vscode-button-background);
-        }
-
-        .toolbar-btn:active {
-            background-color: var(--vscode-list-activeSelectionBackground);
-        }
-
-        .toolbar-btn .codicon {
-            font-size: 14px;
-        }
-
-        .model-selector {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-        }
-
-        .model-select {
-            background-color: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            border: 1px solid var(--vscode-badge-background);
-            border-radius: 12px;
-            padding: 4px 10px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-            appearance: none;
-            outline: none;
-        }
-
-        .model-select:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-
-        .model-select:focus {
-            border-color: var(--vscode-focusBorder);
-        }
-
-        .loading-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--vscode-descriptionForeground);
-            font-size: 12px;
-            padding: 8px 0;
-        }
-
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--vscode-panel-border);
-            border-top: 2px solid var(--vscode-charts-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="status-indicator"></div>
-        <h2>Palette AI Assistant</h2>
-    </div>
-    
-    <div class="toolbar">
-        <button class="toolbar-btn" onclick="clearMessages()">
-            <span class="codicon codicon-clear-all"></span>
-            Clear
-        </button>
-        <button class="toolbar-btn" onclick="exportConversation()">
-            <span class="codicon codicon-export"></span>
-            Export
-        </button>
-        <button class="toolbar-btn" onclick="showSettings()">
-            <span class="codicon codicon-settings-gear"></span>
-            Settings
-        </button>
-        <div class="model-selector">
-            <select class="model-select" id="modelSelect" onchange="changeModel()">
-                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
-            </select>
-        </div>
-    </div>
-
-    <div class="messages-container" id="messagesContainer">
-        <div class="message assistant">
-            <div class="message-content">
-                👋 Hi! I'm your AI-powered UI developer assistant. I can help you create React components, pages, and entire features using TypeScript, Tailwind CSS, and shadcn/ui.
-
-                **What I can do:**
-                - Generate complete pages and components
-                - Create forms, dashboards, and interactive UIs  
-                - Analyze your project structure
-                - Suggest improvements and best practices
-                - Handle file creation and routing
-
-                What would you like to build today?
-            </div>
-        </div>
-    </div>
-
-    <div class="input-container">
-        <div class="input-wrapper">
-            <button class="attach-button" id="attachButton" onclick="attachFile()">
-                <span class="codicon codicon-paperclip"></span>
-            </button>
-            <textarea 
-                class="message-input" 
-                id="messageInput" 
-                placeholder="Describe what you want to build..."
-                rows="1"
-            ></textarea>
-        </div>
-        <button class="send-button" id="sendButton" onclick="sendMessage()">
-            <span class="codicon codicon-arrow-up"></span>
-        </button>
-    </div>
-
-    <script>
-        let messages = [];
-        let isLoading = false;
-
-        // Handle VS Code API
-        const vscode = acquireVsCodeApi();
-
-        // Handle messages from extension
-        window.addEventListener('message', event => {
-            const message = event.data;
-            switch (message.type) {
-                case 'updateMessages':
-                    messages = message.messages;
-                    isLoading = message.isLoading;
-                    renderMessages();
-                    break;
-                case 'updateModel':
-                    const modelSelect = document.getElementById('modelSelect');
-                    if (modelSelect && message.model) {
-                        modelSelect.value = message.model;
-                    }
-                    break;
-            }
-        });
-
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            
-            if (!message || isLoading) return;
-
-            vscode.postMessage({
-                type: 'sendMessage',
-                message: message
-            });
-
-            input.value = '';
-            autoResize(input);
-        }
-
-        function clearMessages() {
-            vscode.postMessage({ type: 'clearMessages' });
-        }
-
-        function exportConversation() {
-            vscode.postMessage({ type: 'exportConversation' });
-        }
-
-        function showSettings() {
-            vscode.postMessage({ type: 'showSettings' });
-        }
-
-        function changeModel() {
-            const modelSelect = document.getElementById('modelSelect');
-            const selectedModel = modelSelect.value;
-            vscode.postMessage({ 
-                type: 'changeModel', 
-                model: selectedModel 
-            });
-        }
-
-        function createFile(code, filename, language) {
-            vscode.postMessage({
-                type: 'createFile',
-                code: code,
-                filename: filename,
-                language: language
-            });
-        }
-
-        function attachFile() {
-            // For now, show a message that this feature is coming soon
-            // In the future, this could open a file picker or allow image uploads
-            vscode.postMessage({
-                type: 'showMessage',
-                message: 'File attachment feature coming soon!'
-            });
-        }
-
-        function renderMessages() {
-            const container = document.getElementById('messagesContainer');
-            
-            // Keep existing welcome message if no messages
-            if (messages.length === 0) {
-                return;
-            }
-
-            container.innerHTML = '';
-
-            messages.forEach(message => {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = \`message \${message.role}\`;
-
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'message-content';
-
-                if (message.role === 'assistant' && message.metadata?.codeBlocks && message.metadata.codeBlocks.length > 0) {
-                    // Split content by code blocks for proper rendering
-                    let content = message.content;
-                    let htmlContent = '';
-
-                    message.metadata.codeBlocks.forEach((block, index) => {
-                        const beforeCode = content.substring(0, content.indexOf('\`\`\`'));
-                        htmlContent += beforeCode.replace(/\\n/g, '<br>');
-                        
-                        htmlContent += \`
-                            <div class="code-block">
-                                <div class="code-header">
-                                    <span>\${block.language || 'text'}\${block.filename ? \` - \${block.filename}\` : ''}</span>
-                                    <button class="create-file-btn" onclick="createFile('\${escapeHtml(block.code)}', '\${block.filename || ''}', '\${block.language}')">
-                                        Add File
-                                    </button>
-                                </div>
-                                <div class="code-content">\${escapeHtml(block.code)}</div>
-                            </div>
-                        \`;
-
-                        // Move past this code block
-                        const codeBlockEnd = content.indexOf('\`\`\`', content.indexOf('\`\`\`') + 3) + 3;
-                        content = content.substring(codeBlockEnd);
-                    });
-
-                    // Add remaining content
-                    htmlContent += content.replace(/\\n/g, '<br>');
-                    contentDiv.innerHTML = htmlContent;
-                } else {
-                    contentDiv.innerHTML = message.content.replace(/\\n/g, '<br>');
-                }
-
-                messageDiv.appendChild(contentDiv);
-                container.appendChild(messageDiv);
-            });
-
-            // Add loading indicator if needed
-            if (isLoading) {
-                const loadingDiv = document.createElement('div');
-                loadingDiv.className = 'loading-indicator';
-                loadingDiv.innerHTML = \`
-                    <div class="spinner"></div>
-                    <span>Generating response...</span>
-                \`;
-                container.appendChild(loadingDiv);
-            }
-
-            // Scroll to bottom
-            container.scrollTop = container.scrollHeight;
-            
-            // Update send button state
-            document.getElementById('sendButton').disabled = isLoading;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Auto-resize textarea
-        function autoResize(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-        }
-
-        // Event listeners
-        document.getElementById('messageInput').addEventListener('input', function() {
-            autoResize(this);
-        });
-
-        document.getElementById('messageInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        // Initial render
-        renderMessages();
-    </script>
-</body>
-</html>`;
+        return text;
     }
 }

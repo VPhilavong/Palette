@@ -11,7 +11,7 @@
     "AI",
     "Other"
   ],
-  "main": "./out/extension-chatbot.js",
+  "main": "./out/extension.js",
   "keywords": [
     "chatbot",
     "ai",
@@ -21,40 +21,10 @@
     "conversation"
   ],
   "activationEvents": [
-    "onCommand:palette.openChatbot"
+    "onCommand:palette.openModernChatbot"
   ],
   "contributes": {
     "commands": [
-      {
-        "command": "palette.openChatbot",
-        "title": "🎨 Palette: Open AI Chatbot",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.checkBackendStatus",
-        "title": "🎨 Palette: Check Backend Status",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.stopChatbotServer",
-        "title": "🎨 Palette: Stop Chatbot Server",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.openChatbotInBrowser",
-        "title": "🎨 Palette: Open Chatbot in Browser",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.startBackendServer",
-        "title": "🎨 Palette: Start Backend Server",
-        "category": "Palette"
-      },
-      {
-        "command": "palette.createFileFromChatbot",
-        "title": "🎨 Palette: Create File (Internal)",
-        "category": "Palette"
-      },
       {
         "command": "palette.openModernChatbot",
         "title": "🎨 Palette: Open Modern AI Assistant",
@@ -74,6 +44,26 @@
       {
         "command": "palette.selectModel",
         "title": "🤖 Palette: Select AI Model",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.mcp.status",
+        "title": "🔌 Palette: MCP Status",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.mcp.configure",
+        "title": "⚙️ Palette: Configure MCP",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.mcp.restart",
+        "title": "🔄 Palette: Restart MCP",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.mcp.setupGuide",
+        "title": "📖 Palette: MCP Setup Guide",
         "category": "Palette"
       }
     ],
@@ -115,7 +105,7 @@
         {
           "id": "palette-sidebar",
           "title": "Palette AI",
-          "icon": "resources/palette-icon.svg"
+          "icon": "$(paintcan)"
         }
       ]
     },
@@ -125,6 +115,7 @@
           "type": "webview",
           "id": "palette.modernChatbot",
           "name": "AI Assistant",
+          "icon": "$(comment-discussion)",
           "when": "true"
         }
       ]
@@ -135,109 +126,316 @@
         "contents": "# 🎨 Palette AI Assistant\n\nBuild beautiful UIs with conversational design.\n\n**Quick Examples:**\n• \"Create a modern landing page with hero section\"\n• \"Build a dashboard with sidebar and charts\"\n• \"Design a product page with image gallery\"\n\n[⚙️ Configure API Key](command:palette.showSettingsMenu)\n\nStart chatting once your API key is set up!"
       }
     ],
-    "configuration": {
-      "title": "Palette AI Chatbot",
-      "properties": {
-        "palette.openaiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "OpenAI API Key for Palette AI generation",
-          "scope": "application"
-        },
-        "palette.anthropicApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Anthropic API Key for Claude models",
-          "scope": "application"
-        },
-        "palette.defaultModel": {
-          "type": "string",
-          "default": "gpt-4o-mini",
-          "description": "Default AI model to use for generation",
-          "enum": [
-            "gpt-4o-mini",
-            "gpt-4o",
-            "gpt-3.5-turbo",
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-5-2025-08-07",
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-haiku-20241022",
-            "claude-3-opus-20240229"
-          ]
-        },
-        "palette.enableStreaming": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable streaming responses for better user experience"
-        },
-        "palette.backendUrl": {
-          "type": "string",
-          "default": "http://localhost:8765",
-          "description": "Palette backend server URL"
-        },
-        "palette.maxConversationLength": {
-          "type": "number",
-          "default": 100,
-          "description": "Maximum number of messages to keep in conversation history",
-          "minimum": 10,
-          "maximum": 500
-        },
-        "palette.enableMemoryPersistence": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable persistent conversation memory across VS Code sessions"
-        },
-        "palette.autoDetectProject": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically detect and analyze project context"
-        },
-        "palette.maxTokens": {
-          "type": "number",
-          "default": 2000,
-          "description": "Maximum tokens for AI responses",
-          "minimum": 100,
-          "maximum": 32000
-        },
-        "palette.temperature": {
-          "type": "number",
-          "default": 0.7,
-          "description": "AI model temperature (creativity level)",
-          "minimum": 0,
-          "maximum": 2
-        },
-        "palette.analysisDepth": {
-          "type": "string",
-          "enum": ["shallow", "normal", "deep"],
-          "default": "normal",
-          "description": "Project analysis depth"
-        },
-        "palette.cacheAnalysis": {
-          "type": "boolean",
-          "default": true,
-          "description": "Cache project analysis for better performance"
-        },
-        "palette.logLevel": {
-          "type": "string",
-          "enum": ["error", "warn", "info", "debug"],
-          "default": "info",
-          "description": "Logging level for debugging"
+    "configuration": [
+      {
+        "title": "Palette AI Chatbot",
+        "properties": {
+          "palette.openaiApiKey": {
+            "type": "string",
+            "default": "",
+            "description": "OpenAI API Key for Palette AI generation",
+            "scope": "application"
+          },
+          "palette.defaultModel": {
+            "type": "string",
+            "default": "gpt-5-mini-2025-08-07",
+            "description": "Default AI model to use for generation",
+            "enum": [
+              "gpt-5-2025-08-07",
+              "gpt-5-mini-2025-08-07",
+              "gpt-5-nano-2025-08-07"
+            ]
+          },
+          "palette.enableStreaming": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable streaming responses for better user experience"
+          },
+          "palette.backendUrl": {
+            "type": "string",
+            "default": "http://localhost:8765",
+            "description": "Palette backend server URL"
+          },
+          "palette.maxConversationLength": {
+            "type": "number",
+            "default": 100,
+            "description": "Maximum number of messages to keep in conversation history",
+            "minimum": 10,
+            "maximum": 500
+          },
+          "palette.enableMemoryPersistence": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable persistent conversation memory across VS Code sessions"
+          },
+          "palette.autoDetectProject": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically detect and analyze project context"
+          },
+          "palette.maxTokens": {
+            "type": "number",
+            "default": 2000,
+            "description": "Maximum tokens for AI responses",
+            "minimum": 100,
+            "maximum": 32000
+          },
+          "palette.temperature": {
+            "type": "number",
+            "default": 0.7,
+            "description": "AI model temperature (creativity level)",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "palette.analysisDepth": {
+            "type": "string",
+            "enum": [
+              "shallow",
+              "normal",
+              "deep"
+            ],
+            "default": "normal",
+            "description": "Project analysis depth"
+          },
+          "palette.cacheAnalysis": {
+            "type": "boolean",
+            "default": true,
+            "description": "Cache project analysis for better performance"
+          },
+          "palette.logLevel": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warn",
+              "info",
+              "debug"
+            ],
+            "default": "info",
+            "description": "Logging level for debugging"
+          }
+        }
+      },
+      {
+        "title": "MCP (Model Context Protocol)",
+        "properties": {
+          "palette.mcp.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable MCP (Model Context Protocol) server integration",
+            "scope": "window"
+          },
+          "palette.mcp.servers": {
+            "type": "array",
+            "default": [
+              {
+                "name": "filesystem",
+                "description": "File system operations and directory management",
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "@modelcontextprotocol/server-filesystem",
+                  "/tmp"
+                ],
+                "enabled": true,
+                "autoStart": false,
+                "tools": [
+                  "read_file",
+                  "write_file",
+                  "create_directory",
+                  "list_directory",
+                  "move_file",
+                  "search_files"
+                ],
+                "resources": [
+                  "file",
+                  "directory"
+                ]
+              },
+              {
+                "name": "git",
+                "description": "Git version control operations",
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "@modelcontextprotocol/server-git"
+                ],
+                "enabled": false,
+                "autoStart": false,
+                "tools": [
+                  "git_status",
+                  "git_add",
+                  "git_commit",
+                  "git_log",
+                  "git_diff",
+                  "git_branch"
+                ],
+                "resources": [
+                  "repository",
+                  "commit",
+                  "branch"
+                ]
+              },
+              {
+                "name": "shadcn-ui",
+                "description": "shadcn/ui component management and installation",
+                "command": "node",
+                "args": [],
+                "enabled": false,
+                "autoStart": false,
+                "tools": [
+                  "install_component",
+                  "list_components",
+                  "update_component"
+                ],
+                "resources": [
+                  "component",
+                  "theme"
+                ]
+              }
+            ],
+            "description": "MCP server configurations",
+            "scope": "window",
+            "editPresentation": "multilineText",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Unique server name"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable server description"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Command to start the server"
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Command-line arguments"
+                },
+                "env": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Environment variables"
+                },
+                "workingDirectory": {
+                  "type": "string",
+                  "description": "Working directory for the server process"
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Whether the server is enabled"
+                },
+                "autoStart": {
+                  "type": "boolean",
+                  "description": "Whether to start the server automatically"
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Available tool names"
+                },
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Available resource types"
+                }
+              },
+              "required": [
+                "name",
+                "command",
+                "enabled",
+                "autoStart"
+              ]
+            }
+          },
+          "palette.mcp.maxRetries": {
+            "type": "number",
+            "default": 3,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Maximum number of connection retry attempts",
+            "scope": "window"
+          },
+          "palette.mcp.retryDelay": {
+            "type": "number",
+            "default": 5000,
+            "minimum": 1000,
+            "maximum": 30000,
+            "description": "Initial retry delay in milliseconds (uses exponential backoff)",
+            "scope": "window"
+          },
+          "palette.mcp.connectionTimeout": {
+            "type": "number",
+            "default": 10000,
+            "minimum": 5000,
+            "maximum": 60000,
+            "description": "Connection timeout in milliseconds",
+            "scope": "window"
+          },
+          "palette.mcp.healthCheckInterval": {
+            "type": "number",
+            "default": 30000,
+            "minimum": 10000,
+            "maximum": 300000,
+            "description": "Health check interval in milliseconds",
+            "scope": "window"
+          },
+          "palette.mcp.autoRestart": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically restart failed servers",
+            "scope": "window"
+          },
+          "palette.mcp.fallbackMode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "graceful",
+              "always"
+            ],
+            "default": "graceful",
+            "description": "Fallback behavior when MCP servers are unavailable",
+            "scope": "window"
+          },
+          "palette.mcp.showSetupGuide": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show setup guidance for unconfigured MCP servers",
+            "scope": "window"
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
+    "vscode:prepublish": "npm run esbuild-production",
     "compile": "tsc -p .",
-    "watch": "tsc -w -p ."
+    "watch": "tsc -w -p .",
+    "esbuild": "node esbuild.config.js",
+    "esbuild-watch": "node esbuild.config.js --watch",
+    "esbuild-production": "node esbuild.config.js --production",
+    "package": "npm run esbuild-production && vsce package",
+    "deploy": "npm run esbuild-production && vsce publish"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.1",
-    "@ai-sdk/openai": "^2.0.5",
+    "@ai-sdk/openai": "^2.0.6",
     "@langchain/community": "^0.3.50",
     "@langchain/core": "^0.3.68",
     "@langchain/openai": "^0.6.6",
     "@vscode-elements/elements": "^2.0.1",
+    "@vscode-elements/react-elements": "^1.15.1",
     "ai": "^5.0.8",
     "dotenv": "^17.2.1",
     "langchain": "^0.3.30",
@@ -248,6 +446,8 @@
     "@types/dotenv": "^6.1.1",
     "@types/node": "^18.19.121",
     "@types/vscode": "^1.60.0",
+    "@vscode-elements/webview-playground": "^1.9.0",
+    "esbuild": "^0.25.8",
     "typescript": "^5.9.2"
   },
   "author": "",

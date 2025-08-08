@@ -4,9 +4,9 @@
  */
 
 import * as vscode from 'vscode';
-import { ConversationMessage, CodeBlock } from './conversation-manager';
-import { ContextStrategy, ContextConfig } from './context-strategy';
 import { AIProviderRegistry } from './ai-providers';
+import { ContextConfig, ContextStrategy } from './context-strategy';
+import { CodeBlock, ConversationMessage } from './conversation-manager';
 // import { SemanticContextEnhancer, SemanticContext } from './semantic-context-enhancer'; // Temporarily disabled
 
 export interface AIResponse {
@@ -40,7 +40,7 @@ export class AIIntegrationService {
     ): Promise<AIResponse> {
         console.log('🔍 generateStreamingResponse() starting...');
         const config = vscode.workspace.getConfiguration('palette');
-        const model = config.get<string>('defaultModel') || 'gpt-4o-mini';
+        const model = config.get<string>('defaultModel') || 'gpt-5-mini-2025-08-07';
         const enableStreaming = config.get<boolean>('enableStreaming') ?? true;
         console.log('🔍 Model:', model, 'Streaming:', enableStreaming);
 
@@ -103,8 +103,6 @@ export class AIIntegrationService {
             const apiKey = AIProviderRegistry.getApiKey(providerConfig.provider);
             if (providerConfig.provider === 'openai' && apiKey) {
                 process.env.OPENAI_API_KEY = apiKey;
-            } else if (providerConfig.provider === 'anthropic' && apiKey) {
-                process.env.ANTHROPIC_API_KEY = apiKey;
             }
 
             // Build context and messages (use custom prompt if provided)
@@ -208,8 +206,6 @@ export class AIIntegrationService {
             const apiKey = AIProviderRegistry.getApiKey(providerConfig.provider);
             if (providerConfig.provider === 'openai' && apiKey) {
                 process.env.OPENAI_API_KEY = apiKey;
-            } else if (providerConfig.provider === 'anthropic' && apiKey) {
-                process.env.ANTHROPIC_API_KEY = apiKey;
             }
 
             // Build context and messages (use custom prompt if provided)
@@ -442,7 +438,7 @@ export class AIIntegrationService {
             // Get API configuration
             const config = vscode.workspace.getConfiguration('palette');
             const apiKey = config.get<string>('openaiApiKey');
-            const model = config.get<string>('defaultModel') || 'gpt-4o-mini';
+            const model = config.get<string>('defaultModel') || 'gpt-5-mini-2025-08-07';
 
             if (!apiKey) {
                 throw new Error('OpenAI API key not configured. Please set it in VS Code settings (Palette > OpenAI API Key).');
@@ -548,7 +544,7 @@ export class AIIntegrationService {
             } else if (error.message?.includes('rate limit')) {
                 errorMessage += 'Rate limit reached. Please try again in a moment or switch to a different model.';
             } else if (error.message?.includes('model')) {
-                errorMessage += `Model error: ${error.message}. Try using gpt-4o-mini or gpt-3.5-turbo.`;
+                errorMessage += `Model error: ${error.message}. Try using gpt-5-mini-2025-08-07 or gpt-5-nano-2025-08-07.`;
             } else {
                 errorMessage += error.message || 'Unknown error occurred.';
             }

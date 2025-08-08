@@ -1,6 +1,6 @@
 /**
  * AI Provider Abstraction Layer using AI SDK
- * Unified interface for OpenAI, Anthropic, Google, and other providers
+ * Unified interface for OpenAI (GPT-5 family)
  */
 
 import * as vscode from 'vscode';
@@ -16,80 +16,38 @@ export interface ProviderConfig {
 
 export class AIProviderRegistry {
     private static readonly PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
-        // OpenAI Models
-        'gpt-4o': {
-            provider: 'openai',
-            model: 'gpt-4o',
-            maxTokens: 4096,
-            supportsStreaming: true,
-            supportsFunctions: true,
-            defaultTemperature: 0.7
-        },
-        'gpt-4o-mini': {
-            provider: 'openai',
-            model: 'gpt-4o-mini',
-            maxTokens: 16384,
-            supportsStreaming: true,
-            supportsFunctions: true,
-            defaultTemperature: 0.7
-        },
-        'gpt-5': {
-            provider: 'openai',
-            model: 'gpt-5',
-            maxTokens: 2000, // Conservative limit for 10K TPM
-            supportsStreaming: true,
-            supportsFunctions: false,
-            // GPT-5 uses default temperature only
-        },
-        'gpt-5-mini': {
-            provider: 'openai',
-            model: 'gpt-5-mini',
-            maxTokens: 2000,
-            supportsStreaming: true,
-            supportsFunctions: false,
-        },
+        // OpenAI GPT-5 family (only)
         'gpt-5-2025-08-07': {
             provider: 'openai',
             model: 'gpt-5-2025-08-07',
             maxTokens: 2000, // Conservative for 10K TPM limit
-            supportsStreaming: true,
+            supportsStreaming: false, // Disabled until org verification
             supportsFunctions: false,
         },
-        'gpt-3.5-turbo': {
+        'gpt-5-mini-2025-08-07': {
             provider: 'openai',
-            model: 'gpt-3.5-turbo',
-            maxTokens: 4096,
-            supportsStreaming: true,
-            supportsFunctions: true,
-            defaultTemperature: 0.7
-        },
-        
-        
-        // Anthropic Models
-        'claude-3-5-sonnet-20241022': {
-            provider: 'anthropic',
-            model: 'claude-3-5-sonnet-20241022',
-            maxTokens: 8192,
-            supportsStreaming: true,
+            model: 'gpt-5-mini-2025-08-07',
+            maxTokens: 2000,
+            supportsStreaming: false, // Disabled until org verification
             supportsFunctions: false,
-            defaultTemperature: 0.7
         },
-        'claude-3-5-haiku-20241022': {
-            provider: 'anthropic',
-            model: 'claude-3-5-haiku-20241022',
-            maxTokens: 8192,
-            supportsStreaming: true,
+        'gpt-5-nano-2025-08-07': {
+            provider: 'openai',
+            model: 'gpt-5-nano-2025-08-07',
+            maxTokens: 1500,
+            supportsStreaming: false, // Disabled until org verification
             supportsFunctions: false,
-            defaultTemperature: 0.7
-        },
-        'claude-3-opus-20240229': {
-            provider: 'anthropic',
-            model: 'claude-3-opus-20240229',
-            maxTokens: 4096,
-            supportsStreaming: true,
-            supportsFunctions: false,
-            defaultTemperature: 0.7
         }
+    };
+
+    /**
+     * Optional human-readable descriptions for models
+     * Centralizing here prevents duplication across the extension.
+     */
+    private static readonly MODEL_DESCRIPTIONS: Record<string, string> = {
+        'gpt-5-2025-08-07': 'GPT-5 (pinned 2025-08-07)',
+        'gpt-5-mini-2025-08-07': 'GPT-5 Mini (balanced default)',
+        'gpt-5-nano-2025-08-07': 'GPT-5 Nano (fastest, cheapest)'
     };
 
     /**
@@ -98,8 +56,8 @@ export class AIProviderRegistry {
     static getProviderConfig(modelName: string): ProviderConfig {
         const config = this.PROVIDER_CONFIGS[modelName];
         if (!config) {
-            console.warn(`🎨 Unknown model ${modelName}, using gpt-4o-mini as fallback`);
-            return this.PROVIDER_CONFIGS['gpt-4o-mini'];
+            console.warn(`🎨 Unknown model ${modelName}, using gpt-5-mini-2025-08-07 as fallback`);
+            return this.PROVIDER_CONFIGS['gpt-5-mini-2025-08-07'];
         }
         return config;
     }
@@ -110,12 +68,9 @@ export class AIProviderRegistry {
     static async getProvider(modelName: string) {
         const config = this.getProviderConfig(modelName);
         
-        if (config.provider === 'openai') {
+    if (config.provider === 'openai') {
             const { openai } = await import('@ai-sdk/openai');
             return openai(config.model);
-        } else if (config.provider === 'anthropic') {
-            const { anthropic } = await import('@ai-sdk/anthropic');
-            return anthropic(config.model);
         } else {
             throw new Error(`Unsupported provider: ${config.provider}`);
         }
@@ -130,8 +85,6 @@ export class AIProviderRegistry {
         switch (providerName) {
             case 'openai':
                 return config.get<string>('openaiApiKey');
-            case 'anthropic':
-                return config.get<string>('anthropicApiKey');
             default:
                 return undefined;
         }
@@ -144,10 +97,10 @@ export class AIProviderRegistry {
         const config = this.getProviderConfig(modelName);
         const apiKey = this.getApiKey(config.provider);
         
-        if (!apiKey) {
+    if (!apiKey) {
             return {
                 valid: false,
-                error: `${config.provider.toUpperCase()} API key not configured. Please set it in VS Code settings.`
+        error: `OpenAI API key not configured. Please set it in VS Code settings.`
             };
         }
 
@@ -162,18 +115,35 @@ export class AIProviderRegistry {
     }
 
     /**
+     * Get human-readable description for a model
+     */
+    static getModelDescription(modelName: string): string {
+        return this.MODEL_DESCRIPTIONS[modelName] || 'AI model';
+    }
+
+    /**
+     * Helper to present choices in quick pick UIs
+     */
+    static getModelChoices(): Array<{ label: string; description: string }>{
+        return this.getAvailableModels().map(name => ({
+            label: name,
+            description: this.getModelDescription(name)
+        }));
+    }
+
+    /**
      * Get recommended model based on use case
      */
     static getRecommendedModel(useCase: 'speed' | 'quality' | 'cost'): string {
         switch (useCase) {
             case 'speed':
-                return 'gpt-4o-mini';
+                return 'gpt-5-nano-2025-08-07';
             case 'quality':
-                return 'gpt-4o';
+                return 'gpt-5-2025-08-07';
             case 'cost':
-                return 'gpt-3.5-turbo';
+                return 'gpt-5-nano-2025-08-07';
             default:
-                return 'gpt-4o-mini';
+                return 'gpt-5-mini-2025-08-07';
         }
     }
 

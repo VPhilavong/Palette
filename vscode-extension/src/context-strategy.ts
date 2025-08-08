@@ -29,7 +29,7 @@ export class ContextStrategy {
             };
         }
 
-        // GPT-4o-mini: Good balance of capability and token efficiency
+    // Legacy GPT-4o-mini path (kept for backward compatibility)
         if (model.includes('4o-mini')) {
             return {
                 maxSystemPrompt: 800,
@@ -41,7 +41,7 @@ export class ContextStrategy {
             };
         }
 
-        // GPT-4o and other high-capacity models
+    // Legacy GPT-4o and other high-capacity models (back-compat)
         if (model.includes('4o') || model.includes('4-turbo')) {
             return {
                 maxSystemPrompt: 1500,

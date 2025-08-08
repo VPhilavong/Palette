@@ -5,12 +5,13 @@
  */
 
 import * as vscode from 'vscode';
+import { AIProviderRegistry } from '../ai-providers';
 
 export interface PaletteSettings {
     // AI Provider Settings
     defaultModel: string;
     openaiApiKey: string;
-    anthropicApiKey: string;
+    // Anthropics removed
     enableStreaming: boolean;
     maxTokens: number;
     temperature: number;
@@ -89,9 +90,9 @@ export class SettingsManager {
         
         return {
             // AI Provider Settings
-            defaultModel: config.get<string>('defaultModel') || 'gpt-4o-mini',
+            defaultModel: config.get<string>('defaultModel') || 'gpt-5-mini-2025-08-07',
             openaiApiKey: config.get<string>('openaiApiKey') || '',
-            anthropicApiKey: config.get<string>('anthropicApiKey') || '',
+            // No anthropic key in settings anymore
             enableStreaming: config.get<boolean>('enableStreaming') ?? true,
             maxTokens: config.get<number>('maxTokens') || 2000,
             temperature: config.get<number>('temperature') || 0.7,
@@ -157,20 +158,18 @@ export class SettingsManager {
         const warnings: string[] = [];
 
         // Validate API keys
-        if (!settings.openaiApiKey && !settings.anthropicApiKey) {
-            errors.push('At least one AI provider API key must be configured');
+        if (!settings.openaiApiKey) {
+            errors.push('OpenAI API key must be configured');
         }
 
         if (settings.openaiApiKey && !this.isValidApiKeyFormat(settings.openaiApiKey, 'openai')) {
             errors.push('Invalid OpenAI API key format');
         }
 
-        if (settings.anthropicApiKey && !this.isValidApiKeyFormat(settings.anthropicApiKey, 'anthropic')) {
-            errors.push('Invalid Anthropic API key format');
-        }
+    // Anthropic validation removed
 
         // Validate model selection
-        const availableModels = this.getAvailableModels();
+    const availableModels = AIProviderRegistry.getAvailableModels();
         if (!availableModels.includes(settings.defaultModel)) {
             warnings.push(`Selected model "${settings.defaultModel}" may not be available`);
         }
@@ -259,11 +258,6 @@ export class SettingsManager {
                 label: '🤖 OpenAI API Key',
                 description: settings.openaiApiKey ? 'Currently configured' : 'Not configured',
                 provider: 'openai'
-            },
-            {
-                label: '🧠 Anthropic API Key',
-                description: settings.anthropicApiKey ? 'Currently configured' : 'Not configured',
-                provider: 'anthropic'
             }
         ], {
             placeHolder: 'Select provider to configure',
@@ -272,17 +266,17 @@ export class SettingsManager {
 
         if (!choice) return;
 
-        const currentKey = choice.provider === 'openai' ? settings.openaiApiKey : settings.anthropicApiKey;
-        const placeholder = `Enter your ${choice.provider === 'openai' ? 'OpenAI' : 'Anthropic'} API key`;
+    const currentKey = settings.openaiApiKey;
+    const placeholder = `Enter your OpenAI API key`;
         
         const newKey = await vscode.window.showInputBox({
-            prompt: `${choice.provider === 'openai' ? 'OpenAI' : 'Anthropic'} API Key`,
+            prompt: `OpenAI API Key`,
             placeHolder: placeholder,
             value: currentKey ? '••••••••••••••••' : '',
             password: true,
             validateInput: (value) => {
                 if (!value || value === '••••••••••••••••') return null;
-                if (!this.isValidApiKeyFormat(value, choice.provider as 'openai' | 'anthropic')) {
+                if (!this.isValidApiKeyFormat(value, 'openai')) {
                     return `Invalid ${choice.provider} API key format`;
                 }
                 return null;
@@ -290,9 +284,8 @@ export class SettingsManager {
         });
 
         if (newKey && newKey !== '••••••••••••••••') {
-            const settingKey = choice.provider === 'openai' ? 'openaiApiKey' : 'anthropicApiKey';
-            await this.updateSetting(settingKey, newKey, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage(`${choice.provider === 'openai' ? 'OpenAI' : 'Anthropic'} API key updated successfully`);
+            await this.updateSetting('openaiApiKey', newKey, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`OpenAI API key updated successfully`);
         }
     }
 
@@ -301,11 +294,11 @@ export class SettingsManager {
      */
     private async selectModel(): Promise<void> {
         const settings = this.getAllSettings();
-        const availableModels = this.getAvailableModels();
+    const availableModels = AIProviderRegistry.getAvailableModels();
         
         const modelChoices = availableModels.map(model => ({
             label: model,
-            description: this.getModelDescription(model),
+            description: AIProviderRegistry.getModelDescription(model),
             picked: model === settings.defaultModel
         }));
 
@@ -454,9 +447,7 @@ export class SettingsManager {
         if (event.affectsConfiguration('palette.openaiApiKey')) {
             changedKeys.push('openaiApiKey');
         }
-        if (event.affectsConfiguration('palette.anthropicApiKey')) {
-            changedKeys.push('anthropicApiKey');
-        }
+    // No anthropic API key in settings
         
         if (changedKeys.length > 0) {
             console.log('⚙️ Settings changed:', changedKeys.join(', '));
@@ -473,7 +464,7 @@ export class SettingsManager {
         const exportData = {
             ...settings,
             openaiApiKey: settings.openaiApiKey ? '[CONFIGURED]' : '',
-            anthropicApiKey: settings.anthropicApiKey ? '[CONFIGURED]' : ''
+            // remove anthropic key
         };
         
         const json = JSON.stringify(exportData, null, 2);
@@ -534,41 +525,14 @@ export class SettingsManager {
         return this.configuration;
     }
 
-    private isValidApiKeyFormat(apiKey: string, provider: 'openai' | 'anthropic'): boolean {
+    private isValidApiKeyFormat(apiKey: string, provider: 'openai'): boolean {
         if (provider === 'openai') {
             return /^sk-[a-zA-Z0-9]{20,}/.test(apiKey);
-        } else if (provider === 'anthropic') {
-            return /^sk-ant-[a-zA-Z0-9-]{20,}/.test(apiKey);
         }
         return false;
     }
 
-    private getAvailableModels(): string[] {
-        return [
-            'gpt-4o-mini',
-            'gpt-4o',
-            'gpt-3.5-turbo',
-            'gpt-5',
-            'gpt-5-mini',
-            'gpt-5-2025-08-07',
-            'claude-3-5-sonnet-20241022',
-            'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229'
-        ];
-    }
-
-    private getModelDescription(model: string): string {
-        const descriptions: Record<string, string> = {
-            'gpt-4o-mini': 'Fast, cost-effective model for most tasks',
-            'gpt-4o': 'High-quality responses with multimodal capabilities',
-            'gpt-3.5-turbo': 'Legacy model, good for simple tasks',
-            'gpt-5': 'Latest GPT model (if available)',
-            'claude-3-5-sonnet-20241022': 'Anthropic\'s most capable model',
-            'claude-3-5-haiku-20241022': 'Fast Anthropic model',
-            'claude-3-opus-20240229': 'Most powerful Anthropic model'
-        };
-        return descriptions[model] || 'AI model';
-    }
+    // Removed duplicated model list/description; centralized in AIProviderRegistry
 
     /**
      * Dispose of resources
