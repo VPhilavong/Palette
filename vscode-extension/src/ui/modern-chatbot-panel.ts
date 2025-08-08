@@ -60,6 +60,9 @@ export class ModernChatbotPanel implements vscode.WebviewViewProvider {
             case 'configureApiKey':
                 await this._handleConfigureApiKey();
                 break;
+            case 'showMessage':
+                vscode.window.showInformationMessage(data.message);
+                break;
         }
     }
 
@@ -546,43 +549,91 @@ Once configured, you can start building UIs with natural language!
         }
 
         .input-container {
-            padding: 16px;
+            padding: 12px 16px;
             background-color: var(--vscode-sideBar-background);
             border-top: 1px solid var(--vscode-sideBar-border);
             display: flex;
+            align-items: flex-end;
             gap: 8px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: end;
+            background-color: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 20px;
+            padding: 8px 12px;
+            flex: 1;
+            gap: 8px;
+            transition: border-color 0.2s ease;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--vscode-focusBorder);
         }
 
         .message-input {
             flex: 1;
-            background-color: var(--vscode-input-background);
+            background-color: transparent;
             color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 4px;
-            padding: 8px 12px;
-            font-family: var(--vscode-font-family);
-            resize: none;
-            min-height: 36px;
-            max-height: 120px;
-        }
-
-        .message-input:focus {
+            border: none;
             outline: none;
-            border-color: var(--vscode-focusBorder);
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            resize: none;
+            min-height: 20px;
+            max-height: 120px;
+            line-height: 1.4;
+            padding: 0;
         }
 
         .send-button {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background-color: #007acc;
+            color: white;
             border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
             cursor: pointer;
-            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+            align-self: flex-end;
         }
 
         .send-button:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            background-color: #005a9e;
+        }
+
+        .send-button .codicon {
+            font-size: 12px;
+        }
+
+        .attach-button {
+            background-color: transparent;
+            color: var(--vscode-descriptionForeground);
+            border: none;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .attach-button:hover {
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .attach-button .codicon {
+            font-size: 14px;
         }
 
         .send-button:disabled {
@@ -631,19 +682,28 @@ Once configured, you can start building UIs with natural language!
             margin-left: auto;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
         }
 
         .model-select {
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-dropdown-border);
-            border-radius: 4px;
-            padding: 4px 8px;
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+            border: 1px solid var(--vscode-badge-background);
+            border-radius: 12px;
+            padding: 4px 10px;
             font-size: 11px;
             cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            appearance: none;
+            outline: none;
+        }
+
+        .model-select:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        .model-select:focus {
+            border-color: var(--vscode-focusBorder);
         }
 
         .loading-indicator {
@@ -690,10 +750,9 @@ Once configured, you can start building UIs with natural language!
             Settings
         </button>
         <div class="model-selector">
-            <span>Model:</span>
             <select class="model-select" id="modelSelect" onchange="changeModel()">
-                <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
-                <option value="gpt-4o">GPT-4o (Quality)</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="gpt-4o">GPT-4o</option>
                 <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
                 <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
             </select>
@@ -718,13 +777,20 @@ Once configured, you can start building UIs with natural language!
     </div>
 
     <div class="input-container">
-        <textarea 
-            class="message-input" 
-            id="messageInput" 
-            placeholder="Describe what you want to build..."
-            rows="1"
-        ></textarea>
-        <button class="send-button" id="sendButton" onclick="sendMessage()">Send</button>
+        <div class="input-wrapper">
+            <button class="attach-button" id="attachButton" onclick="attachFile()">
+                <span class="codicon codicon-paperclip"></span>
+            </button>
+            <textarea 
+                class="message-input" 
+                id="messageInput" 
+                placeholder="Describe what you want to build..."
+                rows="1"
+            ></textarea>
+        </div>
+        <button class="send-button" id="sendButton" onclick="sendMessage()">
+            <span class="codicon codicon-arrow-up"></span>
+        </button>
     </div>
 
     <script>
@@ -794,6 +860,15 @@ Once configured, you can start building UIs with natural language!
                 code: code,
                 filename: filename,
                 language: language
+            });
+        }
+
+        function attachFile() {
+            // For now, show a message that this feature is coming soon
+            // In the future, this could open a file picker or allow image uploads
+            vscode.postMessage({
+                type: 'showMessage',
+                message: 'File attachment feature coming soon!'
             });
         }
 
