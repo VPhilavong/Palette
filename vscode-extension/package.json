@@ -1,59 +1,132 @@
 {
-  "name": "code-palette-diagnostic",
-  "displayName": "Palette AI (Diagnostic)",
-  "description": "Diagnostic version to test basic VS Code extension functionality",
-  "version": "0.1.0-diagnostic",
+  "name": "code-palette-chatbot",
+  "displayName": "Palette AI Chatbot",
+  "description": "Modern chatbot interface for Palette AI with conversation memory and session management",
+  "version": "0.2.0-chatbot",
   "publisher": "sail-project",
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
-  "main": "./out/extension-diagnostic.js",
+  "main": "./out/extension-chatbot.js",
   "keywords": [
-    "diagnostic",
-    "test"
+    "chatbot",
+    "ai",
+    "react",
+    "ui",
+    "components",
+    "conversation"
   ],
   "activationEvents": [
-    "onCommand:palette.diagnostic",
-    "onCommand:palette.openDiagnostic"
+    "onCommand:palette.openChatbot"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "palette.diagnostic",
-        "title": "🩺 Palette: Test Basic Function",
+        "command": "palette.openChatbot",
+        "title": "🎨 Palette: Open AI Chatbot",
         "category": "Palette"
       },
       {
-        "command": "palette.openDiagnostic",
-        "title": "🩺 Palette: Open Diagnostic Webview",
+        "command": "palette.checkBackendStatus",
+        "title": "🎨 Palette: Check Backend Status",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.stopChatbotServer",
+        "title": "🎨 Palette: Stop Chatbot Server",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.openChatbotInBrowser",
+        "title": "🎨 Palette: Open Chatbot in Browser",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.startBackendServer",
+        "title": "🎨 Palette: Start Backend Server",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.createFileFromChatbot",
+        "title": "🎨 Palette: Create File (Internal)",
         "category": "Palette"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "palette.diagnostic"
+          "command": "palette.openChatbot"
         },
         {
-          "command": "palette.openDiagnostic"
+          "command": "palette.checkBackendStatus"
+        },
+        {
+          "command": "palette.stopChatbotServer"
+        },
+        {
+          "command": "palette.openChatbotInBrowser"
+        },
+        {
+          "command": "palette.startBackendServer"
+        },
+        {
+          "command": "palette.createFileFromChatbot",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "palette.openChatbot",
+          "group": "palette",
+          "when": "editorHasSelection"
         }
       ]
     },
     "configuration": {
-      "title": "Palette",
+      "title": "Palette AI Chatbot",
       "properties": {
         "palette.openaiApiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API Key for Palette AI generation"
+          "description": "OpenAI API Key for Palette AI generation",
+          "scope": "application"
         },
         "palette.defaultModel": {
           "type": "string",
           "default": "gpt-4.1-2025-04-14",
-          "description": "Default AI model to use"
+          "description": "Default AI model to use",
+          "enum": [
+            "gpt-4.1-2025-04-14",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo"
+          ]
+        },
+        "palette.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8765",
+          "description": "Palette backend server URL"
+        },
+        "palette.maxConversationLength": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of messages to keep in conversation history",
+          "minimum": 10,
+          "maximum": 500
+        },
+        "palette.enableMemoryPersistence": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable persistent conversation memory across VS Code sessions"
+        },
+        "palette.autoDetectProject": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and analyze project context"
         }
       }
     }
@@ -72,5 +145,7 @@
     "@types/node": "16.x",
     "@types/vscode": "^1.60.0",
     "typescript": "^4.9.4"
-  }
+  },
+  "author": "",
+  "license": "ISC"
 }
