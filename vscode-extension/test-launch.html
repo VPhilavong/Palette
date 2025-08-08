@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Palette Chatbot Launch Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .success {
+            background: rgba(0, 200, 0, 0.2);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 200, 0, 0.3);
+        }
+        .button {
+            background: #0e639c;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .button:hover {
+            background: #1177bb;
+        }
+    </style>
+</head>
+<body>
+    <div class="success">
+        <h2>🎨 External Browser Launch Test Successful!</h2>
+        <p>The VSCode extension can successfully launch external HTML files in the browser.</p>
+        
+        <button class="button" onclick="openChatbot()">🚀 Open Full Chatbot</button>
+        
+        <h3>Test Results:</h3>
+        <ul>
+            <li>✅ HTML file created successfully</li>
+            <li>✅ External browser launched from VSCode extension</li>
+            <li>✅ CSS styling working (VSCode-like theme)</li>
+            <li>✅ JavaScript execution enabled</li>
+        </ul>
+        
+        <p><strong>Next step:</strong> Test the full chatbot functionality!</p>
+    </div>
+
+    <script>
+        console.log('🎨 Test launch successful - JavaScript enabled!');
+        
+        function openChatbot() {
+            // Open the actual chatbot in the same window
+            window.location.href = './chatbot/index.html';
+        }
+        
+        // Show that we're running in external browser mode
+        document.title = 'Palette Test - External Browser Mode';
+    </script>
+</body>
+</html>

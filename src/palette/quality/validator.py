@@ -527,6 +527,199 @@ class ComponentValidator:
 
         return max(0, min(100, base_score))
 
+    def validate_project_quality(self) -> Dict:
+        """Validate overall project quality and return comprehensive report"""
+        try:
+            # Run project-wide quality analysis
+            issues = []
+            suggestions = []
+            metrics = {}
+            best_practices = {}
+            
+            # Check project structure
+            project_files = list(self.project_path.rglob("*.tsx")) + list(self.project_path.rglob("*.ts"))
+            total_files = len(project_files)
+            
+            if total_files > 0:
+                # Calculate basic metrics
+                metrics = {
+                    "total_files": total_files,
+                    "avg_file_size": sum(f.stat().st_size for f in project_files) / total_files,
+                    "typescript_usage": len([f for f in project_files if f.suffix == ".tsx"]) / total_files * 100
+                }
+                
+                # Check best practices
+                best_practices = {
+                    "uses_typescript": metrics["typescript_usage"] > 80,
+                    "reasonable_file_count": 10 < total_files < 1000,
+                    "consistent_naming": True  # Placeholder
+                }
+                
+                # Generate suggestions
+                if metrics["typescript_usage"] < 80:
+                    suggestions.append("Consider migrating more components to TypeScript")
+                if total_files < 5:
+                    suggestions.append("Project structure could be expanded for better organization")
+                    
+                # Calculate overall score
+                score = 85.0  # Base score
+                if metrics["typescript_usage"] > 80:
+                    score += 10
+                if total_files > 10:
+                    score += 5
+            else:
+                score = 50
+                issues.append("No TypeScript/TSX files found in project")
+                
+            return {
+                "score": min(100, score),
+                "issues": issues,
+                "suggestions": suggestions,
+                "metrics": metrics,
+                "best_practices": best_practices
+            }
+            
+        except Exception as e:
+            return {
+                "score": 60,
+                "issues": [f"Quality analysis failed: {str(e)}"],
+                "suggestions": ["Ensure project structure is accessible"],
+                "metrics": {},
+                "best_practices": {}
+            }
+
+    def validate_files(self, file_paths: List[str], validation_type: str = "comprehensive") -> Dict:
+        """Validate specific files and return quality report"""
+        try:
+            all_issues = []
+            all_suggestions = []
+            file_scores = []
+            
+            for file_path in file_paths:
+                try:
+                    # Read file content
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Run validation based on type
+                    if validation_type == "comprehensive":
+                        report = self.validate_component(content, file_path)
+                        all_issues.extend([{
+                            "file": file_path,
+                            "type": issue.category,
+                            "message": issue.message,
+                            "severity": issue.level.value,
+                            "line": issue.line,
+                            "fixable": issue.auto_fixable
+                        } for issue in report.issues])
+                        file_scores.append(report.score)
+                        
+                        # Add file-specific suggestions
+                        if report.score < 80:
+                            all_suggestions.append(f"Improve quality in {file_path}")
+                            
+                    elif validation_type == "syntax":
+                        # Basic syntax validation
+                        compilation_success = self._check_compilation(content, file_path)
+                        if compilation_success:
+                            file_scores.append(90)
+                        else:
+                            file_scores.append(40)
+                            all_issues.append({
+                                "file": file_path,
+                                "type": "syntax",
+                                "message": "File has compilation errors",
+                                "severity": "error"
+                            })
+                            
+                except Exception as e:
+                    all_issues.append({
+                        "file": file_path,
+                        "type": "validation_error",
+                        "message": f"Could not validate file: {str(e)}",
+                        "severity": "warning"
+                    })
+                    file_scores.append(50)
+            
+            # Calculate overall score
+            overall_score = sum(file_scores) / len(file_scores) if file_scores else 50
+            
+            return {
+                "score": overall_score,
+                "issues": all_issues,
+                "suggestions": all_suggestions,
+                "file_scores": dict(zip(file_paths, file_scores)),
+                "validation_type": validation_type
+            }
+            
+        except Exception as e:
+            return {
+                "score": 50,
+                "issues": [{"type": "validation_error", "message": str(e), "severity": "error"}],
+                "suggestions": ["Ensure files exist and are accessible"]
+            }
+
+    def validate_code_content(self, code: str, file_type: str = "comprehensive") -> Dict:
+        """Validate code content inline without file system access"""
+        try:
+            if file_type == "comprehensive":
+                # Run full validation on code content
+                report = self.validate_component(code, "inline_validation")
+                issues = [{
+                    "type": issue.category,
+                    "message": issue.message,
+                    "severity": issue.level.value,
+                    "line": issue.line,
+                    "fixable": issue.auto_fixable
+                } for issue in report.issues]
+                
+                return {
+                    "score": report.score,
+                    "issues": issues,
+                    "suggestions": ["Apply auto-fixes if available"] if any(i.get("fixable") for i in issues) else [],
+                    "compilation_success": report.compilation_success,
+                    "rendering_success": report.rendering_success
+                }
+                
+            elif file_type == "syntax":
+                # Basic syntax check
+                has_export = "export" in code
+                has_return = "return" in code
+                has_jsx = "<" in code and ">" in code
+                
+                score = 70
+                issues = []
+                
+                if not has_export:
+                    issues.append({"type": "syntax", "message": "Missing export statement", "severity": "error"})
+                    score -= 20
+                if not has_return:
+                    issues.append({"type": "syntax", "message": "Missing return statement", "severity": "error"})
+                    score -= 15
+                if not has_jsx:
+                    issues.append({"type": "syntax", "message": "No JSX elements found", "severity": "warning"})
+                    score -= 10
+                    
+                return {
+                    "score": max(0, score),
+                    "issues": issues,
+                    "suggestions": ["Fix syntax errors before proceeding"]
+                }
+                
+            else:
+                return {
+                    "score": 75,
+                    "issues": [],
+                    "suggestions": []
+                }
+                
+        except Exception as e:
+            return {
+                "score": 50,
+                "issues": [{"type": "validation_error", "message": str(e), "severity": "error"}],
+                "suggestions": ["Check code syntax and structure"]
+            }
+
 
 # Validator implementations
 class TypeScriptValidator:

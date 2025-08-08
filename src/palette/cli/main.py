@@ -5,9 +5,10 @@ import os
 import sys
 import json
 import shutil
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -60,17 +61,19 @@ def main():
               type=click.Choice(['tailwind', 'styled-components', 'emotion', 'css-modules', 'sass', 'css', 'panda-css']),
               help="Styling library")
 @click.option("--ui", "-u",
-              type=click.Choice(['none', 'shadcn/ui', 'material-ui', 'chakra-ui', 'ant-design', 'headless-ui']),
-              default='none',
-              help="UI component library")
+              type=click.Choice(['auto-detect', 'none', 'shadcn/ui', 'material-ui', 'chakra-ui', 'ant-design', 'headless-ui', 'mantine', 'react-bootstrap', 'semantic-ui', 'grommet']),
+              default='auto-detect',
+              help="UI component library (auto-detect will analyze your project)")
 @click.option("--output", "-o", help="Output directory (auto-detected if not provided)")
 @click.option("--preview", is_flag=True, help="Preview before creating files")
 @click.option("--no-tests", is_flag=True, help="Skip test file generation")
 @click.option("--storybook", is_flag=True, help="Include Storybook stories")
 @click.option("--basic-mode", is_flag=True, help="Disable zero-fix validation (basic generation only)")
+@click.option("--explain", is_flag=True, help="Show detailed explanations of generation decisions")
+@click.option("--interactive", is_flag=True, help="Enable interactive refinement mode for conversational development")
 def generate(prompt: str, type: Optional[str], framework: Optional[str], 
              styling: Optional[str], ui: str, output: Optional[str],
-             preview: bool, no_tests: bool, storybook: bool, basic_mode: bool):
+             preview: bool, no_tests: bool, storybook: bool, basic_mode: bool, explain: bool, interactive: bool):
     """Generate UI/UX code from natural language prompts"""
     
     console.print(Panel(
@@ -100,16 +103,45 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
             console.print("[blue]🎨 Using Standard Generator with Enhanced Analysis[/blue]")
         
         
-        # Auto-detect settings from project if not specified
-        if not framework:
-            framework = generator.project_context.get('framework', 'react')
-        if not styling:
-            styling = generator.project_context.get('styling', 'tailwind')
+        # Auto-detect settings from project using enhanced intelligence
+        detected_config = None
+        if not framework or not styling:
+            try:
+                from ..intelligence.configuration_hub import ConfigurationIntelligenceHub
+                config_hub = ConfigurationIntelligenceHub()
+                
+                console.print("🔍 [dim]Auto-detecting project configuration...[/dim]")
+                detected_config = config_hub.analyze_configuration(output)
+                
+                # Use detected settings if not explicitly provided
+                if not framework:
+                    framework = detected_config.framework.value if detected_config.framework else 'react'
+                if not styling:
+                    styling = detected_config.styling_system.value.lower() if detected_config.styling_system else 'tailwind'
+                
+                # Show smart detection results
+                confidence = getattr(detected_config, 'confidence_score', 1.0)
+                if confidence >= 0.8:
+                    console.print(f"✅ [green]Auto-detected: {framework} + {styling} ({confidence:.0%} confidence)[/green]")
+                else:
+                    console.print(f"⚠️ [yellow]Best guess: {framework} + {styling} ({confidence:.0%} confidence)[/yellow]")
+                    
+            except Exception as e:
+                console.print(f"[dim yellow]⚠️ Auto-detection unavailable: {str(e)}[/dim yellow]")
+                # Fallback to basic detection
+                if not framework:
+                    framework = generator.project_context.get('framework', 'react')
+                if not styling:
+                    styling = generator.project_context.get('styling', 'tailwind')
+        
         if not type:
             type = generator._detect_generation_type(prompt)
         
-        # Show detected/selected configuration
-        _show_configuration(framework, styling, ui, type)
+        # Handle UI library selection and validation
+        ui = _resolve_ui_library_selection(ui, output, detected_config)
+        
+        # Show detected/selected configuration with intelligence insights
+        _show_configuration_enhanced(framework, styling, ui, type, detected_config)
         
         # Create generation request
         request = create_generation_request(
@@ -127,20 +159,54 @@ def generate(prompt: str, type: Optional[str], framework: Optional[str],
             generator.quality_assurance = False
             generator.validator = None
         
+        # Enable explanation tracking if requested
+        generation_explanations = []
+        if explain:
+            console.print("\n[bold blue]🧠 GENERATION EXPLANATIONS ENABLED[/bold blue]")
+            console.print("Tracking decision-making process...\n")
+            
+            # Store explanations for post-generation display
+            generation_explanations = _create_generation_explanations(
+                prompt, framework, styling, ui, type, detected_config
+            )
+        
         # Generate files
         files = generator.generate(request)
         
-        if preview:
+        # Interactive refinement mode
+        if interactive:
+            from .interactive_refiner import InteractiveRefiner
+            
+            console.print("\\n🤝 [bold blue]Starting Interactive Refinement Mode[/bold blue]")
+            console.print("[dim]You can now iteratively improve the generated component through conversation.[/dim]")
+            
+            refiner = InteractiveRefiner()
+            session = refiner.start_refinement_session(prompt, files, detected_config)
+            
+            # Run interactive session
+            refined_files = refiner.run_interactive_session()
+            files = refined_files  # Use refined version
+            
+            # Show session summary
+            session_summary = refiner.get_session_summary()
+            if session_summary.get('refinements_applied', 0) > 0:
+                console.print(f"\\n✨ [green]Applied {session_summary['refinements_applied']} refinements through conversation![/green]")
+        
+        elif preview:
             _preview_files(files)
-            if not click.confirm("\nCreate these files?"):
+            if not click.confirm("\\nCreate these files?"):
                 console.print("[yellow]Generation cancelled[/yellow]")
                 return
         
         # Save files
         saved_files = _save_files(files, output)
         
-        # Show summary
+        # Show summary with explanations if requested
         _show_summary(saved_files)
+        
+        # Display generation explanations if enabled
+        if explain and generation_explanations:
+            _display_generation_explanations(generation_explanations, files)
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
@@ -244,90 +310,665 @@ def analyze():
 
 
 @main.command()
-@click.option("--type", help="Framework type (react, nextjs, vue)")
-@click.option("--styling", help="Styling library (tailwind, css)")
-@click.option("--ui-lib", help="UI library (shadcn, none)")
-@click.option("--components", is_flag=True, help="Include component templates")
-@click.option("--utils", is_flag=True, help="Include utility templates")
-@click.option("--wireframe", help="Path to wireframe file (SVG or JSON)")
-@click.option("--wireframe-prompt", help="Description of what to build from wireframe")
-def init(type: Optional[str], styling: Optional[str], ui_lib: Optional[str], components: bool, utils: bool, wireframe: Optional[str], wireframe_prompt: Optional[str]):
-    """Initialize a new project with Palette templates"""
+@click.argument("project_name", required=True)
+@click.option("--template", help="Vite template (react-ts is default)")
+def init(project_name: str, template: Optional[str]):
+    """Initialize a new Vite + React + TypeScript + shadcn/ui project"""
     
     console.print(Panel(
-        "[bold blue]🚀 Palette Project Initializer[/bold blue]",
+        "[bold blue]🚀 Palette Project Initializer[/bold blue]\nVite + React + TypeScript + shadcn/ui",
         title="Initializing",
         border_style="blue",
     ))
     
+    template = template or "react-ts"
+    
     try:
-        # Interactive prompts if not provided via flags
-        if not type:
-            type = Prompt.ask(
-                "Choose framework",
-                choices=["react", "nextjs", "vue"],
-                default="react"
-            )
-        
-        if not styling:
-            styling = Prompt.ask(
-                "Choose styling library",
-                choices=["tailwind", "css"],
-                default="tailwind"
-            )
-        
-        if not ui_lib:
-            ui_lib = Prompt.ask(
-                "Choose UI library",
-                choices=["shadcn", "none"],
-                default="shadcn"
-            )
-        
-        # Get project name
-        project_name = Prompt.ask("Enter project name")
-        if not project_name:
-            console.print("[red]Error:[/red] Project name is required")
-            sys.exit(1)
-        
-        # Wireframe workflow
-        wireframe_path = wireframe
-        wireframe_description = wireframe_prompt
-        
-        if not wireframe_path:
-            has_wireframe = Confirm.ask("Do you have a wireframe?")
-            if has_wireframe:
-                wireframe_path = Prompt.ask("Enter wireframe file path (SVG)")
-                if not wireframe_path or not os.path.exists(wireframe_path):
-                    console.print("[red]Error:[/red] Wireframe file not found")
-                    sys.exit(1)
-                wireframe_description = Prompt.ask("Describe what you want to build from this wireframe")
-        
-        # Create project directory
+        # Check if directory exists
         if os.path.exists(project_name):
-            if not Confirm.ask(f"Directory '{project_name}' already exists. Overwrite?"):
+            if not Confirm.ask(f"Directory '{project_name}' already exists. Continue?"):
                 console.print("[yellow]Project initialization cancelled[/yellow]")
                 return
             shutil.rmtree(project_name)
         
+        console.print(f"[blue]📦 Creating Vite project:[/blue] {project_name}")
+        
+        # Step 1: Create project directory
+        console.print("🔄 Step 1/6: Creating project directory...")
         os.makedirs(project_name)
-        console.print(f"[green]✓[/green] Created project directory: {project_name}")
+        project_path = os.path.abspath(project_name)
+        os.chdir(project_name)
+        console.print(f"[green]✓[/green] Created project directory")
         
-        # Generate project structure based on selections
-        _create_project_structure(project_name, type, styling, ui_lib, components, utils)
+        # Step 2: Initialize Vite project inside the directory
+        console.print("🔄 Step 2/7: Initializing Vite project...")
+        _create_vite_react_project()
+        console.print(f"[green]✓[/green] Initialized Vite project")
         
-        # Generate wireframe-based components if provided
-        if wireframe_path and wireframe_description:
-            _generate_wireframe_components(project_name, wireframe_path, wireframe_description, type, styling, ui_lib)
+        # Step 3: Install dependencies
+        console.print("🔄 Step 3/7: Installing dependencies...")
+        result = subprocess.run(["npm", "install"], capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"[red]Warning:[/red] npm install had issues: {result.stderr}")
+        else:
+            console.print(f"[green]✓[/green] Installed dependencies")
         
-        console.print(f"[green]✓[/green] Project '{project_name}' initialized successfully!")
+        # Step 4: Add Tailwind CSS (exactly as per official docs)
+        console.print("🔄 Step 4/8: Adding Tailwind CSS...")
+        result = subprocess.run([
+            "npm", "install", "tailwindcss", "@tailwindcss/vite"
+        ], capture_output=True, text=True, check=True)
+        console.print(f"[green]✓[/green] Added Tailwind CSS")
+        
+        # Step 5: Replace everything in src/index.css with @import "tailwindcss"
+        console.print("🔄 Step 5/8: Updating CSS file...")
+        _update_css_file()
+        console.print(f"[green]✓[/green] Updated CSS file")
+        
+        # Step 6: Edit tsconfig.json and tsconfig.app.json files
+        console.print("🔄 Step 6/8: Editing TypeScript config files...")
+        _edit_typescript_configs()
+        console.print(f"[green]✓[/green] Edited TypeScript configs")
+        
+        # Step 7: Install @types/node and update vite.config.ts
+        console.print("🔄 Step 7/8: Installing @types/node and updating Vite config...")
+        result = subprocess.run([
+            "npm", "install", "-D", "@types/node"
+        ], capture_output=True, text=True, check=True)
+        _update_vite_config()
+        console.print(f"[green]✓[/green] Updated Vite configuration")
+        
+        # Step 8: Run shadcn init
+        console.print("🔄 Step 8/8: Running shadcn init...")
+        _run_shadcn_init()
+        console.print(f"[green]✓[/green] Initialized shadcn/ui")
+        
+        console.print(f"\n[bold green]🎉 Project '{project_name}' created successfully![/bold green]")
+        console.print(f"\n[bold]Stack:[/bold]")
+        console.print(f"  ⚡ Vite")
+        console.print(f"  ⚛️  React + TypeScript")  
+        console.print(f"  🎨 Tailwind CSS")
+        console.print(f"  🧩 shadcn/ui")
+        
         console.print(f"\n[bold]Next steps:[/bold]")
         console.print(f"  cd {project_name}")
-        console.print(f"  npm install")
         console.print(f"  npm run dev")
+        console.print(f"  palette conversation --interactive  # Start building!")
         
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error during setup:[/red] {e}")
+        console.print(f"[yellow]Command failed:[/yellow] {' '.join(e.cmd)}")
+        sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
         sys.exit(1)
+
+
+def _configure_tailwind_for_vite(project_path: str):
+    """Configure Tailwind CSS for Vite project"""
+    import json
+    
+    # Update tailwind.config.js
+    tailwind_config = '''/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+'''
+    
+    with open("tailwind.config.js", "w") as f:
+        f.write(tailwind_config)
+    
+    # Update src/index.css
+    index_css = '''@tailwind base;
+@tailwind components;
+@tailwind utilities;
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(index_css)
+    
+    # Keep the standard vite.config.ts (no special Tailwind plugin needed)
+    # The _create_vite_react_project function already creates the correct config
+
+
+def _setup_shadcn_ui(project_path: str):
+    """Set up shadcn/ui in the project"""
+    import json
+    
+    # Install shadcn/ui dependencies
+    subprocess.run([
+        "npm", "install", "class-variance-authority", "clsx", "tailwind-merge", 
+        "lucide-react", "@radix-ui/react-slot"
+    ], capture_output=True, text=True, check=True)
+    
+    # Create components.json
+    components_config = {
+        "$schema": "https://ui.shadcn.com/schema.json",
+        "style": "default",
+        "rsc": False,
+        "tsx": True,
+        "tailwind": {
+            "config": "tailwind.config.js",
+            "css": "src/index.css",
+            "baseColor": "slate",
+            "cssVariables": True
+        },
+        "aliases": {
+            "components": "@/components",
+            "utils": "@/lib/utils"
+        }
+    }
+    
+    with open("components.json", "w") as f:
+        json.dump(components_config, f, indent=2)
+    
+    # Create lib/utils.ts
+    os.makedirs("src/lib", exist_ok=True)
+    utils_content = '''import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+'''
+    
+    with open(os.path.join("src", "lib", "utils.ts"), "w") as f:
+        f.write(utils_content)
+    
+    # Create components/ui directory
+    os.makedirs(os.path.join("src", "components", "ui"), exist_ok=True)
+    
+    # Update tailwind.config.js with shadcn/ui configuration (ES modules format)
+    tailwind_config = '''import tailwindcssAnimate from 'tailwindcss-animate';
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class"],
+  content: [
+    './pages/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './app/**/*.{ts,tsx}',
+    './src/**/*.{ts,tsx}',
+  ],
+  prefix: "",
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [tailwindcssAnimate],
+}
+'''
+    
+    with open("tailwind.config.js", "w") as f:
+        f.write(tailwind_config)
+    
+    # Update src/index.css with shadcn/ui base styles (Tailwind v4)
+    index_css = '''@import "tailwindcss";
+ 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+ 
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+ 
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(index_css)
+    
+    # Install tailwindcss-animate
+    subprocess.run(["npm", "install", "-D", "tailwindcss-animate"], capture_output=True, text=True, check=True)
+
+
+def _create_vite_react_project():
+    """Create a basic Vite + React + TypeScript project structure"""
+    import json
+    
+    # Create package.json
+    package_json = {
+        "name": "vite-react-project",
+        "private": True,
+        "version": "0.0.0",
+        "type": "module",
+        "scripts": {
+            "dev": "vite",
+            "build": "tsc && vite build",
+            "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+            "preview": "vite preview"
+        },
+        "dependencies": {
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+            "@types/react": "^18.2.43",
+            "@types/react-dom": "^18.2.17",
+            "@typescript-eslint/eslint-plugin": "^6.14.0",
+            "@typescript-eslint/parser": "^6.14.0",
+            "@vitejs/plugin-react": "^4.2.1",
+            "eslint": "^8.55.0",
+            "eslint-plugin-react-hooks": "^4.6.0",
+            "eslint-plugin-react-refresh": "^0.4.5",
+            "typescript": "^5.2.2",
+            "vite": "^5.0.8"
+        }
+    }
+    
+    with open("package.json", "w") as f:
+        json.dump(package_json, f, indent=2)
+    
+    # Create tsconfig.json
+    tsconfig = {
+        "compilerOptions": {
+            "target": "ES2020",
+            "useDefineForClassFields": True,
+            "lib": ["ES2020", "DOM", "DOM.Iterable"],
+            "module": "ESNext",
+            "skipLibCheck": True,
+            "moduleResolution": "bundler",
+            "allowImportingTsExtensions": True,
+            "resolveJsonModule": True,
+            "isolatedModules": True,
+            "noEmit": True,
+            "jsx": "react-jsx",
+            "strict": True,
+            "noUnusedLocals": True,
+            "noUnusedParameters": True,
+            "noFallthroughCasesInSwitch": True,
+            "baseUrl": ".",
+            "paths": {
+                "@/*": ["./src/*"]
+            }
+        },
+        "include": ["src"],
+        "references": [{"path": "./tsconfig.node.json"}]
+    }
+    
+    with open("tsconfig.json", "w") as f:
+        json.dump(tsconfig, f, indent=2)
+    
+    # Create tsconfig.node.json
+    tsconfig_node = {
+        "compilerOptions": {
+            "composite": True,
+            "skipLibCheck": True,
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "allowSyntheticDefaultImports": True
+        },
+        "include": ["vite.config.ts"]
+    }
+    
+    with open("tsconfig.node.json", "w") as f:
+        json.dump(tsconfig_node, f, indent=2)
+    
+    # Create vite.config.ts
+    vite_config = '''import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': '/src',
+    },
+  },
+})
+'''
+    
+    with open("vite.config.ts", "w") as f:
+        f.write(vite_config)
+    
+    # Create index.html
+    index_html = '''<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + React + TS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+'''
+    
+    with open("index.html", "w") as f:
+        f.write(index_html)
+    
+    # Create src directory and files
+    os.makedirs("src", exist_ok=True)
+    
+    # Create src/main.tsx
+    main_tsx = '''import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+'''
+    
+    with open("src/main.tsx", "w") as f:
+        f.write(main_tsx)
+    
+    # Create src/App.tsx
+    app_tsx = '''import { useState } from 'react'
+import './App.css'
+
+function App() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <h1 className="text-4xl font-bold text-foreground">
+          Vite + React + shadcn/ui
+        </h1>
+        <div className="card">
+          <button 
+            onClick={() => setCount((count) => count + 1)}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+          >
+            count is {count}
+          </button>
+          <p className="mt-4 text-muted-foreground">
+            Edit <code className="bg-muted px-1 py-0.5 rounded">src/App.tsx</code> and save to test HMR
+          </p>
+        </div>
+        <p className="text-muted-foreground">
+          Click on the Vite and React logos to learn more
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export default App
+'''
+    
+    with open("src/App.tsx", "w") as f:
+        f.write(app_tsx)
+    
+    # Create src/App.css
+    app_css = '''#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+'''
+    
+    with open("src/App.css", "w") as f:
+        f.write(app_css)
+    
+    # Create src/index.css (will be overwritten by Tailwind setup)
+    index_css = '''body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+'''
+    
+    with open("src/index.css", "w") as f:
+        f.write(index_css)
+    
+    # Create public directory
+    os.makedirs("public", exist_ok=True)
+    
+    # Create public/vite.svg
+    vite_svg = '''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="31.88" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 257"><defs><linearGradient id="IconifyId1813088fe1fbc01fb466" x1="-.828%" x2="57.636%" y1="7.652%" y2="78.411%"><stop offset="0%" stop-color="#41D1FF"></stop><stop offset="100%" stop-color="#BD34FE"></stop></linearGradient><linearGradient id="IconifyId1813088fe1fbc01fb467" x1="43.376%" x2="50.316%" y1="2.242%" y2="89.03%"><stop offset="0%" stop-color="#FFEA83"></stop><stop offset="8.333%" stop-color="#FFDD35"></stop><stop offset="100%" stop-color="#FFA800"></stop></linearGradient></defs><path fill="url(#IconifyId1813088fe1fbc01fb466)" d="M255.153 37.938L134.897 252.976c-2.483 4.44-8.862 4.466-11.382.048L.875 37.958c-2.746-4.814 1.371-10.646 6.827-9.67l120.385 21.517a6.537 6.537 0 0 0 2.322-.004l117.867-21.483c5.438-.991 9.574 4.796 6.877 9.62Z"></path><path fill="url(#IconifyId1813088fe1fbc01fb467)" d="M185.432.063L96.44 17.501a3.268 3.268 0 0 0-2.634 3.014l-5.474 92.456a3.268 3.268 0 0 0 3.997 3.378l24.777-5.718c2.318-.535 4.413 1.507 3.936 3.838l-7.361 36.047c-.495 2.426 1.782 4.5 4.151 3.78l15.304-4.649c2.372-.72 4.652 1.36 4.15 3.788l-11.698 56.621c-.732 3.542 3.979 5.473 5.943 2.437l1.313-2.028l72.516-144.72c1.215-2.423-.88-5.186-3.54-4.672l-25.505 4.922c-2.396.462-4.435-1.77-3.759-4.114l16.646-57.705c.677-2.35-1.37-4.583-3.769-4.113Z"></path></svg>'''
+    
+    with open("public/vite.svg", "w") as f:
+        f.write(vite_svg)
+
+
+def _update_css_file():
+    """Step 5: Replace everything in src/index.css with @import 'tailwindcss'"""
+    
+    css_content = '''@import "tailwindcss";
+'''
+    
+    css_path = os.path.join("src", "index.css")
+    with open(css_path, "w") as f:
+        f.write(css_content)
+
+
+def _edit_typescript_configs():
+    """Step 6: Edit tsconfig.json and tsconfig.app.json files"""
+    import json
+    
+    # Edit tsconfig.json - Add baseUrl and paths to compilerOptions
+    with open("tsconfig.json", "r") as f:
+        tsconfig = json.load(f)
+    
+    if "compilerOptions" not in tsconfig:
+        tsconfig["compilerOptions"] = {}
+    
+    tsconfig["compilerOptions"]["baseUrl"] = "."
+    tsconfig["compilerOptions"]["paths"] = {
+        "@/*": ["./src/*"]
+    }
+    
+    with open("tsconfig.json", "w") as f:
+        json.dump(tsconfig, f, indent=2)
+    
+    # Edit tsconfig.app.json - Add baseUrl and paths to compilerOptions
+    try:
+        with open("tsconfig.app.json", "r") as f:
+            tsconfig_app = json.load(f)
+        
+        if "compilerOptions" not in tsconfig_app:
+            tsconfig_app["compilerOptions"] = {}
+        
+        tsconfig_app["compilerOptions"]["baseUrl"] = "."
+        tsconfig_app["compilerOptions"]["paths"] = {
+            "@/*": ["./src/*"]
+        }
+        
+        with open("tsconfig.app.json", "w") as f:
+            json.dump(tsconfig_app, f, indent=2)
+    except FileNotFoundError:
+        # If tsconfig.app.json doesn't exist, skip it (some Vite setups don't have it)
+        pass
+
+
+def _update_vite_config():
+    """Step 7: Update vite.config.ts exactly as per documentation"""
+    
+    vite_config = '''import path from "path"
+import tailwindcss from "@tailwindcss/vite"
+import react from "@vitejs/plugin-react"
+import { defineConfig } from "vite"
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+})
+'''
+    
+    with open("vite.config.ts", "w") as f:
+        f.write(vite_config)
+
+
+def _run_shadcn_init():
+    """Step 8: Run npx shadcn@latest init"""
+    
+    # Run shadcn init command with answers piped in
+    # Default answers: Neutral (for base color)
+    init_cmd = 'echo "Neutral" | npx shadcn@latest init'
+    
+    try:
+        result = subprocess.run(init_cmd, shell=True, capture_output=True, text=True, check=True)
+        console.print("✅ shadcn/ui initialized successfully")
+    except subprocess.CalledProcessError as e:
+        console.print(f"⚠️  shadcn init completed with warnings: {e.stderr}")
+        # This is often fine - shadcn init can complete successfully with warnings
 
 
 @main.command()
@@ -409,6 +1050,130 @@ def knowledge_status():
 
 
 @main.command()
+@click.option("--show", is_flag=True, help="Show detailed project context analysis")
+@click.option("--format", "-f", type=click.Choice(['table', 'json', 'detailed']), 
+              default='detailed', help="Output format")
+@click.option("--explain", is_flag=True, help="Explain how context affects generation")
+def context(show: bool, format: str, explain: bool):
+    """Context Lens - See what Palette understands about your project"""
+    
+    console.print(Panel(
+        "[bold blue]🔍 Context Lens[/bold blue]\nAnalyzing your project context...",
+        title="Context Analysis",
+        border_style="blue",
+    ))
+    
+    try:
+        # Import enhanced analysis components
+        from ..intelligence.configuration_hub import ConfigurationIntelligenceHub
+        from ..generation.config_aware_context_manager import ConfigurationAwareContextManager
+        from ..generation.framework_pattern_library import FrameworkPatternLibrary
+        
+        # Initialize analysis components
+        config_hub = ConfigurationIntelligenceHub()
+        context_manager = ConfigurationAwareContextManager()
+        pattern_library = FrameworkPatternLibrary()
+        
+        # Analyze project configuration
+        console.print("🔄 Analyzing project configuration...")
+        project_config = config_hub.analyze_configuration(".")
+        
+        # Get context insights
+        console.print("🔄 Gathering context insights...")
+        sample_request = "Create a responsive component"
+        project_context = {'project_path': '.'}
+        
+        try:
+            optimized_system, optimized_user, context_stats = context_manager.optimize_context_with_configuration(
+                user_request=sample_request,
+                project_context=project_context,
+                configuration=project_config,
+                system_prompt_base="You are an expert frontend developer.",
+                user_prompt_base=sample_request
+            )
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Context optimization unavailable: {str(e)}[/yellow]")
+            context_stats = {}
+        
+        # Get pattern recommendations
+        console.print("🔄 Finding relevant patterns...")
+        try:
+            pattern_recommendations = pattern_library.get_recommended_patterns(
+                user_request=sample_request,
+                framework=project_config.framework,
+                styling_system=project_config.styling_system,
+                max_results=5
+            )
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Pattern recommendations unavailable: {str(e)}[/yellow]")
+            pattern_recommendations = []
+        
+        # Display results based on format
+        if format == 'json':
+            _show_context_json(project_config, context_stats, pattern_recommendations)
+        elif format == 'table':
+            _show_context_table(project_config, context_stats, pattern_recommendations)
+        else:  # detailed
+            _show_context_detailed(project_config, context_stats, pattern_recommendations, explain)
+            
+    except Exception as e:
+        console.print(f"[red]Error analyzing project context:[/red] {str(e)}")
+        console.print("[yellow]Tip: Make sure you're in a project directory with a package.json file[/yellow]")
+        sys.exit(1)
+
+
+@main.command()
+@click.option("--complete", "-c", help="Get completions for partial prompt")
+@click.option("--category", help="Filter suggestions by category")
+@click.option("--format", "-f", type=click.Choice(['detailed', 'simple', 'json']), 
+              default='detailed', help="Output format")
+def suggest(complete: Optional[str], category: Optional[str], format: str):
+    """Get context-aware prompt suggestions based on your current location"""
+    
+    console.print(Panel(
+        "[bold blue]💡 Smart Suggestions[/bold blue]\nAnalyzing context for relevant prompts...",
+        title="Contextual Suggestions",
+        border_style="blue",
+    ))
+    
+    try:
+        from .smart_suggestions import SmartSuggestionEngine
+        
+        suggestion_engine = SmartSuggestionEngine()
+        
+        if complete:
+            # Get prompt completions
+            console.print(f"🔍 [dim]Getting completions for: '{complete}'[/dim]")
+            suggestions = suggestion_engine.get_prompt_completions(complete, ".")
+        else:
+            # Get contextual suggestions
+            console.print("🔍 [dim]Analyzing current directory context...[/dim]")
+            suggestions = suggestion_engine.get_contextual_suggestions(".")
+        
+        # Filter by category if specified
+        if category:
+            suggestions = [s for s in suggestions if category.lower() in s.category.lower()]
+        
+        if not suggestions:
+            console.print("[yellow]No relevant suggestions found for current context.[/yellow]")
+            console.print("[dim]Try moving to a component directory or specify a partial prompt with --complete[/dim]")
+            return
+        
+        # Display suggestions based on format
+        if format == 'json':
+            _show_suggestions_json(suggestions)
+        elif format == 'simple': 
+            _show_suggestions_simple(suggestions)
+        else:  # detailed
+            _show_suggestions_detailed(suggestions, complete is not None)
+            
+    except Exception as e:
+        console.print(f"[red]Error generating suggestions:[/red] {str(e)}")
+        console.print("[yellow]Tip: Make sure you're in a project directory[/yellow]")
+        sys.exit(1)
+
+
+@main.command()
 def config():
     """Configure UI/UX Copilot settings"""
     
@@ -433,8 +1198,8 @@ def config():
     
     ui_lib = click.prompt(
         "Default UI library",
-        type=click.Choice(['none', 'shadcn/ui', 'material-ui', 'chakra-ui']),
-        default='none'
+        type=click.Choice(['auto-detect', 'none', 'shadcn/ui', 'material-ui', 'chakra-ui', 'ant-design', 'headless-ui', 'mantine', 'react-bootstrap', 'semantic-ui', 'grommet']),
+        default='auto-detect'
     )
     
     # Save configuration
@@ -831,6 +1596,76 @@ def _show_configuration(framework: str, styling: str, ui: str, type: str):
     config_table.add_row("Generation Type", type)
     
     console.print(config_table)
+
+
+def _show_configuration_enhanced(framework: str, styling: str, ui: str, type: str, detected_config=None):
+    """Show enhanced configuration with intelligence insights"""
+    
+    # Basic configuration table
+    config_table = Table(title="Generation Configuration", show_header=True, header_style="bold cyan")
+    config_table.add_column("Setting", style="cyan", width=20)
+    config_table.add_column("Value", style="green", width=25)
+    config_table.add_column("Source", style="yellow", width=15)
+    config_table.add_column("Confidence", style="white", width=12)
+    
+    # Determine sources and confidence
+    framework_source = "Auto-detected" if detected_config and detected_config.framework else "Default"
+    styling_source = "Auto-detected" if detected_config and detected_config.styling_system else "Default"
+    confidence = getattr(detected_config, 'confidence_score', 0.0) if detected_config else 0.0
+    
+    config_table.add_row(
+        "Framework", 
+        framework, 
+        framework_source,
+        f"{confidence:.0%}" if confidence > 0 else "N/A"
+    )
+    config_table.add_row(
+        "Styling", 
+        styling, 
+        styling_source,
+        "High" if detected_config and detected_config.styling_system else "Low"
+    )
+    config_table.add_row(
+        "UI Library", 
+        ui, 
+        "Manual",
+        "N/A"
+    )
+    config_table.add_row(
+        "Generation Type", 
+        type, 
+        "Auto-detected",
+        "High"
+    )
+    
+    console.print(config_table)
+    
+    # Show intelligence insights if available
+    if detected_config:
+        insights = []
+        
+        # TypeScript insight
+        if detected_config.typescript:
+            insights.append("• TypeScript interfaces will be generated")
+        
+        # Styling system insights
+        if detected_config.styling_system:
+            if detected_config.styling_system.value == "TAILWIND":
+                insights.append("• Tailwind CSS classes will be used for styling")
+            elif detected_config.styling_system.value == "CHAKRA_UI":
+                insights.append("• Chakra UI components will be prioritized")
+                insights.append("• Tailwind classes will be avoided to prevent conflicts")
+        
+        # Component library insight
+        if detected_config.component_library and detected_config.component_library.value != "none":
+            insights.append(f"• {detected_config.component_library.value} components will be used")
+        
+        if insights:
+            console.print("\n[bold blue]🤖 Generation Intelligence:[/bold blue]")
+            for insight in insights:
+                console.print(f"[dim]{insight}[/dim]")
+    
+    console.print("") # Add spacing
 
 
 def _preview_files(files: Dict[str, str]):
@@ -1552,6 +2387,798 @@ def _generate_vue_layout_elements(rectangles: list, circles: list, text_elements
     </div>''')
     
     return "\n".join(elements)
+
+
+def _show_context_detailed(project_config, context_stats: dict, pattern_recommendations: list, explain: bool):
+    """Show detailed context analysis with rich formatting"""
+    
+    # Project Configuration Overview
+    console.print("\n📊 PROJECT ANALYSIS", style="bold blue")
+    console.print("=" * 50)
+    
+    config_table = Table(title="Project Configuration", show_header=True, header_style="bold cyan")
+    config_table.add_column("Setting", style="cyan", width=25)
+    config_table.add_column("Value", style="green", width=30)
+    config_table.add_column("Confidence", style="yellow", width=15)
+    
+    config_table.add_row(
+        "Framework", 
+        project_config.framework.value if project_config.framework else "Unknown",
+        f"{project_config.confidence_score:.1%}" if hasattr(project_config, 'confidence_score') else "N/A"
+    )
+    config_table.add_row(
+        "Styling System", 
+        project_config.styling_system.value if project_config.styling_system else "Unknown",
+        "High" if project_config.styling_system else "Low"
+    )
+    config_table.add_row(
+        "TypeScript", 
+        "✅ Yes" if project_config.typescript else "❌ No",
+        "High"
+    )
+    config_table.add_row(
+        "Components Found", 
+        str(len(project_config.component_patterns)) if hasattr(project_config, 'component_patterns') else "0",
+        "Medium"
+    )
+    
+    console.print(config_table)
+    
+    # Context Optimization Stats
+    if context_stats:
+        console.print("\n🎯 CONTEXT OPTIMIZATION", style="bold blue")
+        console.print("=" * 50)
+        
+        optimization_table = Table(title="Context Intelligence", show_header=True, header_style="bold cyan")
+        optimization_table.add_column("Metric", style="cyan")
+        optimization_table.add_column("Value", style="green")
+        optimization_table.add_column("Target", style="yellow")
+        optimization_table.add_column("Status", style="white")
+        
+        token_budget = context_stats.get('token_budget', {})
+        utilization = token_budget.get('utilization', 0)
+        target_utilization = 0.087  # 8.7% target
+        
+        optimization_table.add_row(
+            "Token Utilization",
+            f"{utilization:.1%}",
+            f"{target_utilization:.1%}",
+            "✅ Optimal" if utilization <= target_utilization else "⚠️ High"
+        )
+        
+        context_quality = context_stats.get('context_quality', {})
+        relevance_score = context_quality.get('relevance_score', 0)
+        optimization_table.add_row(
+            "Context Relevance",
+            f"{relevance_score:.1%}" if relevance_score else "N/A",
+            "≥90%",
+            "✅ Good" if relevance_score >= 0.9 else "⚠️ Low" if relevance_score else "❓ Unknown"
+        )
+        
+        priority_weights = context_stats.get('priority_weights', {})
+        framework_weight = priority_weights.get('framework_specific', 0)
+        optimization_table.add_row(
+            "Framework Focus",
+            f"{framework_weight:.1%}" if framework_weight else "N/A",
+            "≥70%",
+            "✅ High" if framework_weight >= 0.7 else "⚠️ Low" if framework_weight else "❓ Unknown"
+        )
+        
+        console.print(optimization_table)
+    
+    # Pattern Recommendations
+    if pattern_recommendations:
+        console.print("\n🎨 PATTERN RECOMMENDATIONS", style="bold blue")
+        console.print("=" * 50)
+        
+        patterns_table = Table(title="Available Patterns", show_header=True, header_style="bold cyan")
+        patterns_table.add_column("Pattern", style="cyan")
+        patterns_table.add_column("Framework", style="green")
+        patterns_table.add_column("Styling", style="yellow")
+        patterns_table.add_column("Use Cases", style="white")
+        
+        for pattern in pattern_recommendations[:5]:  # Show top 5
+            use_cases = ", ".join(pattern.use_cases[:2]) if hasattr(pattern, 'use_cases') and pattern.use_cases else "General"
+            patterns_table.add_row(
+                pattern.name,
+                pattern.framework.value if hasattr(pattern, 'framework') and pattern.framework else "Any",
+                pattern.styling_system.value if hasattr(pattern, 'styling_system') and pattern.styling_system else "Any",
+                use_cases
+            )
+        
+        console.print(patterns_table)
+    
+    # Generation Intelligence Preview
+    console.print("\n🤖 GENERATION INTELLIGENCE", style="bold blue")
+    console.print("=" * 50)
+    
+    intelligence_info = []
+    
+    # Framework-specific intelligence
+    if project_config.framework:
+        intelligence_info.append(f"• Will generate {project_config.framework.value} components with appropriate imports")
+    
+    # Styling intelligence
+    if project_config.styling_system:
+        if project_config.styling_system.value == "TAILWIND":
+            intelligence_info.append("• Will use Tailwind CSS classes for styling")
+        elif project_config.styling_system.value == "CHAKRA_UI":
+            intelligence_info.append("• Will use Chakra UI components and props")
+            intelligence_info.append("• Will avoid Tailwind classes to prevent conflicts")
+    
+    # TypeScript intelligence
+    if project_config.typescript:
+        intelligence_info.append("• Will include TypeScript interfaces and proper typing")
+    
+    # Component patterns intelligence
+    if hasattr(project_config, 'component_patterns') and project_config.component_patterns:
+        intelligence_info.append(f"• Will follow your existing component patterns ({len(project_config.component_patterns)} detected)")
+    
+    for info in intelligence_info:
+        console.print(info, style="dim white")
+    
+    # Explanations if requested
+    if explain:
+        console.print("\n💡 HOW CONTEXT AFFECTS GENERATION", style="bold blue")
+        console.print("=" * 50)
+        
+        explanation_panel = Panel(
+            """[bold]Context Prioritization:[/bold]
+• Framework-specific patterns get 70% priority weight
+• Styling system patterns get 25% priority weight  
+• Project-specific patterns get 5% priority weight
+
+[bold]Conflict Resolution:[/bold]
+• Chakra UI + Tailwind → Prioritizes Chakra UI, filters Tailwind
+• Multiple styling systems → Uses most confident detection
+• Missing patterns → Falls back to framework defaults
+
+[bold]Quality Validation:[/bold]
+• Validates against detected styling system
+• Ensures import consistency with project structure
+• Applies framework-specific best practices""",
+            title="Intelligence Details",
+            border_style="dim"
+        )
+        console.print(explanation_panel)
+    
+    # Helpful tips
+    console.print("\n💡 TIPS", style="bold yellow")
+    console.print("=" * 50)
+    console.print("• Use specific prompts: 'Create a Chakra UI button' vs 'Create a button'")
+    console.print("• Mention styling preferences: 'with dark mode support' or 'responsive design'")
+    console.print("• Reference existing components: 'similar to the existing UserCard component'")
+    console.print(f"• Run 'palette generate --help' to see all available options")
+
+
+def _show_context_table(project_config, context_stats: dict, pattern_recommendations: list):
+    """Show context analysis in compact table format"""
+    
+    table = Table(title="Project Context Summary", show_header=True, header_style="bold cyan")
+    table.add_column("Category", style="cyan")
+    table.add_column("Details", style="green")
+    table.add_column("Status", style="yellow")
+    
+    # Basic config
+    table.add_row(
+        "Framework",
+        project_config.framework.value if project_config.framework else "Unknown",
+        "✅" if project_config.framework else "❌"
+    )
+    
+    table.add_row(
+        "Styling",
+        project_config.styling_system.value if project_config.styling_system else "Unknown",
+        "✅" if project_config.styling_system else "❌"
+    )
+    
+    table.add_row(
+        "TypeScript",
+        "Enabled" if project_config.typescript else "Disabled",
+        "✅" if project_config.typescript else "⚠️"
+    )
+    
+    # Context stats
+    if context_stats:
+        token_budget = context_stats.get('token_budget', {})
+        utilization = token_budget.get('utilization', 0)
+        table.add_row(
+            "Token Usage",
+            f"{utilization:.1%}",
+            "✅" if utilization <= 0.087 else "⚠️"
+        )
+    
+    # Patterns
+    table.add_row(
+        "Patterns Available",
+        str(len(pattern_recommendations)),
+        "✅" if pattern_recommendations else "⚠️"
+    )
+    
+    console.print(table)
+
+
+def _show_context_json(project_config, context_stats: dict, pattern_recommendations: list):
+    """Show context analysis in JSON format"""
+    
+    context_data = {
+        "project_config": {
+            "framework": project_config.framework.value if project_config.framework else None,
+            "styling_system": project_config.styling_system.value if project_config.styling_system else None,
+            "typescript": project_config.typescript,
+            "confidence_score": getattr(project_config, 'confidence_score', None)
+        },
+        "context_optimization": context_stats,
+        "pattern_recommendations": [
+            {
+                "name": pattern.name,
+                "framework": pattern.framework.value if hasattr(pattern, 'framework') and pattern.framework else None,
+                "styling_system": pattern.styling_system.value if hasattr(pattern, 'styling_system') and pattern.styling_system else None,
+                "use_cases": getattr(pattern, 'use_cases', [])
+            }
+            for pattern in pattern_recommendations
+        ]
+    }
+    
+    console.print(json.dumps(context_data, indent=2))
+
+
+def _create_generation_explanations(prompt: str, framework: str, styling: str, ui: str, type: str, detected_config) -> List[Dict[str, Any]]:
+    """Create explanations for generation decisions"""
+    
+    explanations = []
+    
+    # Framework selection explanation
+    if detected_config and detected_config.framework:
+        explanations.append({
+            "category": "Framework Selection",
+            "decision": f"Selected {framework}",
+            "reasoning": f"Auto-detected {framework} from package.json dependencies and project structure",
+            "confidence": getattr(detected_config, 'confidence_score', 1.0),
+            "impact": "Determines component syntax, imports, and best practices"
+        })
+    else:
+        explanations.append({
+            "category": "Framework Selection", 
+            "decision": f"Using {framework} (default)",
+            "reasoning": "No framework auto-detected, using default React",
+            "confidence": 0.5,
+            "impact": "May not match your project structure perfectly"
+        })
+    
+    # Styling system explanation
+    if detected_config and detected_config.styling_system:
+        styling_system = detected_config.styling_system.value
+        if styling_system == "TAILWIND":
+            explanations.append({
+                "category": "Styling Strategy",
+                "decision": "Using Tailwind CSS classes",
+                "reasoning": "Detected tailwind.config.js and Tailwind dependencies",
+                "confidence": 0.95,
+                "impact": "Component will use utility-first CSS classes"
+            })
+        elif styling_system == "CHAKRA_UI":
+            explanations.append({
+                "category": "Styling Strategy",
+                "decision": "Using Chakra UI components",
+                "reasoning": "Detected @chakra-ui packages in dependencies",
+                "confidence": 0.95,
+                "impact": "Will use Chakra component props and avoid Tailwind conflicts"
+            })
+    
+    # Component type explanation
+    component_type_reasoning = {
+        "single": "Simple, self-contained component in one file",
+        "multi": "Complex component split across multiple files",
+        "page": "Full page component with routing structure",
+        "feature": "Feature module with multiple related components"
+    }
+    
+    explanations.append({
+        "category": "Component Architecture",
+        "decision": f"Generating {type} component",
+        "reasoning": component_type_reasoning.get(type, "Based on prompt analysis"),
+        "confidence": 0.8,
+        "impact": "Determines file structure and component organization"
+    })
+    
+    # TypeScript explanation
+    if detected_config and detected_config.typescript:
+        explanations.append({
+            "category": "Type Safety",
+            "decision": "Including TypeScript interfaces",
+            "reasoning": "Detected TypeScript configuration and .ts/.tsx files",
+            "confidence": 1.0,
+            "impact": "Provides type safety and better IDE support"
+        })
+    
+    # UI Library explanation
+    if ui != "none":
+        explanations.append({
+            "category": "UI Components",
+            "decision": f"Integrating {ui} components",
+            "reasoning": "Manually specified component library",
+            "confidence": 1.0,
+            "impact": "Will use pre-built components and design system"
+        })
+    
+    # Prompt analysis explanation
+    prompt_insights = _analyze_prompt_complexity(prompt)
+    explanations.append({
+        "category": "Prompt Analysis",
+        "decision": f"Complexity level: {prompt_insights['complexity']}",
+        "reasoning": prompt_insights['reasoning'],
+        "confidence": prompt_insights['confidence'],
+        "impact": prompt_insights['impact']
+    })
+    
+    return explanations
+
+
+def _analyze_prompt_complexity(prompt: str) -> Dict[str, Any]:
+    """Analyze prompt complexity and requirements"""
+    
+    prompt_lower = prompt.lower()
+    
+    # Check for complexity indicators
+    complex_keywords = ['dashboard', 'form', 'validation', 'authentication', 'api', 'database', 'chart', 'graph']
+    interactive_keywords = ['modal', 'dropdown', 'tabs', 'accordion', 'carousel', 'navigation']
+    simple_keywords = ['button', 'card', 'header', 'footer', 'text', 'image']
+    
+    complexity_score = 0
+    detected_features = []
+    
+    # Score complexity
+    for keyword in complex_keywords:
+        if keyword in prompt_lower:
+            complexity_score += 3
+            detected_features.append(keyword)
+    
+    for keyword in interactive_keywords:
+        if keyword in prompt_lower:
+            complexity_score += 2
+            detected_features.append(keyword)
+    
+    for keyword in simple_keywords:
+        if keyword in prompt_lower:
+            complexity_score += 1
+            detected_features.append(keyword)
+    
+    # Determine complexity level
+    if complexity_score >= 8:
+        complexity = "High"
+        reasoning = f"Complex component with multiple features: {', '.join(detected_features[:3])}"
+        impact = "Will generate comprehensive component with proper state management"
+        confidence = 0.9
+    elif complexity_score >= 4:
+        complexity = "Medium"
+        reasoning = f"Interactive component with moderate complexity: {', '.join(detected_features[:2])}"
+        impact = "Will include necessary interactivity and styling"
+        confidence = 0.8
+    else:
+        complexity = "Simple"
+        reasoning = "Basic component with minimal features"
+        impact = "Will generate clean, focused component"
+        confidence = 0.7
+    
+    return {
+        "complexity": complexity,
+        "reasoning": reasoning,
+        "impact": impact,
+        "confidence": confidence,
+        "features": detected_features
+    }
+
+
+def _display_generation_explanations(explanations: List[Dict[str, Any]], generated_files: Dict[str, str]):
+    """Display detailed generation explanations"""
+    
+    console.print("\n🧠 GENERATION DECISION EXPLANATIONS", style="bold blue")
+    console.print("=" * 60)
+    
+    for i, explanation in enumerate(explanations, 1):
+        # Create explanation panel  
+        confidence_color = "green" if explanation['confidence'] >= 0.8 else "yellow" if explanation['confidence'] >= 0.6 else "red"
+        confidence_text = f"[{confidence_color}]{explanation['confidence']:.0%} confidence[/{confidence_color}]"
+        
+        explanation_content = f"""[bold]{explanation['decision']}[/bold]
+
+[yellow]Why:[/yellow] {explanation['reasoning']}
+
+[blue]Impact:[/blue] {explanation['impact']}
+
+[white]Confidence:[/white] {confidence_text}"""
+        
+        panel = Panel(
+            explanation_content,
+            title=f"{i}. {explanation['category']}",
+            border_style="dim",
+            expand=False
+        )
+        console.print(panel)
+    
+    # Code generation insights
+    console.print("\n📝 CODE GENERATION INSIGHTS", style="bold blue")
+    console.print("=" * 60)
+    
+    insights = []
+    
+    # File analysis
+    file_count = len(generated_files)
+    if file_count == 1:
+        insights.append("• Generated single-file component for simplicity")
+    else:
+        insights.append(f"• Generated {file_count} files for better code organization")
+    
+    # Check for common patterns in generated code
+    all_code = " ".join(generated_files.values())
+    
+    if "useState" in all_code:
+        insights.append("• Added React hooks for state management")
+    if "interface" in all_code:
+        insights.append("• Included TypeScript interfaces for type safety")
+    if "className=" in all_code:
+        insights.append("• Used CSS classes for styling")
+    if "onClick" in all_code or "onChange" in all_code:
+        insights.append("• Added event handlers for interactivity")
+    if "export default" in all_code:
+        insights.append("• Used default exports following React conventions")
+    
+    for insight in insights:
+        console.print(f"[dim]{insight}[/dim]")
+    
+    # Tips based on explanations
+    console.print("\n💡 OPTIMIZATION TIPS", style="bold yellow")
+    console.print("=" * 60)
+    
+    tips = []
+    
+    # Framework-specific tips
+    framework_explanation = next((e for e in explanations if e['category'] == 'Framework Selection'), None)
+    if framework_explanation and framework_explanation['confidence'] < 0.8:
+        tips.append("• Specify framework explicitly: --framework react|next.js|remix")
+    
+    # Styling tips
+    styling_explanation = next((e for e in explanations if e['category'] == 'Styling Strategy'), None) 
+    if not styling_explanation:
+        tips.append("• Add styling system to project for better auto-detection")
+    
+    # Complexity tips
+    prompt_explanation = next((e for e in explanations if e['category'] == 'Prompt Analysis'), None)
+    if prompt_explanation and prompt_explanation['complexity'] == 'Simple':
+        tips.append("• For more complex components, describe specific features needed")
+    
+    if not tips:
+        tips.append("• Your project is well-configured for optimal generation!")
+    
+    for tip in tips:
+        console.print(f"[dim]{tip}[/dim]")
+
+
+def _show_suggestions_detailed(suggestions: List, is_completion: bool = False):
+    """Show detailed suggestions with rich formatting"""
+    
+    suggestion_type = "Prompt Completions" if is_completion else "Contextual Suggestions"
+    console.print(f"\n💡 {suggestion_type.upper()}", style="bold blue")
+    console.print("=" * 60)
+    
+    for i, suggestion in enumerate(suggestions, 1):
+        # Confidence indicator
+        confidence_color = "green" if suggestion.confidence >= 0.8 else "yellow" if suggestion.confidence >= 0.6 else "red"
+        confidence_indicator = "🔥" if suggestion.confidence >= 0.9 else "✨" if suggestion.confidence >= 0.7 else "💡"
+        
+        # Complexity indicator
+        complexity_colors = {"simple": "green", "medium": "yellow", "complex": "red"}
+        complexity_color = complexity_colors.get(suggestion.complexity, "white")
+        
+        suggestion_content = f"""[bold cyan]💻 {suggestion.prompt}[/bold cyan]
+
+[yellow]Category:[/yellow] {suggestion.category}
+[blue]Reasoning:[/blue] {suggestion.reasoning}
+[{complexity_color}]Complexity:[/{complexity_color}] {suggestion.complexity.title()}
+[white]Confidence:[/white] [{confidence_color}]{suggestion.confidence:.0%}[/{confidence_color}] {confidence_indicator}"""
+        
+        if suggestion.related_files:
+            files_str = ", ".join([Path(f).name for f in suggestion.related_files[:3]])
+            suggestion_content += f"\n[dim]Related files:[/dim] {files_str}"
+        
+        panel = Panel(
+            suggestion_content,
+            title=f"{i}. Suggestion",
+            border_style="dim",
+            expand=False
+        )
+        console.print(panel)
+    
+    # Show usage tips
+    console.print(f"\n💡 USAGE TIPS", style="bold yellow")
+    console.print("=" * 60)
+    console.print("• Copy any prompt above and use with: [cyan]palette generate \"<prompt>\"[/cyan]")
+    console.print("• Add [cyan]--explain[/cyan] to see generation decision details")
+    console.print("• Use [cyan]--preview[/cyan] to review code before creating files")
+    if not is_completion:
+        console.print("• Try [cyan]palette suggest --complete \"partial prompt\"[/cyan] for auto-completion")
+
+
+def _show_suggestions_simple(suggestions: List):
+    """Show simple list of suggestions"""
+    
+    console.print("\n💡 SUGGESTED PROMPTS", style="bold blue")
+    console.print("=" * 50)
+    
+    for i, suggestion in enumerate(suggestions, 1):
+        confidence_indicator = "🔥" if suggestion.confidence >= 0.8 else "✨" if suggestion.confidence >= 0.6 else "💡"
+        console.print(f"{i:2d}. {confidence_indicator} [cyan]{suggestion.prompt}[/cyan] [dim]({suggestion.category})[/dim]")
+    
+    console.print(f"\n[dim]Use: palette generate \"<prompt from above>\"[/dim]")
+
+
+def _show_suggestions_json(suggestions: List):
+    """Show suggestions in JSON format"""
+    
+    suggestions_data = []
+    for suggestion in suggestions:
+        suggestions_data.append({
+            "prompt": suggestion.prompt,
+            "category": suggestion.category,
+            "confidence": suggestion.confidence,
+            "reasoning": suggestion.reasoning,
+            "complexity": suggestion.complexity,
+            "related_files": suggestion.related_files
+        })
+    
+    console.print(json.dumps({"suggestions": suggestions_data}, indent=2))
+
+
+def _resolve_ui_library_selection(ui_choice: str, project_path: str, detected_config: Optional[Any]) -> str:
+    """
+    Resolve UI library selection with comprehensive validation and auto-detection.
+    
+    Args:
+        ui_choice: User's UI library choice ('auto-detect' or specific library)
+        project_path: Path to the project
+        detected_config: Configuration detected by intelligence hub
+        
+    Returns:
+        Resolved UI library name
+    """
+    
+    try:
+        from ..intelligence.ui_library_validator import EnhancedUILibraryValidator, UILibraryCompatibility
+        validator = EnhancedUILibraryValidator()
+        
+        if ui_choice == 'auto-detect':
+            # Use comprehensive analysis to recommend UI library
+            recommended_ui = validator.get_recommended_ui_library(project_path)
+            
+            if recommended_ui and recommended_ui != 'none':
+                # Validate the recommendation
+                validation_result = validator.validate_ui_library_choice(recommended_ui, project_path)
+                
+                if validation_result.compatibility in [UILibraryCompatibility.PERFECT, UILibraryCompatibility.GOOD]:
+                    console.print(f"✅ [green]Auto-detected UI library: {recommended_ui}[/green]")
+                    console.print(f"   [dim]Confidence: {validation_result.confidence:.1%}[/dim]")
+                    
+                    # Show evidence if available
+                    if validation_result.evidence:
+                        for evidence in validation_result.evidence[:2]:  # Show top 2 pieces of evidence
+                            console.print(f"   [dim]• {evidence}[/dim]")
+                    
+                    return recommended_ui
+                else:
+                    console.print(f"⚠️ [yellow]Detected {recommended_ui} but compatibility issues found[/yellow]")
+                    for warning in validation_result.warnings[:2]:
+                        console.print(f"   [dim]• {warning}[/dim]")
+            
+            console.print("ℹ️ [dim]No UI library auto-detected - using 'none'[/dim]")
+            return 'none'
+        
+        elif ui_choice != 'none':
+            # Comprehensive validation of explicit UI library choice
+            validation_result = validator.validate_ui_library_choice(ui_choice, project_path)
+            
+            if validation_result.compatibility == UILibraryCompatibility.PERFECT:
+                console.print(f"✅ [green]Using {ui_choice} (perfect compatibility)[/green]")
+                console.print(f"   [dim]Confidence: {validation_result.confidence:.1%}[/dim]")
+                
+            elif validation_result.compatibility == UILibraryCompatibility.GOOD:
+                console.print(f"✅ [green]Using {ui_choice} (good compatibility)[/green]")
+                if validation_result.warnings:
+                    console.print(f"   [yellow]Note: {validation_result.warnings[0]}[/yellow]")
+                    
+            elif validation_result.compatibility == UILibraryCompatibility.WARNING:
+                console.print(f"⚠️ [yellow]Using {ui_choice} with warnings[/yellow]")
+                for warning in validation_result.warnings[:2]:
+                    console.print(f"   [yellow]• {warning}[/yellow]")
+                
+                # Show missing dependencies
+                if validation_result.missing_dependencies:
+                    missing_deps = ', '.join(validation_result.missing_dependencies)
+                    console.print(f"   [dim]Install: npm install {missing_deps}[/dim]")
+                    
+            elif validation_result.compatibility == UILibraryCompatibility.CONFLICT:
+                console.print(f"🚨 [red]CRITICAL: {ui_choice} conflicts with project setup[/red]")
+                for conflict in validation_result.conflicting_systems:
+                    console.print(f"   [red]• Conflicts with {conflict}[/red]")
+                
+                # Show recommendations for resolving conflicts
+                if validation_result.recommendations:
+                    console.print("   [dim]Recommendations:[/dim]")
+                    for rec in validation_result.recommendations[:2]:
+                        console.print(f"   [dim]• {rec}[/dim]")
+                
+                # Still proceed but warn user
+                if not click.confirm(f"\nProceed with {ui_choice} despite conflicts?", default=False):
+                    console.print("[yellow]Switching to 'none' - no UI library[/yellow]")
+                    return 'none'
+            
+            else:  # UNKNOWN compatibility
+                console.print(f"❓ [yellow]Using {ui_choice} (compatibility unknown)[/yellow]")
+                console.print(f"   [dim]Confidence: {validation_result.confidence:.1%}[/dim]")
+        
+        return ui_choice
+    
+    except ImportError:
+        # Fallback to basic validation if enhanced validator not available
+        console.print("[dim]Using basic UI library validation[/dim]")
+        return _resolve_ui_library_selection_basic(ui_choice, project_path, detected_config)
+    
+    except Exception as e:
+        console.print(f"[yellow]Warning: UI library validation failed: {e}[/yellow]")
+        console.print("[dim]Proceeding with basic validation[/dim]")
+        return _resolve_ui_library_selection_basic(ui_choice, project_path, detected_config)
+
+
+def _resolve_ui_library_selection_basic(ui_choice: str, project_path: str, detected_config: Optional[Any]) -> str:
+    """
+    Basic UI library selection (fallback when enhanced validation fails).
+    """
+    
+    # UI library dependency patterns
+    ui_library_deps = {
+        'chakra-ui': ['@chakra-ui/react', '@emotion/react', '@emotion/styled'],
+        'material-ui': ['@mui/material', '@emotion/react', '@emotion/styled'],
+        'ant-design': ['antd', '@ant-design/icons'],
+        'mantine': ['@mantine/core', '@mantine/hooks'],
+        'react-bootstrap': ['react-bootstrap', 'bootstrap'],
+        'semantic-ui': ['semantic-ui-react', 'semantic-ui-css'],
+        'grommet': ['grommet', 'grommet-icons'],
+        'headless-ui': ['@headlessui/react'],
+        'shadcn/ui': ['@radix-ui/react-slot', 'class-variance-authority', 'clsx']
+    }
+    
+    if ui_choice == 'auto-detect':
+        # Try to detect UI library from project dependencies
+        detected_ui = _detect_ui_library_from_project(project_path, ui_library_deps)
+        
+        if detected_ui:
+            console.print(f"✅ [green]Auto-detected UI library: {detected_ui}[/green]")
+            return detected_ui
+        else:
+            # Check if detected_config has styling system info
+            if detected_config and hasattr(detected_config, 'styling_analysis'):
+                styling_analysis = detected_config.styling_analysis
+                if hasattr(styling_analysis, 'primary_system'):
+                    primary_system = styling_analysis.primary_system.value
+                    if primary_system in ['chakra-ui', 'material-ui']:
+                        console.print(f"✅ [green]Auto-detected UI library from styling analysis: {primary_system}[/green]")
+                        return primary_system
+            
+            console.print("ℹ️ [dim]No UI library detected - using 'none'[/dim]")
+            return 'none'
+    
+    elif ui_choice != 'none':
+        # Validate explicit UI library choice
+        is_valid = _validate_ui_library_choice(ui_choice, project_path, ui_library_deps)
+        
+        if not is_valid:
+            # Show warning but don't block generation
+            required_deps = ui_library_deps.get(ui_choice, [])
+            if required_deps:
+                console.print(f"⚠️ [yellow]Warning: {ui_choice} requires dependencies: {', '.join(required_deps)}[/yellow]")
+                console.print(f"   [dim]Install with: npm install {' '.join(required_deps)}[/dim]")
+            else:
+                console.print(f"⚠️ [yellow]Warning: {ui_choice} dependencies not found in project[/yellow]")
+        else:
+            console.print(f"✅ [green]Using {ui_choice} (found in dependencies)[/green]")
+    
+    return ui_choice
+
+
+def _detect_ui_library_from_project(project_path: str, ui_library_deps: Dict[str, List[str]]) -> Optional[str]:
+    """
+    Detect UI library from project's package.json dependencies.
+    
+    Args:
+        project_path: Path to the project
+        ui_library_deps: Mapping of UI libraries to their required dependencies
+        
+    Returns:
+        Detected UI library name or None
+    """
+    
+    package_json_path = Path(project_path) / "package.json" 
+    
+    if not package_json_path.exists():
+        return None
+    
+    try:
+        with open(package_json_path, 'r', encoding='utf-8') as f:
+            package_data = json.load(f)
+        
+        # Get all dependencies
+        all_deps = set()
+        all_deps.update(package_data.get('dependencies', {}).keys())
+        all_deps.update(package_data.get('devDependencies', {}).keys())
+        
+        # Check each UI library
+        for ui_lib, required_deps in ui_library_deps.items():
+            # Check if any of the required dependencies are present
+            if any(dep in all_deps for dep in required_deps):
+                # For more specific detection, check primary deps first
+                primary_deps = {
+                    'chakra-ui': '@chakra-ui/react',
+                    'material-ui': '@mui/material', 
+                    'ant-design': 'antd',
+                    'mantine': '@mantine/core',
+                    'react-bootstrap': 'react-bootstrap',
+                    'semantic-ui': 'semantic-ui-react',
+                    'grommet': 'grommet',
+                    'headless-ui': '@headlessui/react',
+                    'shadcn/ui': '@radix-ui/react-slot'
+                }
+                
+                if ui_lib in primary_deps and primary_deps[ui_lib] in all_deps:
+                    return ui_lib
+        
+        return None
+        
+    except (json.JSONDecodeError, FileNotFoundError, KeyError):
+        return None
+
+
+def _validate_ui_library_choice(ui_choice: str, project_path: str, ui_library_deps: Dict[str, List[str]]) -> bool:
+    """
+    Validate that the chosen UI library has required dependencies in the project.
+    
+    Args:
+        ui_choice: Chosen UI library
+        project_path: Path to the project  
+        ui_library_deps: Mapping of UI libraries to their required dependencies
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    
+    if ui_choice not in ui_library_deps:
+        return True  # Unknown library, assume valid
+    
+    package_json_path = Path(project_path) / "package.json"
+    
+    if not package_json_path.exists():
+        return False
+    
+    try:
+        with open(package_json_path, 'r', encoding='utf-8') as f:
+            package_data = json.load(f)
+        
+        # Get all dependencies
+        all_deps = set()
+        all_deps.update(package_data.get('dependencies', {}).keys())
+        all_deps.update(package_data.get('devDependencies', {}).keys())
+        
+        required_deps = ui_library_deps[ui_choice]
+        
+        # Check if at least one required dependency is present
+        return any(dep in all_deps for dep in required_deps)
+        
+    except (json.JSONDecodeError, FileNotFoundError, KeyError):
+        return False
+
+
+# Add conversation command to main CLI
+from .conversation import conversation
+main.add_command(conversation)
 
 
 if __name__ == "__main__":

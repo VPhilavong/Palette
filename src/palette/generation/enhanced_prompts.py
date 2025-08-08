@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 from .prompts import UIUXCopilotPromptBuilder
+from .composition_prompts import CompositionAwarePromptBuilder, CompositionPromptConfig
 from ..analysis.treesitter_analyzer import TreeSitterAnalyzer, ComponentPattern
 
 
@@ -318,6 +319,7 @@ class EnhancedPromptBuilder(UIUXCopilotPromptBuilder):
         self.tree_sitter = None
         self.component_index = ComponentSearchIndex()
         self.project_path = None
+        self.composition_builder = None
 
     def initialize_project_analysis(self, project_path: str) -> Dict[str, Any]:
         """Initialize Tree-sitter analysis and build component index."""
@@ -326,6 +328,9 @@ class EnhancedPromptBuilder(UIUXCopilotPromptBuilder):
 
             self.tree_sitter = TreeSitterAnalyzer()
             self.project_path = Path(project_path)
+            
+            # Initialize composition-aware prompt builder
+            self.composition_builder = CompositionAwarePromptBuilder(project_path)
 
             # Analyze project components
             analysis_result = self.tree_sitter.analyze_project(project_path)
@@ -469,6 +474,65 @@ REMEMBER: You are a frontend engineer on this team. Use the existing components 
 Your goal is to create UIs that seamlessly integrate with the existing codebase."""
 
         return enhanced_prompt
+    
+    async def build_composition_enhanced_prompt(self, user_request: str, context: Dict, 
+                                              config: Optional[CompositionPromptConfig] = None) -> str:
+        """
+        Build a composition-enhanced prompt that combines few-shot learning with composition awareness.
+        
+        Args:
+            user_request: User's component request
+            context: Project context from analysis
+            config: Configuration for composition prompt generation
+            
+        Returns:
+            Enhanced prompt with composition awareness and few-shot examples
+        """
+        if not self.composition_builder:
+            # Fallback to enhanced system prompt if composition builder not available
+            return self.build_enhanced_system_prompt(context, user_request)
+        
+        # Get existing component names for composition context
+        existing_components = [comp.name for comp in self.component_index.components[:10]]
+        
+        try:
+            # Build composition-aware prompt
+            composition_prompt = await self.composition_builder.build_composition_prompt(
+                user_request, existing_components, config
+            )
+            
+            # Find relevant examples for few-shot learning
+            examples = self._find_relevant_examples(user_request, context, max_examples=2)
+            
+            if examples:
+                few_shot_section = self._build_few_shot_section(examples)
+                
+                # Combine composition awareness with few-shot learning
+                enhanced_prompt = f"""{composition_prompt}
+
+## Implementation Examples
+
+{few_shot_section}
+
+## Final Implementation Guidelines
+
+Based on the composition context above and the examples provided:
+1. Follow the composition patterns identified for your component type
+2. Use the same coding patterns and conventions as shown in the examples
+3. Ensure proper integration with existing components
+4. Maintain consistency with the project's styling and prop patterns
+5. Include proper TypeScript types and documentation
+
+Generate a component that seamlessly integrates with this codebase while following the composition guidelines."""
+                
+                return enhanced_prompt
+            else:
+                return composition_prompt
+                
+        except Exception as e:
+            print(f"Warning: Composition prompt building failed: {e}")
+            # Fallback to enhanced system prompt
+            return self.build_enhanced_system_prompt(context, user_request)
 
     def _find_relevant_examples(
         self, user_request: str, context: Dict, max_examples: int = 2

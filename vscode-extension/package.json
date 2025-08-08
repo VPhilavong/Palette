@@ -1,115 +1,132 @@
 {
-  "name": "code-palette",
-  "displayName": "Code Palette",
-  "description": "AI-powered design-to-code tool for React components",
-  "version": "0.1.1",
+  "name": "code-palette-chatbot",
+  "displayName": "Palette AI Chatbot",
+  "description": "Modern chatbot interface for Palette AI with conversation memory and session management",
+  "version": "0.2.0-chatbot",
   "publisher": "sail-project",
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/extension-chatbot.js",
   "keywords": [
-    "react",
-    "component",
+    "chatbot",
     "ai",
-    "tailwind",
+    "react",
     "ui",
-    "design"
+    "components",
+    "conversation"
   ],
   "activationEvents": [
-    "onCommand:palette.openWebview",
-    "onCommand:palette.generate",
-    "onCommand:palette.analyze",
-    "onCommand:palette.generateInFolder",
-    "onCommand:palette.testEnvironment"
+    "onCommand:palette.openChatbot"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "palette.openWebview",
-        "title": "Open Palette"
-      },
-      {
-        "command": "palette.generate",
-        "title": "Palette: Generate Component",
+        "command": "palette.openChatbot",
+        "title": "🎨 Palette: Open AI Chatbot",
         "category": "Palette"
       },
       {
-        "command": "palette.analyze",
-        "title": "Palette: Analyze Project",
+        "command": "palette.checkBackendStatus",
+        "title": "🎨 Palette: Check Backend Status",
         "category": "Palette"
       },
       {
-        "command": "palette.generateInFolder",
-        "title": "Generate Component Here",
+        "command": "palette.stopChatbotServer",
+        "title": "🎨 Palette: Stop Chatbot Server",
         "category": "Palette"
       },
       {
-        "command": "palette.testEnvironment",
-        "title": "Test Environment Variables",
+        "command": "palette.openChatbotInBrowser",
+        "title": "🎨 Palette: Open Chatbot in Browser",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.startBackendServer",
+        "title": "🎨 Palette: Start Backend Server",
+        "category": "Palette"
+      },
+      {
+        "command": "palette.createFileFromChatbot",
+        "title": "🎨 Palette: Create File (Internal)",
         "category": "Palette"
       }
     ],
-    "main": "./out/extension.js",
     "menus": {
       "commandPalette": [
         {
-          "command": "palette.generate"
+          "command": "palette.openChatbot"
         },
         {
-          "command": "palette.analyze"
+          "command": "palette.checkBackendStatus"
         },
         {
-          "command": "palette.openWebview"
+          "command": "palette.stopChatbotServer"
+        },
+        {
+          "command": "palette.openChatbotInBrowser"
+        },
+        {
+          "command": "palette.startBackendServer"
+        },
+        {
+          "command": "palette.createFileFromChatbot",
+          "when": "false"
         }
       ],
-      "explorer/context": [
+      "editor/context": [
         {
-          "command": "palette.generateInFolder",
-          "when": "explorerResourceIsFolder",
-          "group": "palette"
+          "command": "palette.openChatbot",
+          "group": "palette",
+          "when": "editorHasSelection"
         }
       ]
     },
     "configuration": {
-      "title": "Code Palette",
+      "title": "Palette AI Chatbot",
       "properties": {
-        "palette.cliPath": {
-          "type": "string",
-          "default": "palette",
-          "description": "Path to the palette CLI executable"
-        },
-        "palette.defaultModel": {
-          "type": "string",
-          "default": "gpt-4o-2024-08-06",
-          "description": "Default AI model to use"
-        },
         "palette.openaiApiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API key (alternative to .env file)",
-          "markdownDescription": "Your OpenAI API key. Can also be set in `.env` file as `OPENAI_API_KEY`"
+          "description": "OpenAI API Key for Palette AI generation",
+          "scope": "application"
         },
-        "palette.anthropicApiKey": {
+        "palette.defaultModel": {
           "type": "string",
-          "default": "",
-          "description": "Anthropic API key (alternative to .env file)",
-          "markdownDescription": "Your Anthropic API key. Can also be set in `.env` file as `ANTHROPIC_API_KEY`"
+          "default": "gpt-4.1-2025-04-14",
+          "description": "Default AI model to use",
+          "enum": [
+            "gpt-4.1-2025-04-14",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo"
+          ]
         },
-        "palette.enableQualityAssurance": {
+        "palette.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8765",
+          "description": "Palette backend server URL"
+        },
+        "palette.maxConversationLength": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of messages to keep in conversation history",
+          "minimum": 10,
+          "maximum": 500
+        },
+        "palette.enableMemoryPersistence": {
           "type": "boolean",
           "default": true,
-          "description": "Enable quality assurance and validation stages",
-          "markdownDescription": "Enable comprehensive quality checks and auto-fixing (Zero-Fix Pipeline) for generated components"
+          "description": "Enable persistent conversation memory across VS Code sessions"
         },
-        "palette.showValidationStages": {
+        "palette.autoDetectProject": {
           "type": "boolean",
           "default": true,
-          "description": "Show validation progress in the chat",
-          "markdownDescription": "Display validation stages (🎨 Generating, ✅ Validating, 🚀 Zero-Fix Pipeline) in the chat interface"
+          "description": "Automatically detect and analyze project context"
         }
       }
     }
@@ -118,15 +135,17 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p ."
   },
+  "dependencies": {
+    "@ai-sdk/openai": "^0.0.66",
+    "ai": "^4.0.0",
+    "dotenv": "^17.2.1"
+  },
   "devDependencies": {
+    "@types/dotenv": "^6.1.1",
     "@types/node": "16.x",
-    "@types/react": "^19.1.9",
-    "@types/react-dom": "^19.1.7",
     "@types/vscode": "^1.60.0",
     "typescript": "^4.9.4"
   },
-  "dependencies": {
-    "dotenv": "^17.2.1",
-    "lucide-react": "^0.534.0"
-  }
+  "author": "",
+  "license": "ISC"
 }
